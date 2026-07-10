@@ -1,6 +1,8 @@
 import './style.css'
 import { GameManager, GameState } from './GameManager'
 import { SpecialBlockType } from './ItemManager'
+import { Player } from './Player'
+import { Tetromino } from './Tetromino'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -8,117 +10,314 @@ const ctx = canvas.getContext('2d')!;
 const BLOCK_SIZE = 30;
 const COLS = 10;
 const ROWS = 20;
-
-// Setup canvas size
-canvas.width = COLS * BLOCK_SIZE;
-canvas.height = ROWS * BLOCK_SIZE;
+const PADDING = 40; // Space between boards in 1v1
 
 // UI Elements
-const scoreElement = document.getElementById('score')!;
-const levelElement = document.getElementById('level')!;
-const comboElement = document.getElementById('combo')!;
-const multiplierElement = document.getElementById('multiplier')!;
+const uiLayer = document.getElementById('ui-layer')!;
+const screenMain = document.getElementById('screen-main')!;
+const screenDifficulty = document.getElementById('screen-difficulty')!;
+const gameHud = document.getElementById('game-hud')!;
+
+const btnSolo = document.getElementById('btn-solo')!;
+const btnVsBot = document.getElementById('btn-vs-bot')!;
+const btnEasyBot = document.getElementById('btn-easy-bot')!;
+const btnHardBot = document.getElementById('btn-hard-bot')!;
+const btnBack = document.getElementById('btn-back')!;
+const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
+
+const hudP2 = document.getElementById('hud-p2')!;
+
+const scoreElementP1 = document.getElementById('score-p1')!;
+const levelElementP1 = document.getElementById('level-p1')!;
+const comboElementP1 = document.getElementById('combo-p1')!;
+const multiplierElementP1 = document.getElementById('multiplier-p1')!;
+const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
+
+const scoreElementP2 = document.getElementById('score-p2')!;
+const levelElementP2 = document.getElementById('level-p2')!;
+const comboElementP2 = document.getElementById('combo-p2')!;
+const multiplierElementP2 = document.getElementById('multiplier-p2')!;
+const nextCanvasP2 = document.getElementById('next-canvas-p2') as HTMLCanvasElement;
 
 const gameManager = new GameManager(render);
 
-function drawBlock(x: number, y: number, color: string, isSpecial: string | undefined = undefined) {
-  ctx.fillStyle = '#000000'; // black bg
-  ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-  
-  ctx.strokeStyle = color; // neon green border
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x * BLOCK_SIZE + 1, y * BLOCK_SIZE + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+let showGhostPiece = true;
 
-  // Fill slightly or draw pattern based on special
+// Menu Event Listeners
+btnSolo.addEventListener('click', () => {
+  startGame('SOLO');
+});
+
+btnVsBot.addEventListener('click', () => {
+  screenMain.classList.add('hidden');
+  screenDifficulty.classList.remove('hidden');
+  screenDifficulty.classList.add('flex');
+});
+
+btnBack.addEventListener('click', () => {
+  screenDifficulty.classList.remove('flex');
+  screenDifficulty.classList.add('hidden');
+  screenMain.classList.remove('hidden');
+});
+
+btnEasyBot.addEventListener('click', () => {
+  startGame('EASY');
+});
+
+btnHardBot.addEventListener('click', () => {
+  startGame('HARD');
+});
+
+btnToggleGhost.addEventListener('click', () => {
+  showGhostPiece = !showGhostPiece;
+  btnToggleGhost.innerText = `GHOST: ${showGhostPiece ? 'ON' : 'OFF'}`;
+  btnToggleGhost.className = showGhostPiece 
+    ? "bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded"
+    : "bg-bgPanel border border-gray-500 text-gray-500 px-4 py-2 text-xs font-bold hover:bg-gray-500 hover:text-white transition-colors rounded";
+  // Force a render so it disappears instantly
+  if (gameManager.state === GameState.PLAYING) {
+    render();
+  }
+});
+
+function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+  uiLayer.classList.add('hidden');
+  gameHud.classList.remove('hidden');
+  gameHud.classList.add('flex');
+  
+  const playerCount = mode === 'SOLO' ? 1 : 2;
+  canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
+  canvas.height = ROWS * BLOCK_SIZE;
+
+  if (mode === 'SOLO') {
+    hudP2.classList.add('hidden');
+    hudP2.classList.remove('flex');
+    gameManager.initSolo();
+  } else {
+    hudP2.classList.remove('hidden');
+    hudP2.classList.add('flex');
+    gameManager.init1v1(mode);
+  }
+}
+
+function drawBlock(
+  targetCtx: CanvasRenderingContext2D,
+  x: number, 
+  y: number, 
+  color: string, 
+  offsetX: number, 
+  offsetY: number = 0,
+  isSpecial: string | undefined = undefined, 
+  isGhost: boolean = false
+) {
+  const finalX = offsetX + x * BLOCK_SIZE;
+  const finalY = offsetY + y * BLOCK_SIZE;
+
+  if (isGhost) {
+    targetCtx.fillStyle = 'transparent';
+    targetCtx.fillRect(finalX, finalY, BLOCK_SIZE, BLOCK_SIZE);
+    
+    targetCtx.strokeStyle = 'rgba(0, 229, 255, 0.4)'; // Cyan dashed for ghost
+    targetCtx.setLineDash([4, 2]);
+    targetCtx.lineWidth = 2;
+    targetCtx.strokeRect(finalX + 1, finalY + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+    targetCtx.setLineDash([]); // Reset
+    return;
+  }
+
+  targetCtx.fillStyle = '#000000'; // black bg
+  targetCtx.fillRect(finalX, finalY, BLOCK_SIZE, BLOCK_SIZE);
+  
+  if (isSpecial === 'GARBAGE') {
+    targetCtx.strokeStyle = '#555555';
+    targetCtx.fillStyle = '#333333';
+    targetCtx.fillRect(finalX + 2, finalY + 2, BLOCK_SIZE - 4, BLOCK_SIZE - 4);
+    return;
+  }
+
+  targetCtx.strokeStyle = color; // Neon border
+  targetCtx.lineWidth = 2;
+  targetCtx.strokeRect(finalX + 1, finalY + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+
   if (isSpecial) {
-    ctx.fillStyle = color;
-    ctx.font = '20px "Courier New"';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    targetCtx.fillStyle = color;
+    targetCtx.font = '20px "Press Start 2P"';
+    targetCtx.textAlign = 'center';
+    targetCtx.textBaseline = 'middle';
     
     let icon = '';
     if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
     if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
     if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
 
-    ctx.fillText(icon, x * BLOCK_SIZE + BLOCK_SIZE / 2, y * BLOCK_SIZE + BLOCK_SIZE / 2);
+    targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
   } else {
-    // Standard fill style for regular blocks (maybe just grid lines or full fill)
-    ctx.fillStyle = '#00FF00';
-    ctx.fillRect(x * BLOCK_SIZE + 4, y * BLOCK_SIZE + 4, BLOCK_SIZE - 8, BLOCK_SIZE - 8);
+    // Fill interior
+    targetCtx.fillStyle = color;
+    targetCtx.fillRect(finalX + 6, finalY + 6, BLOCK_SIZE - 12, BLOCK_SIZE - 12);
   }
 }
 
-function render() {
-  // Clear canvas
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino | null, color: string) {
+  const tCtx = canvasEl.getContext('2d')!;
+  tCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  if (!piece) return;
 
-  // Draw Grid
+  const shape = piece.matrix;
+  const size = shape.length;
+  // Center it roughly in the 90x90 canvas (assuming max 4x4 piece blocks of 20px each)
+  const MINI_BLOCK_SIZE = 20;
+  const offsetX = (90 - size * MINI_BLOCK_SIZE) / 2;
+  const offsetY = (90 - size * MINI_BLOCK_SIZE) / 2;
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (shape[r][c] !== 0) {
+        // Draw mini block
+        const fx = offsetX + c * MINI_BLOCK_SIZE;
+        const fy = offsetY + r * MINI_BLOCK_SIZE;
+        tCtx.fillStyle = '#000000';
+        tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+        tCtx.strokeStyle = color;
+        tCtx.lineWidth = 2;
+        tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
+        tCtx.fillStyle = color;
+        tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+      }
+    }
+  }
+}
+
+function renderPlayer(player: Player, index: number) {
+  const offsetX = index * (COLS * BLOCK_SIZE + PADDING);
+
+  // Draw Grid background (optional faint lines)
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const cell = gameManager.grid.matrix[r][c];
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    }
+  }
+
+  // Draw Block Matrix
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = player.grid.matrix[r][c];
       if (cell.type !== null) {
-        drawBlock(c, r, '#00FF00', cell.special);
-      } else {
-        // Optional: draw empty grid cells very faintly
-        ctx.strokeStyle = '#003300';
-        ctx.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        const color = cell.type === 'GARBAGE' ? '#555555' : (index === 0 ? '#00E5FF' : '#FF007F');
+        drawBlock(ctx, c, r, color, offsetX, 0, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special);
       }
     }
   }
 
-  // Draw Current Piece
-  if (gameManager.currentPiece && gameManager.state === GameState.ACTIVE_DROP) {
-    const shape = gameManager.currentPiece.matrix;
+  // Ghost Piece Logic
+  if (player.currentPiece && showGhostPiece) {
+    let ghostY = player.currentPiece.y;
+    while (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x, ghostY + 1)) {
+      ghostY++;
+    }
+    
+    // Draw Ghost
+    const shape = player.currentPiece.matrix;
     const size = shape.length;
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {
-          const specialKey = `${r},${c}`;
-          const isSpecial = gameManager.currentPiece.specialBlocks.get(specialKey);
-          drawBlock(gameManager.currentPiece.x + c, gameManager.currentPiece.y + r, '#00FF00', isSpecial);
+          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, 0, undefined, true);
         }
       }
     }
   }
 
-  // Draw Game Over overlay
+  // Draw Current Piece
+  if (player.currentPiece) {
+    const shape = player.currentPiece.matrix;
+    const size = shape.length;
+    const color = index === 0 ? '#00E5FF' : '#FF007F';
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (shape[r][c] !== 0) {
+          const specialKey = `${r},${c}`;
+          const isSpecial = player.currentPiece.specialBlocks.get(specialKey);
+          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, 0, isSpecial);
+        }
+      }
+    }
+  }
+
+  // Draw topping out overlay for this player
+  if (player.isToppedOut) {
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+    ctx.fillRect(offsetX, 0, COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+  }
+}
+
+function render() {
+  if (gameManager.state === GameState.MAIN_MENU) return;
+
+  // Clear main canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < gameManager.players.length; i++) {
+    renderPlayer(gameManager.players[i], i);
+  }
+
+  // Update UI for Player 1
+  const p1 = gameManager.players[0];
+  if (p1) {
+    scoreElementP1.innerText = `${p1.scoreManager.score}`;
+    levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
+    comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
+    multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
+    renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, '#00E5FF');
+  }
+
+  // Update UI for Player 2 (The Bot)
+  const p2 = gameManager.players[1];
+  if (p2) {
+    scoreElementP2.innerText = `${p2.scoreManager.score}`;
+    levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
+    comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
+    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
+    renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, '#FF007F');
+  }
+
+  // Draw Game Over global overlay
   if (gameManager.state === GameState.GAME_OVER) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    ctx.fillStyle = '#00FF00';
-    ctx.font = '30px "Courier New"';
+    ctx.fillStyle = '#00E5FF';
+    ctx.font = '30px "Press Start 2P"';
     ctx.textAlign = 'center';
     ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
 
-    ctx.font = '16px "Courier New"';
-    ctx.fillText('PRESS ENTER TO PLAY AGAIN', canvas.width / 2, canvas.height / 2 + 20);
-  }
-
-  // Update UI
-  scoreElement.innerText = `SCORE: ${gameManager.scoreManager.score}`;
-  levelElement.innerText = `LINES: ${gameManager.scoreManager.totalLinesCleared}`;
-  
-  if (gameManager.scoreManager.combo > 1) {
-    comboElement.innerText = `COMBO x${gameManager.scoreManager.combo}`;
-  } else {
-    comboElement.innerText = '';
-  }
-
-  if (gameManager.scoreManager.scoreMultiplier > 1) {
-    multiplierElement.innerText = `MULT x${gameManager.scoreManager.scoreMultiplier} (${(gameManager.scoreManager.multiplierTimer / 1000).toFixed(1)}s)`;
-  } else {
-    multiplierElement.innerText = '';
+    ctx.font = '12px "Press Start 2P"';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
   }
 }
 
-// Start Game
-gameManager.start();
-
 window.addEventListener('keydown', (e) => {
-  if (gameManager.state === GameState.GAME_OVER && e.key === 'Enter') {
-    gameManager.reset();
+  if (gameManager.state === GameState.GAME_OVER) {
+    if (e.key === 'Enter') {
+      if (gameManager.players.length === 1) {
+        gameManager.initSolo();
+      } else {
+        const botDiff = gameManager.players[1].bot!.difficulty;
+        gameManager.init1v1(botDiff);
+      }
+    } else if (e.key === 'Escape') {
+      gameManager.state = GameState.MAIN_MENU;
+      gameHud.classList.add('hidden');
+      gameHud.classList.remove('flex');
+      
+      // Reset menus to show Main by default
+      screenDifficulty.classList.add('hidden');
+      screenDifficulty.classList.remove('flex');
+      screenMain.classList.remove('hidden');
+      uiLayer.classList.remove('hidden');
+    }
   }
 });

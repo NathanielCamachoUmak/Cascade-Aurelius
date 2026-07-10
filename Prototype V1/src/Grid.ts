@@ -168,4 +168,36 @@ export class Grid {
       }
     }
   }
+
+  // Event-Driven Garbage Logic
+  public addGarbageLines(count: number, senderType: 'EASY' | 'HARD' | 'HUMAN'): void {
+    if (count <= 0) return;
+
+    // Shift everything up by `count`
+    for (let r = 0; r < this.height - count; r++) {
+      for (let c = 0; c < this.width; c++) {
+        this.matrix[r][c] = { ...this.matrix[r + count][c] };
+      }
+    }
+
+    // Determine hole alignment based on difficulty/sender
+    let alignedHoleX = -1;
+    if (senderType === 'HARD') {
+      alignedHoleX = Math.floor(Math.random() * this.width);
+    }
+
+    // Fill the bottom `count` rows with garbage
+    for (let r = this.height - count; r < this.height; r++) {
+      const holeX = (senderType === 'HARD') ? alignedHoleX : Math.floor(Math.random() * this.width);
+      
+      for (let c = 0; c < this.width; c++) {
+        if (c === holeX) {
+          this.matrix[r][c] = { type: null };
+        } else {
+          // Use a special type or just a grey solid block for garbage
+          this.matrix[r][c] = { type: 'GARBAGE' }; // We'll render GARBAGE as gray
+        }
+      }
+    }
+  }
 }

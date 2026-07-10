@@ -5,28 +5,194 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Block Quartet</title>
+    
+    <!-- Google Fonts: Press Start 2P for blocky text, Inter for UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS with custom config -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bgDark: '#0D0614',
+              bgPanel: '#1A0B2E',
+              bgPanelBorder: '#2D1B4E',
+              neonCyan: '#00E5FF',
+              neonMagenta: '#FF007F',
+              neonYellow: '#FFC107'
+            },
+            fontFamily: {
+              pixel: ['"Press Start 2P"', 'cursive'],
+              sans: ['Inter', 'sans-serif']
+            }
+          }
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      /* Custom Clip Paths for slanted buttons */
+      .slanted-btn {
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+      }
+      .slanted-btn-reverse {
+        clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+      }
+    </style>
   </head>
-  <body>
-    <div id="game-container">
-      <div id="ui-panel">
-        <h1 id="title">BLOCK QUARTET</h1>
-        <div id="score">SCORE: 0</div>
-        <div id="level">LINES: 0</div>
-        <div id="combo" class="highlight"></div>
-        <div id="multiplier" class="highlight"></div>
+  <body class="bg-bgDark text-white font-sans h-screen w-screen overflow-hidden flex flex-col m-0 p-0 selection:bg-neonMagenta">
+    
+    <!-- Top Nav Bar -->
+    <header class="w-full h-16 flex items-center justify-between px-8 border-b-2 border-bgPanelBorder bg-[#110B19]">
+      <div class="text-xl font-bold flex gap-2">
+        <span>Block</span>
+        <span class="text-neonMagenta">&lt;Quartet&gt;</span>
+      </div>
+      <nav class="hidden md:flex gap-6 text-xs uppercase tracking-widest text-gray-400 font-bold">
+        <a href="#" class="hover:text-white transition-colors">Opening</a>
+        <a href="#" class="text-white border-b-2 border-neonMagenta pb-1">Menu</a>
+        <a href="#" class="hover:text-white transition-colors">Lobby</a>
+        <a href="#" class="hover:text-white transition-colors">Loadout</a>
+        <a href="#" class="hover:text-white transition-colors">Game</a>
+      </nav>
+      <div class="flex items-center gap-2 text-xs font-bold text-neonMagenta">
+        <div class="w-2 h-2 rounded-full bg-neonMagenta animate-pulse"></div>
+        LIVE
+      </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <main class="relative flex-1 w-full h-full flex justify-center items-center">
+      
+      <!-- MENU OVERLAY -->
+      <div id="ui-layer" class="absolute inset-0 z-50 flex flex-col items-center pt-24 bg-gradient-to-b from-bgDark to-[#19092c]">
         
-        <div class="instructions">
-          <h3>CONTROLS</h3>
-          <p>Left/Right Arrow: Move</p>
-          <p>Down Arrow: Soft Drop</p>
-          <p>Space: Hard Drop</p>
-          <p>Up Arrow / X: Rotate CW</p>
-          <p>Z: Rotate CCW</p>
+        <!-- Screen: Main Menu -->
+        <div id="screen-main" class="flex flex-col items-center w-full max-w-4xl">
+          <h1 class="text-6xl font-pixel text-white drop-shadow-[0_0_15px_rgba(0,229,255,0.5)] mb-2 text-center leading-tight">
+            BLOCK<br/>
+            <span class="text-neonCyan">QUARTET</span>
+          </h1>
+          
+          <div class="flex gap-4 mt-12 mb-16">
+            <button id="btn-solo" class="slanted-btn bg-neonCyan text-black font-bold px-12 py-4 text-xl hover:bg-white transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(0,229,255,0.4)]">
+              ▶ PLAY SOLO
+            </button>
+            <button id="btn-vs-bot" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white font-bold px-12 py-4 text-xl hover:bg-bgPanelBorder transition-colors">
+              ▶ PLAY VS BOT
+            </button>
+          </div>
+        </div>
+
+        <!-- Screen: Difficulty Select -->
+        <div id="screen-difficulty" class="hidden flex-col items-start w-full max-w-5xl px-8">
+          <div class="mb-8">
+            <h2 class="text-neonYellow text-sm font-bold tracking-widest uppercase mb-2">MAIN MENU</h2>
+            <h1 class="text-4xl font-bold">Choose Your Mode</h1>
+            <p class="text-gray-400 text-sm mt-1 uppercase tracking-wider">Game Mode Selection</p>
+          </div>
+          
+          <div class="flex gap-6 w-full">
+            <!-- Mode Card 1 -->
+            <button id="btn-easy-bot" class="flex-1 bg-bgPanel border-2 border-bgPanelBorder hover:border-neonCyan hover:shadow-[0_0_20px_rgba(0,229,255,0.2)] transition-all p-6 text-left slanted-btn group">
+              <h3 class="text-2xl font-bold mb-2 group-hover:text-neonCyan">EASY BOT</h3>
+              <p class="text-gray-400 text-sm mb-6">Relaxed pace block battles</p>
+              <div class="inline-block border border-neonCyan text-neonCyan text-xs px-2 py-1">1 PLAYER</div>
+            </button>
+            
+            <!-- Mode Card 2 -->
+            <button id="btn-hard-bot" class="flex-1 bg-bgPanel border-2 border-bgPanelBorder hover:border-neonMagenta hover:shadow-[0_0_20px_rgba(255,0,127,0.2)] transition-all p-6 text-left slanted-btn group">
+              <h3 class="text-2xl font-bold mb-2 group-hover:text-neonMagenta">HARD BOT</h3>
+              <p class="text-gray-400 text-sm mb-6">Intense head-to-head block battles</p>
+              <div class="inline-block border border-neonMagenta text-neonMagenta text-xs px-2 py-1">2 PLAYERS</div>
+            </button>
+          </div>
+
+          <div class="mt-12 flex gap-4">
+            <button id="btn-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
+              &lt; BACK
+            </button>
+          </div>
         </div>
       </div>
-      
-      <canvas id="gameCanvas"></canvas>
-    </div>
+
+      <!-- IN-GAME HUD OVERLAY -->
+      <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
+        <!-- Settings Toggle / Ghost Piece Button -->
+        <div class="absolute top-4 right-8 pointer-events-auto flex gap-4">
+          <button id="btn-toggle-ghost" class="bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded">
+            GHOST: ON
+          </button>
+        </div>
+
+        <!-- The HUD wraps around the Canvas -->
+        <div class="relative flex justify-center items-start gap-12 w-full max-w-7xl px-8 h-[600px]">
+          
+          <!-- Player 1 HUD (Left Side) -->
+          <div id="hud-p1" class="flex flex-col gap-4 w-48 shrink-0">
+            <!-- Hold Box -->
+            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
+              <h3 class="text-xs font-bold text-gray-400 tracking-widest">HOLD</h3>
+              <canvas id="hold-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
+            </div>
+            
+            <!-- Stats -->
+            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded">
+              <h3 class="text-neonCyan text-xs font-bold tracking-widest mb-2">YOU</h3>
+              <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Score</div>
+                <div id="score-p1" class="text-xl font-bold font-pixel">0</div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Lines</div>
+                <div id="level-p1" class="text-lg font-bold">0</div>
+              </div>
+              <div id="combo-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+              <div id="multiplier-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+            </div>
+          </div>
+
+          <!-- Canvas Container (Will be sized dynamically in JS) -->
+          <!-- We put the main canvas underneath this HUD, so this div just creates physical spacing -->
+          <div id="canvas-spacer" class="relative shrink-0 flex justify-center">
+             <!-- The actual canvas lives here, injected or positioned absolutely via JS. 
+                  Wait, it's easier to just put the canvas in the normal flow here so the flex gap works. -->
+             <canvas id="gameCanvas" class="bg-black/80 border-2 border-neonCyan shadow-[0_0_20px_rgba(0,229,255,0.1)] backdrop-blur-sm pointer-events-none"></canvas>
+          </div>
+
+          <!-- Player 2 HUD (Right Side) -->
+          <div id="hud-p2" class="flex flex-col gap-4 w-48 shrink-0 hidden">
+            <!-- Next Box -->
+            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
+              <h3 class="text-xs font-bold text-gray-400 tracking-widest">NEXT</h3>
+              <canvas id="next-canvas-p2" width="90" height="90" class="mx-auto"></canvas>
+            </div>
+            
+            <!-- Stats -->
+            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded">
+              <h3 class="text-neonMagenta text-xs font-bold tracking-widest mb-2">BOT</h3>
+              <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Score</div>
+                <div id="score-p2" class="text-xl font-bold font-pixel">0</div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Lines</div>
+                <div id="level-p2" class="text-lg font-bold">0</div>
+              </div>
+              <div id="combo-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+              <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+    
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
