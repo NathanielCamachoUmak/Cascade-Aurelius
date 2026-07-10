@@ -59,30 +59,30 @@ Make sure you have [Node.js](https://nodejs.org/) (v18+) and [npm](https://www.n
    git clone [https://github.com/YOUR_USERNAME/block-quartet.git](https://github.com/YOUR_USERNAME/block-quartet.git)
    cd block-quartet
 
-2. **Install Frontend Dependencies: **
+2. **Install Frontend Dependencies:**
 cd client
 npm install
 
-3. **Install Backend Dependencies: **
+3. **Install Backend Dependencies:**
 cd ../server
 npm install
 
-4. **Environment Setup: **
+4. **Environment Setup:**
 MONGO_URI=your_mongodb_connection_string
 REDIS_URL=your_redis_connection_string
 PORT=3000
 
 ## Running the Game Locally
 
-1. **Start the Backend Server: **
+1. **Start the Backend Server:**
 cd server
 npm run dev
 
-2. **Start the Frontend Vite Client: Open a new terminal window: **
+2. **Start the Frontend Vite Client: Open a new terminal window:**
 cd client
 npm run dev
 
-3. **Open your browser and navigate to http://localhost:5173. **
+3. **Open your browser and navigate to http://localhost:5173.**
 
 ## 📖 Research & Documentation
 This project was developed in adherence to strict software engineering pipelines (Input-Process-Output framework).
