@@ -3,6 +3,7 @@ import { GameManager, GameState } from './GameManager'
 import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
+import { NetworkManager, type RoomState } from './NetworkManager'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -24,6 +25,16 @@ const btnEasyBot = document.getElementById('btn-easy-bot')!;
 const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
+
+// Online Lobby elements
+const screenLobby = document.getElementById('screen-lobby')!;
+const btnPlayOnline = document.getElementById('btn-play-online')!;
+const lobbyRoomInput = document.getElementById('lobby-room-input') as HTMLInputElement;
+const btnJoinLobby = document.getElementById('btn-join-lobby')!;
+const lobbyStatus = document.getElementById('lobby-status')!;
+const lobbyPlayerList = document.getElementById('lobby-player-list')!;
+const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
+const btnLobbyBack = document.getElementById('btn-lobby-back')!;
 
 const hudP2 = document.getElementById('hud-p2')!;
 
@@ -79,6 +90,81 @@ btnToggleGhost.addEventListener('click', () => {
     render();
   }
 });
+
+// --- Online Lobby ---
+let network: NetworkManager | null = null;
+let myReady = false;
+let inRoom = false;
+
+btnPlayOnline.addEventListener('click', () => {
+  screenMain.classList.add('hidden');
+  screenLobby.classList.remove('hidden');
+  screenLobby.classList.add('flex');
+});
+
+btnLobbyBack.addEventListener('click', () => {
+  screenLobby.classList.remove('flex');
+  screenLobby.classList.add('hidden');
+  screenMain.classList.remove('hidden');
+});
+
+btnJoinLobby.addEventListener('click', () => {
+  const roomId = lobbyRoomInput.value.trim() || 'test-room';
+
+  // Only create one connection, even if the player clicks Join more than once.
+  if (!network) {
+    network = new NetworkManager();
+
+    network.onConnected = () => {
+      lobbyStatus.innerText = 'Connected. Joining room...';
+      network!.joinRoom(roomId, `Player-${Math.floor(Math.random() * 1000)}`);
+    };
+
+    network.onJoinError = (message: string) => {
+      lobbyStatus.innerText = `Error: ${message}`;
+    };
+
+    network.onRoomUpdate = (state: RoomState) => {
+      inRoom = true;
+      renderLobbyPlayers(state);
+    };
+  } else {
+    network.joinRoom(roomId, `Player-${Math.floor(Math.random() * 1000)}`);
+  }
+
+  lobbyStatus.innerText = 'Connecting...';
+  btnJoinLobby.setAttribute('disabled', 'true');
+});
+
+btnLobbyReady.addEventListener('click', () => {
+  myReady = !myReady;
+  network?.setReady(myReady);
+  btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
+});
+
+function renderLobbyPlayers(state: RoomState) {
+  lobbyStatus.innerText = `Room "${state.roomId}" — ${state.players.length}/4 players`;
+  btnJoinLobby.removeAttribute('disabled');
+
+  if (inRoom) {
+    btnLobbyReady.classList.remove('hidden');
+  }
+
+  lobbyPlayerList.innerHTML = '';
+  for (const p of state.players) {
+    const row = document.createElement('div');
+    row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
+
+    const isMe = network && p.id === network.mySocketId;
+    row.innerHTML = `
+      <span class="font-bold">${p.name}${isMe ? ' (you)' : ''}</span>
+      <span class="${p.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">
+        ${p.ready ? '✓ Ready' : 'Not Ready'}
+      </span>
+    `;
+    lobbyPlayerList.appendChild(row);
+  }
+}
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   uiLayer.classList.add('hidden');

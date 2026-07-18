@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Socket.IO Connection Test</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body style="font-family: monospace; background: #111; color: #0f0; padding: 20px;">
+  <h2>Block Quartet — Server Connection Test</h2>
+  <p>Open this file in TWO or more browser tabs to simulate multiple players joining the same room.</p>
+  <div id="log" style="white-space: pre-wrap; border: 1px solid #0f0; padding: 10px; min-height: 200px;"></div>
+
+  <script>
+    const log = (msg) => {
+      document.getElementById('log').textContent += msg + '\n';
+      console.log(msg);
+    };
+
+    // Connect to the server running on port 3000
+    const socket = io('http://localhost:3000');
+
+    socket.on('connect', () => {
+      log(`Connected! My socket id: ${socket.id}`);
+
+      // Join a shared test room. Everyone using this same roomId will
+      // land in the same lobby.
+      socket.emit('join-room', { roomId: 'test-room', name: `Guest-${socket.id.slice(0, 4)}` });
+    });
+
+    socket.on('room-update', (state) => {
+      log(`Room "${state.roomId}" now has ${state.players.length} player(s):`);
+      state.players.forEach((p) => log(`  - ${p.name} (${p.id}) ready=${p.ready}`));
+    });
+
+    socket.on('join-error', (err) => {
+      log(`Join error: ${err.message}`);
+    });
+
+    socket.on('disconnect', () => {
+      log('Disconnected from server.');
+    });
+  </script>
+</body>
+</html>

@@ -85,6 +85,44 @@
             <button id="btn-vs-bot" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white font-bold px-12 py-4 text-xl hover:bg-bgPanelBorder transition-colors">
               ▶ PLAY VS BOT
             </button>
+            <button id="btn-play-online" class="slanted-btn bg-bgPanel border border-neonMagenta text-neonMagenta font-bold px-12 py-4 text-xl hover:bg-neonMagenta hover:text-black transition-colors">
+              ▶ PLAY ONLINE
+            </button>
+          </div>
+        </div>
+
+        <!-- Screen: Online Lobby -->
+        <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-2xl px-8">
+          <div class="mb-8 w-full">
+            <h2 class="text-neonMagenta text-sm font-bold tracking-widest uppercase mb-2">ONLINE</h2>
+            <h1 class="text-4xl font-bold">Lobby</h1>
+            <p class="text-gray-400 text-sm mt-1 uppercase tracking-wider">Join a room with up to 4 players</p>
+          </div>
+
+          <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-6">
+            <label for="lobby-room-input" class="text-xs text-gray-400 uppercase tracking-widest">Room Code</label>
+            <div class="flex gap-3 mt-2">
+              <input id="lobby-room-input" type="text" value="test-room"
+                class="flex-1 bg-bgDark border border-bgPanelBorder text-white px-4 py-2 text-lg focus:outline-none focus:border-neonCyan" />
+              <button id="btn-join-lobby" class="slanted-btn bg-neonCyan text-black font-bold px-6 py-2 hover:bg-white transition-colors">
+                JOIN
+              </button>
+            </div>
+          </div>
+
+          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px]"></div>
+
+          <div id="lobby-player-list" class="w-full flex flex-col gap-2 mb-8">
+            <!-- Player rows injected by main.ts -->
+          </div>
+
+          <div class="flex gap-4">
+            <button id="btn-lobby-ready" class="hidden slanted-btn bg-neonCyan text-black font-bold px-10 py-3 hover:bg-white transition-colors">
+              READY UP
+            </button>
+            <button id="btn-lobby-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
+              &lt; BACK
+            </button>
           </div>
         </div>
 
