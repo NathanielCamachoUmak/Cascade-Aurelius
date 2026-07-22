@@ -25,11 +25,11 @@ export class Player {
   public timeSurvived: number = 0;
   public isToppedOut: boolean = false;
 
-  constructor(id: string, isBot: boolean = false, botDifficulty: Difficulty = 'HARD') {
+  constructor(id: string, isBot: boolean = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard: boolean = true) {
     this.id = id;
     this.grid = new Grid();
     this.bag = new TetrominoBag();
-    this.inputHandler = new InputHandler(!isBot);
+    this.inputHandler = new InputHandler(!isBot && listenToKeyboard);
     this.itemManager = new ItemManager();
     this.scoreManager = new ScoreManager();
 
