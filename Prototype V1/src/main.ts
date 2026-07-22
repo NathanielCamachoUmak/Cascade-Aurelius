@@ -355,6 +355,11 @@ function renderPlayer(player: Player, index: number) {
     }
   }
 
+  // Draw Player Grid Border
+  ctx.strokeStyle = playerColor;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(offsetX, 0, COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+
   // Draw Block Matrix
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
