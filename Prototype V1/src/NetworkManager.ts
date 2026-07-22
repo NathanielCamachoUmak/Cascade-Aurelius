@@ -140,7 +140,7 @@ export class NetworkManager {
     this.socket.emit("broadcast-ribbon", { message });
   }
 
-  // --- Connection management ---
+  // --- Connection management --- 
 
   public disconnect() {
     this.socket.disconnect();

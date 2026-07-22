@@ -284,4 +284,4 @@ app.get('/', (_req, res) => {
 
 httpServer.listen(PORT, () => {
   console.log(`Block Quartet server listening on http://localhost:${PORT}`);
-});
+}); 

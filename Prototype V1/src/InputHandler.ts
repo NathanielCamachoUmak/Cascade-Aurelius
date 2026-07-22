@@ -132,4 +132,4 @@ export class InputHandler {
       this.heldActions[action as InputAction].active = false;
     }
   }
-}
+} 

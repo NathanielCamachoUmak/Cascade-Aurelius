@@ -591,4 +591,4 @@ function returnToMenu() {
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
-}
+} 
