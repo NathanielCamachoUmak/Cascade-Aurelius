@@ -50,7 +50,6 @@ const scoreElementP2 = document.getElementById('score-p2')!;
 const levelElementP2 = document.getElementById('level-p2')!;
 const comboElementP2 = document.getElementById('combo-p2')!;
 const multiplierElementP2 = document.getElementById('multiplier-p2')!;
-const nextCanvasP2 = document.getElementById('next-canvas-p2') as HTMLCanvasElement;
 
 const gameManager = new GameManager(render);
 
@@ -484,7 +483,6 @@ function render() {
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
-    renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, PLAYER_COLORS[opIdx] || '#FF007F');
   }
 
   // Update multiplayer scoreboard
