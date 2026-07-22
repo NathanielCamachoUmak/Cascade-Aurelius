@@ -1,0 +1,9 @@
+    # 1. Install cloudflared
+    winget install Cloudflare.cloudflared
+
+    # 2. Start your server
+    cd "C:\Users\destr\Documents\Cascade-Aurelius\Prototype V1\Server"
+    node index.js
+
+    # 3. In another terminal, start the tunnel
+    cloudflared tunnel --url http://localhost:3000
