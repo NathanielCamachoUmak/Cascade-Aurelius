@@ -149,6 +149,18 @@ btnJoinLobby.addEventListener('click', () => {
     network.onGameStart = (data: GameStartData) => {
       startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name));
     };
+
+    network.onShowRibbon = (message: string) => {
+      const ribbon = document.getElementById('global-ribbon');
+      if (ribbon) {
+        ribbon.innerText = message;
+        ribbon.classList.remove('hidden');
+        ribbon.classList.add('opacity-100');
+        setTimeout(() => {
+          ribbon.classList.add('hidden');
+        }, 2000); // hide after 2 seconds
+      }
+    };
   } else {
     const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
     network.joinRoom(roomId, nickname);
@@ -217,7 +229,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, network!);
+  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {

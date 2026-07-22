@@ -249,6 +249,12 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('broadcast-ribbon', ({ message }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    socket.to(roomId).emit('show-ribbon', { message });
+  });
+
   socket.on('disconnect', () => {
     const roomId = socket.data.roomId;
     console.log(`[disconnect] ${socket.id}`);

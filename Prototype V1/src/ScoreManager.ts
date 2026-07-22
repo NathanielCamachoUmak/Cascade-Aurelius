@@ -10,6 +10,7 @@ export class ScoreManager {
   // Item mechanics
   public scoreMultiplier: number = 1;
   public multiplierTimer: number = 0;
+  public globalMultiplier: number = 1;
 
   // Base line scores (non-linear)
   private readonly LINE_SCORES = [0, 100, 300, 500, 800];
@@ -48,8 +49,8 @@ export class ScoreManager {
       // Apply combo bonus
       points += 50 * this.combo;
       
-      // Apply item multiplier
-      points *= this.scoreMultiplier;
+      // Apply item & global multiplier
+      points *= this.scoreMultiplier * this.globalMultiplier;
 
       this.score += points;
 
@@ -60,6 +61,6 @@ export class ScoreManager {
   }
 
   public addDropScore(cellsDropped: number) {
-    this.score += cellsDropped * this.scoreMultiplier;
+    this.score += cellsDropped * this.scoreMultiplier * this.globalMultiplier;
   }
 }

@@ -55,6 +55,7 @@ export class GameManager {
   public myPlayerIndex: number = 0;
   public isOnline: boolean = false;
   public onlineWinnerName: string = "";
+  public gameTime: number = 0;
 
   // Visual effects state
   private particles: Particle[] = [];
@@ -99,7 +100,7 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager) {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = []) {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
@@ -108,12 +109,13 @@ export class GameManager {
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
     for (let i = 0; i < playerCount; i++) {
+      const pName = playerNames[i] || `P${i + 1}`;
       if (i === myIndex) {
         // Our local player — listens to keyboard
-        this.players.push(new Player(`P${i + 1}`, false));
+        this.players.push(new Player(pName, false));
       } else {
         // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
-        this.players.push(new Player(`P${i + 1}`, false, 'HARD', false));
+        this.players.push(new Player(pName, false, 'HARD', false));
       }
     }
 
@@ -193,6 +195,7 @@ export class GameManager {
     this.state = GameState.PLAYING;
     this.canvasElement = document.getElementById('gameCanvas') as HTMLCanvasElement;
     this.lastTime = performance.now();
+    this.gameTime = 0;
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
     }
@@ -215,6 +218,20 @@ export class GameManager {
 
   private update(dt: number) {
     if (this.state !== GameState.PLAYING) return;
+
+    this.gameTime += dt;
+
+    if (this.isOnline) {
+      const mpLevel = Math.floor(this.gameTime / 60000);
+      for (const player of this.players) {
+        if (mpLevel === 0) player.scoreManager.globalMultiplier = 1.0;
+        else if (mpLevel === 1) player.scoreManager.globalMultiplier = 1.1;
+        else if (mpLevel === 2) player.scoreManager.globalMultiplier = 1.2;
+        else if (mpLevel === 3) player.scoreManager.globalMultiplier = 1.5;
+        else if (mpLevel === 4) player.scoreManager.globalMultiplier = 2.0;
+        else player.scoreManager.globalMultiplier = 3.0 + (mpLevel - 5);
+      }
+    }
 
     for (let i = 0; i < this.players.length; i++) {
       const player = this.players[i];
@@ -318,9 +335,16 @@ export class GameManager {
 
     // Gravity calculation
     const baseInterval = 1000;
-    const linesFactor = player.scoreManager.totalLinesCleared * 10;
-    const timeFactor = player.timeSurvived / 1000 * 2;
-    player.dropInterval = Math.max(100, baseInterval - linesFactor - timeFactor);
+    
+    if (this.isOnline) {
+      const mpLevel = Math.floor(this.gameTime / 60000);
+      player.dropInterval = Math.max(100, baseInterval * Math.pow(0.8, mpLevel));
+    } else {
+      const linesFactor = player.scoreManager.totalLinesCleared * 10;
+      const timeFactor = player.timeSurvived / 1000 * 2;
+      player.dropInterval = Math.max(100, baseInterval - linesFactor - timeFactor);
+    }
+    
     player.dropTimer = 0;
 
     if (player.grid.checkCollision(player.currentPiece)) {
@@ -569,13 +593,19 @@ export class GameManager {
     // Screen shake for Tetris (4+)
     if (linesCleared >= 4) {
       this.screenShake = {
-        intensity: Math.min(linesCleared * 3, 15),
+        intensity: Math.min(linesCleared * 3, 15) * 1.5,
         duration: 400,
         timer: 400,
       };
+      // Broadcast Ribbon
+      if (this.isOnline && this.network) {
+        // Find player name instead of ID if possible
+        const pName = this.players[this.myPlayerIndex]?.id || "Someone";
+        this.network.sendRibbon(`${pName} GOT A TETRIS!`);
+      }
     } else if (linesCleared === 3) {
       this.screenShake = {
-        intensity: 4,
+        intensity: 6, // Was 4
         duration: 200,
         timer: 200,
       };

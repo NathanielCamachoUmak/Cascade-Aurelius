@@ -163,8 +163,13 @@
               &lt; BACK
             </button>
           </div>
+        
+        <!-- Global Ribbon -->
+        <div id="global-ribbon" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full bg-neonMagenta/90 text-white font-bold text-4xl py-6 text-center z-50 shadow-[0_0_30px_rgba(255,0,127,0.8)] border-y-4 border-white tracking-[0.2em] uppercase transition-opacity duration-300">
+          TETRIS!
         </div>
       </div>
+    </div>
 
       <!-- IN-GAME HUD OVERLAY -->
       <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
@@ -197,14 +202,20 @@
               <h3 class="text-neonCyan text-xs font-bold tracking-widest mb-2">YOU</h3>
               <div class="mb-4">
                 <div class="text-xs text-gray-400 uppercase">Score</div>
-                <div id="score-p1" class="text-xl font-bold font-pixel">0</div>
+                <div id="score-p1" class="text-xl font-bold font-pixel text-neonCyan">0</div>
               </div>
               <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Multiplier</div>
+                <div id="multiplier-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs text-gray-400 uppercase">Effects</div>
+                <div id="combo-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+              </div>
+              <div class="mb-2">
                 <div class="text-xs text-gray-400 uppercase">Lines</div>
                 <div id="level-p1" class="text-lg font-bold">0</div>
               </div>
-              <div id="combo-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-              <div id="multiplier-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
             </div>
           </div>
 
@@ -222,34 +233,25 @@
             <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
           </div>
 
-          <!-- Multiplayer Scoreboard (shown during online games) -->
-          <div id="multiplayer-scoreboard" class="hidden absolute top-4 left-8 bg-bgPanel border border-bgPanelBorder p-4 rounded z-20 pointer-events-auto min-w-[200px]">
-            <h3 class="text-xs font-bold text-neonYellow tracking-widest uppercase mb-3">SCOREBOARD</h3>
-            <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
-          </div>
-
-          <!-- Player 2 HUD (Right Side) -->
-          <div id="hud-p2" class="flex flex-col gap-4 w-48 shrink-0 hidden">
-            <!-- Next Box -->
-            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
-              <h3 class="text-xs font-bold text-gray-400 tracking-widest">NEXT</h3>
-              <canvas id="next-canvas-p2" width="90" height="90" class="mx-auto"></canvas>
-            </div>
-            
-            <!-- Stats -->
-            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded">
-              <h3 class="text-neonMagenta text-xs font-bold tracking-widest mb-2">BOT</h3>
-              <div class="mb-4">
-                <div class="text-xs text-gray-400 uppercase">Score</div>
-                <div id="score-p2" class="text-xl font-bold font-pixel">0</div>
-              </div>
-              <div class="mb-4">
-                <div class="text-xs text-gray-400 uppercase">Lines</div>
-                <div id="level-p2" class="text-lg font-bold">0</div>
-              </div>
-              <div id="combo-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-              <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-            </div>
+          <!-- Player 2 HUD (Underneath Grid) -->
+          <div id="hud-p2" class="absolute -bottom-24 right-[15%] flex gap-6 w-auto shrink-0 hidden bg-bgPanel border border-bgPanelBorder p-4 rounded shadow-lg z-10">
+             <!-- Stats Row -->
+             <div class="flex flex-col">
+               <div class="text-xs text-gray-400 uppercase">Score</div>
+               <div id="score-p2" class="text-lg font-bold font-pixel text-neonMagenta">0</div>
+             </div>
+             <div class="flex flex-col">
+               <div class="text-xs text-gray-400 uppercase">Mult</div>
+               <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+             </div>
+             <div class="flex flex-col">
+               <div class="text-xs text-gray-400 uppercase">Effects</div>
+               <div id="combo-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+             </div>
+             <div class="flex flex-col">
+               <div class="text-xs text-gray-400 uppercase">Lines</div>
+               <div id="level-p2" class="text-lg font-bold">0</div>
+             </div>
           </div>
 
         </div>

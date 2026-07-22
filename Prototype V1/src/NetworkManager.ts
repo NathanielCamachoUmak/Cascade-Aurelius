@@ -47,9 +47,10 @@ export class NetworkManager {
   public onGameStart: ((data: GameStartData) => void) | null = null;
   public onOpponentGridUpdate: ((playerIndex: number, grid: any[][]) => void) | null = null;
   public onOpponentPieceUpdate: ((playerIndex: number, piece: PieceData | null) => void) | null = null;
-  public onOpponentScoreUpdate: ((playerIndex: number, data: ScoreData) => void) | null = null;
-  public onOpponentToppedOut: ((playerIndex: number) => void) | null = null;
-  public onReceiveGarbage: ((count: number) => void) | null = null;
+  public onOpponentScoreUpdate: (playerIndex: number, scoreData: ScoreData) => void = () => {};
+  public onOpponentToppedOut: (playerIndex: number) => void = () => {};
+  public onReceiveGarbage: (count: number) => void = () => {};
+  public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
 
   constructor() {
@@ -90,8 +91,12 @@ export class NetworkManager {
       this.onOpponentToppedOut?.(playerIndex);
     });
 
-    this.socket.on("receive-garbage", ({ count }: { count: number }) => {
-      this.onReceiveGarbage?.(count);
+    this.socket.on("receive-garbage", ({ count, fromIndex }: { count: number, fromIndex: number }) => {
+      this.onReceiveGarbage(count);
+    });
+
+    this.socket.on("show-ribbon", ({ message }: { message: string }) => {
+      this.onShowRibbon(message);
     });
 
     this.socket.on("game-over", ({ winnerId, winnerName }: { winnerId: string; winnerName: string }) => {
@@ -129,6 +134,10 @@ export class NetworkManager {
 
   public sendGarbage(count: number) {
     this.socket.emit("send-garbage", { count });
+  }
+
+  public sendRibbon(message: string) {
+    this.socket.emit("broadcast-ribbon", { message });
   }
 
   // --- Connection management ---
