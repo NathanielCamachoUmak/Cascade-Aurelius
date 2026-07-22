@@ -6,6 +6,34 @@ import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 
+// Visual Effects System
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
+interface LineClearEffect {
+  row: number;
+  flash: number; // 0-1, fades out
+  color: string;
+}
+
+interface ComboText {
+  text: string;
+  x: number;
+  y: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
 export const GameState = {
   MAIN_MENU: "MAIN_MENU",
   READY: "READY",
@@ -27,6 +55,13 @@ export class GameManager {
   public myPlayerIndex: number = 0;
   public isOnline: boolean = false;
   public onlineWinnerName: string = "";
+
+  // Visual effects state
+  private particles: Particle[] = [];
+  private lineClearEffects: LineClearEffect[] = [];
+  private comboTexts: ComboText[] = [];
+  private screenShake: { intensity: number; duration: number; timer: number } = { intensity: 0, duration: 0, timer: 0 };
+  private canvasElement: HTMLCanvasElement | null = null;
 
   // Throttle timers for network sync (ms)
   private gridSyncTimer: number = 0;
@@ -156,6 +191,7 @@ export class GameManager {
 
   public start() {
     this.state = GameState.PLAYING;
+    this.canvasElement = document.getElementById('gameCanvas') as HTMLCanvasElement;
     this.lastTime = performance.now();
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
@@ -216,6 +252,9 @@ export class GameManager {
       // Active Drop & Input
       this.handleActiveDrop(player, dt);
     }
+
+    // Update visual effects
+    this.updateEffects(dt);
 
     // Network sync for online mode
     if (this.isOnline && this.network) {
@@ -403,6 +442,11 @@ export class GameManager {
 
     if (linesCleared > 0) {
       player.scoreManager.addScoreForLines(linesCleared);
+
+      // Trigger visual effects for the local player's clears
+      if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
+        this.triggerLineClearEffects(linesCleared, clearedRows);
+      }
       
       // Garbage mechanic
       if (linesCleared >= 2) {
@@ -450,6 +494,143 @@ export class GameManager {
         target.grid.addGarbageLines(count, senderType);
       }
     }
+  }
+
+  // ==============================
+  // Visual Effects
+  // ==============================
+
+  private triggerLineClearEffects(linesCleared: number, clearedRows: number[]) {
+    const BLOCK_SIZE = 30;
+    const COLS = 10;
+
+    // Determine effect color based on clear size
+    const colors: Record<number, string> = {
+      1: '#00E5FF',
+      2: '#00E5FF', 
+      3: '#FFC107', // Triple - yellow
+      4: '#FF007F', // Tetris - magenta
+    };
+    const color = colors[Math.min(linesCleared, 4)] || '#FF007F';
+
+    // Spawn particles for each cleared row
+    for (const row of clearedRows) {
+      for (let c = 0; c < COLS; c++) {
+        const px = (this.myPlayerIndex * (COLS * BLOCK_SIZE + 40)) + c * BLOCK_SIZE + BLOCK_SIZE / 2;
+        const py = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+
+        // Spawn 3-6 particles per cell for big clears, 1-2 for singles
+        const particleCount = linesCleared >= 3 ? Math.floor(Math.random() * 4) + 3 : Math.floor(Math.random() * 2) + 1;
+        for (let i = 0; i < particleCount; i++) {
+          this.particles.push({
+            x: px + (Math.random() - 0.5) * BLOCK_SIZE,
+            y: py + (Math.random() - 0.5) * BLOCK_SIZE,
+            vx: (Math.random() - 0.5) * (linesCleared >= 3 ? 8 : 3),
+            vy: (Math.random() - 0.5) * (linesCleared >= 3 ? 8 : 3) - 2,
+            life: 600 + Math.random() * 400,
+            maxLife: 600 + Math.random() * 400,
+            color: color,
+            size: linesCleared >= 3 ? 3 + Math.random() * 4 : 2 + Math.random() * 2,
+          });
+        }
+      }
+
+      // Flash effect for 3+ line clears
+      if (linesCleared >= 3) {
+        this.lineClearEffects.push({
+          row: row,
+          flash: 1.0,
+          color: color,
+        });
+      }
+    }
+
+    // Combo text
+    const comboCount = this.players[this.isOnline ? this.myPlayerIndex : 0]?.scoreManager.combo || 0;
+    let text = '';
+    if (linesCleared === 3) text = 'TRIPLE!';
+    else if (linesCleared >= 4) text = 'TETRIS!';
+    if (comboCount > 1 && text) text += ` COMBO x${comboCount}`;
+    else if (comboCount > 1) text = `COMBO x${comboCount}`;
+
+    if (text) {
+      const cx = (this.myPlayerIndex * (COLS * BLOCK_SIZE + 40)) + (COLS * BLOCK_SIZE) / 2;
+      this.comboTexts.push({
+        text: text,
+        x: cx,
+        y: BLOCK_SIZE * 10,
+        life: 1200,
+        maxLife: 1200,
+        color: color,
+        size: linesCleared >= 4 ? 28 : 22,
+      });
+    }
+
+    // Screen shake for Tetris (4+)
+    if (linesCleared >= 4) {
+      this.screenShake = {
+        intensity: Math.min(linesCleared * 3, 15),
+        duration: 400,
+        timer: 400,
+      };
+    } else if (linesCleared === 3) {
+      this.screenShake = {
+        intensity: 4,
+        duration: 200,
+        timer: 200,
+      };
+    }
+  }
+
+  private updateEffects(dt: number) {
+    // Update particles
+    this.particles = this.particles.filter(p => {
+      p.life -= dt;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.15; // gravity
+      return p.life > 0;
+    });
+
+    // Update line clear flashes
+    this.lineClearEffects = this.lineClearEffects.filter(e => {
+      e.flash -= dt / 300;
+      return e.flash > 0;
+    });
+
+    // Update combo texts
+    this.comboTexts = this.comboTexts.filter(t => {
+      t.life -= dt;
+      t.y -= 0.5; // float up
+      return t.life > 0;
+    });
+
+    // Update screen shake
+    if (this.screenShake.timer > 0) {
+      this.screenShake.timer -= dt;
+      if (this.canvasElement) {
+        const progress = this.screenShake.timer / this.screenShake.duration;
+        const intensity = this.screenShake.intensity * progress;
+        const shakeX = (Math.random() - 0.5) * intensity * 2;
+        const shakeY = (Math.random() - 0.5) * intensity * 2;
+        this.canvasElement.style.transform = `translate(${shakeX}px, ${shakeY}px)`;
+      }
+      if (this.screenShake.timer <= 0) {
+        this.screenShake.timer = 0;
+        if (this.canvasElement) {
+          this.canvasElement.style.transform = '';
+        }
+      }
+    }
+  }
+
+  // Public method for render function to draw effects
+  public getEffects() {
+    return {
+      particles: this.particles,
+      lineClearEffects: this.lineClearEffects,
+      comboTexts: this.comboTexts,
+    };
   }
 
   private checkGameOver() {

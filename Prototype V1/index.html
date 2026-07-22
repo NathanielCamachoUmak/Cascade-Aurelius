@@ -99,6 +99,22 @@
             <p class="text-gray-400 text-sm mt-1 uppercase tracking-wider">Join a room with up to 4 players</p>
           </div>
 
+          <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-4">
+            <label for="lobby-nickname-input" class="text-xs text-gray-400 uppercase tracking-widest">Nickname</label>
+            <div class="mt-2">
+              <input id="lobby-nickname-input" type="text" placeholder="Enter your nickname..." maxlength="16"
+                class="w-full bg-bgDark border border-bgPanelBorder text-white px-4 py-2 text-lg focus:outline-none focus:border-neonMagenta" />
+            </div>
+          </div>
+
+          <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-4">
+            <label for="lobby-nickname-input" class="text-xs text-gray-400 uppercase tracking-widest">Nickname</label>
+            <div class="mt-2">
+              <input id="lobby-nickname-input" type="text" placeholder="Enter your nickname..." maxlength="16"
+                class="w-full bg-bgDark border border-bgPanelBorder text-white px-4 py-2 text-lg focus:outline-none focus:border-neonMagenta" />
+            </div>
+          </div>
+
           <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-6">
             <label for="lobby-room-input" class="text-xs text-gray-400 uppercase tracking-widest">Room Code</label>
             <div class="flex gap-3 mt-2">
@@ -178,6 +194,12 @@
               <canvas id="hold-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
             </div>
             
+            <!-- Next Box (P1) -->
+            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
+              <h3 class="text-xs font-bold text-gray-400 tracking-widest">NEXT</h3>
+              <canvas id="next-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
+            </div>
+            
             <!-- Stats -->
             <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded">
               <h3 class="text-neonCyan text-xs font-bold tracking-widest mb-2">YOU</h3>
@@ -200,6 +222,18 @@
              <!-- The actual canvas lives here, injected or positioned absolutely via JS. 
                   Wait, it's easier to just put the canvas in the normal flow here so the flex gap works. -->
              <canvas id="gameCanvas" class="bg-black/80 border-2 border-neonCyan shadow-[0_0_20px_rgba(0,229,255,0.1)] backdrop-blur-sm pointer-events-none"></canvas>
+          </div>
+
+          <!-- Multiplayer Scoreboard (shown during online games) -->
+          <div id="multiplayer-scoreboard" class="hidden absolute top-4 left-8 bg-bgPanel border border-bgPanelBorder p-4 rounded z-20 pointer-events-auto min-w-[200px]">
+            <h3 class="text-xs font-bold text-neonYellow tracking-widest uppercase mb-3">SCOREBOARD</h3>
+            <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
+          </div>
+
+          <!-- Multiplayer Scoreboard (shown during online games) -->
+          <div id="multiplayer-scoreboard" class="hidden absolute top-4 left-8 bg-bgPanel border border-bgPanelBorder p-4 rounded z-20 pointer-events-auto min-w-[200px]">
+            <h3 class="text-xs font-bold text-neonYellow tracking-widest uppercase mb-3">SCOREBOARD</h3>
+            <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
           </div>
 
           <!-- Player 2 HUD (Right Side) -->

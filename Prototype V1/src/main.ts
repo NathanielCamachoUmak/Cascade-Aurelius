@@ -35,6 +35,7 @@ const lobbyStatus = document.getElementById('lobby-status')!;
 const lobbyPlayerList = document.getElementById('lobby-player-list')!;
 const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
 const btnLobbyBack = document.getElementById('btn-lobby-back')!;
+const lobbyNicknameInput = document.getElementById('lobby-nickname-input') as HTMLInputElement;
 
 const hudP2 = document.getElementById('hud-p2')!;
 
@@ -43,6 +44,7 @@ const levelElementP1 = document.getElementById('level-p1')!;
 const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
 const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
+const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
 
 const scoreElementP2 = document.getElementById('score-p2')!;
 const levelElementP2 = document.getElementById('level-p2')!;
@@ -130,7 +132,8 @@ btnJoinLobby.addEventListener('click', () => {
 
     network.onConnected = () => {
       lobbyStatus.innerText = 'Connected. Joining room...';
-      network!.joinRoom(roomId, `Player-${Math.floor(Math.random() * 1000)}`);
+          const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+      network!.joinRoom(roomId, nickname);
     };
 
     network.onJoinError = (message: string) => {
@@ -144,10 +147,11 @@ btnJoinLobby.addEventListener('click', () => {
 
     // Wire up the game-start event: this is where the magic happens
     network.onGameStart = (data: GameStartData) => {
-      startOnlineGame(data.players.length, data.myIndex);
+      startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name));
     };
   } else {
-    network.joinRoom(roomId, `Player-${Math.floor(Math.random() * 1000)}`);
+    const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+    network.joinRoom(roomId, nickname);
   }
 
   lobbyStatus.innerText = 'Connecting...';
@@ -188,7 +192,12 @@ function renderLobbyPlayers(state: RoomState) {
  * Start an online multiplayer game.
  * Called when the server emits 'game-start'.
  */
-function startOnlineGame(playerCount: number, myIndex: number) {
+let onlinePlayerNames: string[] = [];
+
+function startOnlineGame(playerCount: number, myIndex: number, playerNames?: string[]) {
+  if (playerNames) {
+    onlinePlayerNames = playerNames;
+  }
   // Hide lobby, show game
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
@@ -399,6 +408,46 @@ function render() {
     renderPlayer(gameManager.players[i], i);
   }
 
+  // Render visual effects
+  const effects = gameManager.getEffects();
+  
+  // Draw line clear flashes
+  for (const flash of effects.lineClearEffects) {
+    const BLOCK_SIZE_LOCAL = 30;
+    const myIdx2 = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
+    const offsetX = myIdx2 * (COLS * BLOCK_SIZE + PADDING);
+    ctx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
+    ctx.fillRect(offsetX, flash.row * BLOCK_SIZE_LOCAL, COLS * BLOCK_SIZE_LOCAL, BLOCK_SIZE_LOCAL);
+  }
+  
+  // Draw particles
+  for (const p of effects.particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  
+  // Draw combo texts
+  for (const t of effects.comboTexts) {
+    const alpha = Math.max(0, t.life / t.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = t.color;
+    ctx.font = `bold ${t.size}px "Press Start 2P"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Glow effect
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 20;
+    ctx.fillText(t.text, t.x, t.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+
   // In online mode, figure out which player index is "ours" for the left HUD
   const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
   const opIdx = gameManager.isOnline 
@@ -413,6 +462,7 @@ function render() {
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
+    renderPieceOnMiniCanvas(nextCanvasP1, p1.nextPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
   }
 
   // Update UI for Player 2 (opponent / bot)
@@ -423,6 +473,36 @@ function render() {
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, PLAYER_COLORS[opIdx] || '#FF007F');
+  }
+
+  // Update multiplayer scoreboard
+  if (gameManager.isOnline && onlinePlayerNames.length > 0) {
+    const scoreboard = document.getElementById('multiplayer-scoreboard')!;
+    const entries = document.getElementById('scoreboard-entries')!;
+    scoreboard.classList.remove('hidden');
+    
+    entries.innerHTML = '';
+    const playerData: {name: string, score: number, lines: number, alive: boolean}[] = [];
+    for (let i = 0; i < gameManager.players.length; i++) {
+      const p = gameManager.players[i];
+      playerData.push({
+        name: onlinePlayerNames[i] || `Player ${i+1}`,
+        score: p.scoreManager.score,
+        lines: p.scoreManager.totalLinesCleared,
+        alive: !p.isToppedOut
+      });
+    }
+    // Sort by score descending
+    playerData.sort((a, b) => b.score - a.score);
+    for (const pd of playerData) {
+      const row = document.createElement('div');
+      row.className = `flex justify-between items-center gap-4 text-sm ${pd.alive ? 'text-white' : 'text-gray-600 line-through'}`;
+      row.innerHTML = `
+        <span class="font-bold truncate max-w-[100px]">${pd.name}</span>
+        <span class="font-pixel text-xs">${pd.score}</span>
+      `;
+      entries.appendChild(row);
+    }
   }
 
   // Draw Game Over global overlay
@@ -493,6 +573,7 @@ function returnToMenu() {
   btnLobbyReady.innerText = 'READY UP';
   btnJoinLobby.removeAttribute('disabled');
 
+  document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
 }

@@ -121,6 +121,12 @@ io.on('connection', (socket) => {
   console.log(`[connect] ${socket.id}`);
 
   socket.on('join-room', ({ roomId, name }) => {
+    // Check if player is already in a lobby
+    if (socket.data.roomId && rooms.has(socket.data.roomId)) {
+      socket.emit('join-error', { message: "You're already in a lobby. Leave your current room first." });
+      return;
+    }
+
     const room = getOrCreateRoom(roomId);
 
     // Don't allow joining a game in progress
