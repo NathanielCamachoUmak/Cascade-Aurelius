@@ -3,7 +3,7 @@ import { GameManager, GameState } from './GameManager'
 import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
-import { NetworkManager, type RoomState } from './NetworkManager'
+import { NetworkManager, type RoomState, type GameStartData } from './NetworkManager'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -103,6 +103,19 @@ btnPlayOnline.addEventListener('click', () => {
 });
 
 btnLobbyBack.addEventListener('click', () => {
+  // Disconnect from server when leaving lobby
+  if (network) {
+    network.disconnect();
+    network = null;
+  }
+  myReady = false;
+  inRoom = false;
+  lobbyStatus.innerText = '';
+  lobbyPlayerList.innerHTML = '';
+  btnLobbyReady.classList.add('hidden');
+  btnLobbyReady.innerText = 'READY UP';
+  btnJoinLobby.removeAttribute('disabled');
+
   screenLobby.classList.remove('flex');
   screenLobby.classList.add('hidden');
   screenMain.classList.remove('hidden');
@@ -127,6 +140,11 @@ btnJoinLobby.addEventListener('click', () => {
     network.onRoomUpdate = (state: RoomState) => {
       inRoom = true;
       renderLobbyPlayers(state);
+    };
+
+    // Wire up the game-start event: this is where the magic happens
+    network.onGameStart = (data: GameStartData) => {
+      startOnlineGame(data.players.length, data.myIndex);
     };
   } else {
     network.joinRoom(roomId, `Player-${Math.floor(Math.random() * 1000)}`);
@@ -164,6 +182,33 @@ function renderLobbyPlayers(state: RoomState) {
     `;
     lobbyPlayerList.appendChild(row);
   }
+}
+
+/**
+ * Start an online multiplayer game.
+ * Called when the server emits 'game-start'.
+ */
+function startOnlineGame(playerCount: number, myIndex: number) {
+  // Hide lobby, show game
+  uiLayer.classList.add('hidden');
+  gameHud.classList.remove('hidden');
+  gameHud.classList.add('flex');
+
+  // Size canvas for the number of players
+  canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
+  canvas.height = ROWS * BLOCK_SIZE;
+
+  // Show P2 HUD if there are 2+ players
+  if (playerCount >= 2) {
+    hudP2.classList.remove('hidden');
+    hudP2.classList.add('flex');
+  } else {
+    hudP2.classList.add('hidden');
+    hudP2.classList.remove('flex');
+  }
+
+  // Initialize the online game
+  gameManager.initOnline(playerCount, myIndex, network!);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
@@ -274,8 +319,12 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
   }
 }
 
+// Assign colors per player index for multiplayer
+const PLAYER_COLORS = ['#00E5FF', '#FF007F', '#FFC107', '#76FF03'];
+
 function renderPlayer(player: Player, index: number) {
   const offsetX = index * (COLS * BLOCK_SIZE + PADDING);
+  const playerColor = PLAYER_COLORS[index] || '#00E5FF';
 
   // Draw Grid background (optional faint lines)
   for (let r = 0; r < ROWS; r++) {
@@ -291,14 +340,15 @@ function renderPlayer(player: Player, index: number) {
     for (let c = 0; c < COLS; c++) {
       const cell = player.grid.matrix[r][c];
       if (cell.type !== null) {
-        const color = cell.type === 'GARBAGE' ? '#555555' : (index === 0 ? '#00E5FF' : '#FF007F');
+        const color = cell.type === 'GARBAGE' ? '#555555' : playerColor;
         drawBlock(ctx, c, r, color, offsetX, 0, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special);
       }
     }
   }
 
-  // Ghost Piece Logic
-  if (player.currentPiece && showGhostPiece) {
+  // Ghost Piece Logic — only show for our own player in online mode
+  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
+  if (player.currentPiece && showGhostPiece && isMyPlayer) {
     let ghostY = player.currentPiece.y;
     while (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x, ghostY + 1)) {
       ghostY++;
@@ -320,7 +370,7 @@ function renderPlayer(player: Player, index: number) {
   if (player.currentPiece) {
     const shape = player.currentPiece.matrix;
     const size = shape.length;
-    const color = index === 0 ? '#00E5FF' : '#FF007F';
+    const color = playerColor;
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {
@@ -349,24 +399,30 @@ function render() {
     renderPlayer(gameManager.players[i], i);
   }
 
-  // Update UI for Player 1
-  const p1 = gameManager.players[0];
+  // In online mode, figure out which player index is "ours" for the left HUD
+  const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
+  const opIdx = gameManager.isOnline 
+    ? gameManager.players.findIndex((_, i) => i !== myIdx)
+    : 1;
+
+  // Update UI for Player 1 (our player)
+  const p1 = gameManager.players[myIdx];
   if (p1) {
     scoreElementP1.innerText = `${p1.scoreManager.score}`;
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
-    renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, '#00E5FF');
+    renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
   }
 
-  // Update UI for Player 2 (The Bot)
-  const p2 = gameManager.players[1];
+  // Update UI for Player 2 (opponent / bot)
+  const p2 = opIdx >= 0 ? gameManager.players[opIdx] : undefined;
   if (p2) {
     scoreElementP2.innerText = `${p2.scoreManager.score}`;
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
-    renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, '#FF007F');
+    renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, PLAYER_COLORS[opIdx] || '#FF007F');
   }
 
   // Draw Game Over global overlay
@@ -377,33 +433,66 @@ function render() {
     ctx.fillStyle = '#00E5FF';
     ctx.font = '30px "Press Start 2P"';
     ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
-
-    ctx.font = '12px "Press Start 2P"';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
+    
+    if (gameManager.isOnline && gameManager.onlineWinnerName) {
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+      ctx.font = '16px "Press Start 2P"';
+      ctx.fillStyle = '#FFC107';
+      ctx.fillText(`Winner: ${gameManager.onlineWinnerName}`, canvas.width / 2, canvas.height / 2);
+      ctx.font = '12px "Press Start 2P"';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('PRESS ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 40);
+    } else {
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.font = '12px "Press Start 2P"';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
+    }
   }
 }
 
 window.addEventListener('keydown', (e) => {
   if (gameManager.state === GameState.GAME_OVER) {
     if (e.key === 'Enter') {
-      if (gameManager.players.length === 1) {
+      if (gameManager.isOnline) {
+        // In online mode, go back to menu (can't restart locally)
+        returnToMenu();
+      } else if (gameManager.players.length === 1) {
         gameManager.initSolo();
       } else {
         const botDiff = gameManager.players[1].bot!.difficulty;
         gameManager.init1v1(botDiff);
       }
     } else if (e.key === 'Escape') {
-      gameManager.state = GameState.MAIN_MENU;
-      gameHud.classList.add('hidden');
-      gameHud.classList.remove('flex');
-      
-      // Reset menus to show Main by default
-      screenDifficulty.classList.add('hidden');
-      screenDifficulty.classList.remove('flex');
-      screenMain.classList.remove('hidden');
-      uiLayer.classList.remove('hidden');
+      returnToMenu();
     }
   }
 });
+
+function returnToMenu() {
+  gameManager.state = GameState.MAIN_MENU;
+  gameHud.classList.add('hidden');
+  gameHud.classList.remove('flex');
+
+  // Disconnect from server if in online mode
+  if (network) {
+    network.disconnect();
+    network = null;
+  }
+  myReady = false;
+  inRoom = false;
+
+  // Reset menus to show Main by default
+  screenDifficulty.classList.add('hidden');
+  screenDifficulty.classList.remove('flex');
+  screenLobby.classList.remove('flex');
+  screenLobby.classList.add('hidden');
+  lobbyStatus.innerText = '';
+  lobbyPlayerList.innerHTML = '';
+  btnLobbyReady.classList.add('hidden');
+  btnLobbyReady.innerText = 'READY UP';
+  btnJoinLobby.removeAttribute('disabled');
+
+  screenMain.classList.remove('hidden');
+  uiLayer.classList.remove('hidden');
+}

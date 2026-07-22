@@ -1,8 +1,10 @@
 import { Player } from "./Player";
-import { Tetromino } from "./Tetromino";
+import { Tetromino, SHAPES } from "./Tetromino";
 import { InputAction } from "./InputHandler";
 import { SpecialBlockType } from "./ItemManager";
 import { type Difficulty } from "./AIBot";
+import { NetworkManager, type ScoreData } from "./NetworkManager";
+import { type Cell } from "./Grid";
 
 export const GameState = {
   MAIN_MENU: "MAIN_MENU",
@@ -20,20 +22,135 @@ export class GameManager {
   private renderFn: () => void;
   private animationFrameId: number | null = null;
 
+  // Online multiplayer state
+  public network: NetworkManager | null = null;
+  public myPlayerIndex: number = 0;
+  public isOnline: boolean = false;
+  public onlineWinnerName: string = "";
+
+  // Throttle timers for network sync (ms)
+  private gridSyncTimer: number = 0;
+  private pieceSyncTimer: number = 0;
+  private scoreSyncTimer: number = 0;
+  private readonly GRID_SYNC_INTERVAL = 500;   // Send grid every 500ms
+  private readonly PIECE_SYNC_INTERVAL = 100;   // Send piece every 100ms
+  private readonly SCORE_SYNC_INTERVAL = 300;   // Send score every 300ms
+
   constructor(renderFn: () => void) {
     this.renderFn = renderFn;
   }
 
   public initSolo() {
+    this.isOnline = false;
+    this.network = null;
     this.players = [new Player("P1", false)];
     this.start();
   }
 
   public init1v1(difficulty: Difficulty) {
+    this.isOnline = false;
+    this.network = null;
     this.players = [
       new Player("P1", false),
       new Player("P2", true, difficulty)
     ];
+    this.start();
+  }
+
+  /**
+   * Initialize an online multiplayer game.
+   * Called when the server signals game-start.
+   * @param playerCount Total number of players in the room
+   * @param myIndex This player's index (0-based)
+   * @param net The active NetworkManager instance
+   */
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager) {
+    this.isOnline = true;
+    this.network = net;
+    this.myPlayerIndex = myIndex;
+    this.onlineWinnerName = "";
+
+    // Create player instances. Only our own player is human-controlled.
+    this.players = [];
+    for (let i = 0; i < playerCount; i++) {
+      if (i === myIndex) {
+        // Our local player — listens to keyboard
+        this.players.push(new Player(`P${i + 1}`, false));
+      } else {
+        // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
+        this.players.push(new Player(`P${i + 1}`, false, 'HARD', false));
+      }
+    }
+
+    // Wire up network callbacks for receiving opponent state
+    net.onOpponentGridUpdate = (playerIndex: number, grid: any[][]) => {
+      if (playerIndex < this.players.length && playerIndex !== myIndex) {
+        // Overwrite remote player's grid with server data
+        const player = this.players[playerIndex];
+        for (let r = 0; r < player.grid.height; r++) {
+          for (let c = 0; c < player.grid.width; c++) {
+            if (grid[r] && grid[r][c] !== undefined) {
+              player.grid.matrix[r][c] = grid[r][c] as Cell;
+            }
+          }
+        }
+      }
+    };
+
+    net.onOpponentPieceUpdate = (playerIndex: number, piece: any) => {
+      if (playerIndex < this.players.length && playerIndex !== myIndex) {
+        const player = this.players[playerIndex];
+        if (piece) {
+          // Reconstruct a Tetromino-like object for rendering
+          const t = new Tetromino(piece.type);
+          t.x = piece.x;
+          t.y = piece.y;
+          t.rotationIndex = piece.rotationIndex;
+          // Apply rotation to get correct matrix
+          if (SHAPES[piece.type as keyof typeof SHAPES]) {
+            t.matrix = SHAPES[piece.type as keyof typeof SHAPES][piece.rotationIndex];
+          }
+          player.currentPiece = t;
+        } else {
+          player.currentPiece = null;
+        }
+      }
+    };
+
+    net.onOpponentScoreUpdate = (playerIndex: number, data: ScoreData) => {
+      if (playerIndex < this.players.length && playerIndex !== myIndex) {
+        const player = this.players[playerIndex];
+        player.scoreManager.score = data.score;
+        player.scoreManager.totalLinesCleared = data.lines;
+        player.scoreManager.combo = data.combo;
+        player.scoreManager.scoreMultiplier = data.multiplier;
+      }
+    };
+
+    net.onOpponentToppedOut = (playerIndex: number) => {
+      if (playerIndex < this.players.length && playerIndex !== myIndex) {
+        this.players[playerIndex].isToppedOut = true;
+      }
+    };
+
+    net.onReceiveGarbage = (count: number) => {
+      const myPlayer = this.players[myIndex];
+      if (myPlayer && !myPlayer.isToppedOut) {
+        myPlayer.grid.addGarbageLines(count, 'HUMAN');
+      }
+    };
+
+    net.onGameOver = (_winnerId: string, winnerName: string) => {
+      this.onlineWinnerName = winnerName;
+      this.state = GameState.GAME_OVER;
+      this.renderFn(); // Final render
+    };
+
+    // Reset sync timers
+    this.gridSyncTimer = 0;
+    this.pieceSyncTimer = 0;
+    this.scoreSyncTimer = 0;
+
     this.start();
   }
 
@@ -67,6 +184,11 @@ export class GameManager {
       const player = this.players[i];
       if (player.isToppedOut) continue;
 
+      // In online mode, only update our own player's game logic
+      if (this.isOnline && i !== this.myPlayerIndex) {
+        continue; // Remote players are synced via network events
+      }
+
       player.timeSurvived += dt;
       player.scoreManager.update(dt);
 
@@ -82,6 +204,10 @@ export class GameManager {
       if (!player.currentPiece) {
         this.handleSpawning(player);
         if (player.isToppedOut) {
+          if (this.isOnline) {
+            // Tell server we topped out
+            this.network?.sendToppedOut();
+          }
           this.checkGameOver();
           continue;
         }
@@ -89,6 +215,55 @@ export class GameManager {
 
       // Active Drop & Input
       this.handleActiveDrop(player, dt);
+    }
+
+    // Network sync for online mode
+    if (this.isOnline && this.network) {
+      this.handleNetworkSync(dt);
+    }
+  }
+
+  /**
+   * Periodically send our own state to the server for other players to see.
+   */
+  private handleNetworkSync(dt: number) {
+    if (!this.network) return;
+    const myPlayer = this.players[this.myPlayerIndex];
+    if (!myPlayer) return;
+
+    // Grid sync
+    this.gridSyncTimer += dt;
+    if (this.gridSyncTimer >= this.GRID_SYNC_INTERVAL) {
+      this.gridSyncTimer = 0;
+      this.network.sendGridUpdate(myPlayer.grid.matrix);
+    }
+
+    // Piece sync
+    this.pieceSyncTimer += dt;
+    if (this.pieceSyncTimer >= this.PIECE_SYNC_INTERVAL) {
+      this.pieceSyncTimer = 0;
+      if (myPlayer.currentPiece) {
+        this.network.sendPieceUpdate({
+          type: myPlayer.currentPiece.type,
+          x: myPlayer.currentPiece.x,
+          y: myPlayer.currentPiece.y,
+          rotationIndex: myPlayer.currentPiece.rotationIndex,
+        });
+      } else {
+        this.network.sendPieceUpdate(null);
+      }
+    }
+
+    // Score sync
+    this.scoreSyncTimer += dt;
+    if (this.scoreSyncTimer >= this.SCORE_SYNC_INTERVAL) {
+      this.scoreSyncTimer = 0;
+      this.network.sendScoreUpdate({
+        score: myPlayer.scoreManager.score,
+        lines: myPlayer.scoreManager.totalLinesCleared,
+        combo: myPlayer.scoreManager.combo,
+        multiplier: myPlayer.scoreManager.scoreMultiplier,
+      });
     }
   }
 
@@ -232,7 +407,12 @@ export class GameManager {
       // Garbage mechanic
       if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
-        this.distributeGarbage(player, garbageCount);
+        if (this.isOnline) {
+          // In online mode, send garbage through the server
+          this.network?.sendGarbage(garbageCount);
+        } else {
+          this.distributeGarbage(player, garbageCount);
+        }
       }
     }
 
@@ -245,6 +425,17 @@ export class GameManager {
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
       }
+    }
+
+    // After locking, send immediate grid + score sync for responsiveness
+    if (this.isOnline && this.network) {
+      this.network.sendGridUpdate(player.grid.matrix);
+      this.network.sendScoreUpdate({
+        score: player.scoreManager.score,
+        lines: player.scoreManager.totalLinesCleared,
+        combo: player.scoreManager.combo,
+        multiplier: player.scoreManager.scoreMultiplier,
+      });
     }
   }
 
@@ -264,6 +455,9 @@ export class GameManager {
   private checkGameOver() {
     // Game is over if any player tops out (for now, or maybe only if all humans top out)
     // For 1v1, if one tops out, the other wins. Let's just end the game if anyone tops out.
+    // In online mode, the server handles game-over detection
+    if (this.isOnline) return;
+
     let anyToppedOut = false;
     for (const p of this.players) {
       if (p.isToppedOut) anyToppedOut = true;
