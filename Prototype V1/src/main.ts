@@ -473,7 +473,7 @@ function render() {
   // Update UI for Player 1 (our player)
   const p1 = gameManager.players[myIdx];
   if (p1) {
-    scoreElementP1.innerText = `${p1.scoreManager.score}`;
+    scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
@@ -484,7 +484,7 @@ function render() {
   // Update UI for Player 2 (opponent / bot)
   const p2 = opIdx >= 0 ? gameManager.players[opIdx] : undefined;
   if (p2) {
-    scoreElementP2.innerText = `${p2.scoreManager.score}`;
+    scoreElementP2.innerText = `${Math.round(p2.scoreManager.score)}`;
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
@@ -514,7 +514,7 @@ function render() {
       row.className = `flex justify-between items-center gap-4 text-sm ${pd.alive ? 'text-white' : 'text-gray-600 line-through'}`;
       row.innerHTML = `
         <span class="font-bold truncate max-w-[100px]">${pd.name}</span>
-        <span class="font-pixel text-xs">${pd.score}</span>
+        <span class="font-pixel text-xs">${Math.round(pd.score)}</span>
       `;
       entries.appendChild(row);
     }
