@@ -91,7 +91,7 @@ export class NetworkManager {
       this.onOpponentToppedOut?.(playerIndex);
     });
 
-    this.socket.on("receive-garbage", ({ count, fromIndex }: { count: number, fromIndex: number }) => {
+    this.socket.on("receive-garbage", ({ count }: { count: number }) => {
       this.onReceiveGarbage(count);
     });
 
