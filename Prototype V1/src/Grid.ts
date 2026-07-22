@@ -79,18 +79,13 @@ export class Grid {
     }
   }
 
-  // O(n) line-clearing logic
-  // Returns array of cleared row indices and any special blocks found in them
-  public clearLines(): { linesCleared: number; specialBlocksToTrigger: string[]; clearedRows: number[] } {
+  // Detect full lines without clearing them yet
+  public getLinesToClear(): { linesCleared: number; specialBlocksToTrigger: string[]; clearedRows: number[] } {
     let linesCleared = 0;
     const specialBlocksToTrigger: string[] = [];
     const clearedRows: number[] = [];
 
-    // O(n) approach: sweep bottom-up
-    let writeRow = this.height - 1;
-
     for (let readRow = this.height - 1; readRow >= 0; readRow--) {
-      // Check if readRow is full
       let isFull = true;
       for (let c = 0; c < this.width; c++) {
         if (this.matrix[readRow][c].type === null) {
@@ -101,33 +96,42 @@ export class Grid {
 
       if (isFull) {
         linesCleared++;
-        clearedRows.push(readRow); // keeping track to potentially process heavy block correctly if needed
-        // Collect special blocks from this line
+        clearedRows.push(readRow); 
         for (let c = 0; c < this.width; c++) {
           if (this.matrix[readRow][c].special) {
             specialBlocksToTrigger.push(this.matrix[readRow][c].special!);
           }
         }
-      } else {
-        // If not full, copy readRow to writeRow
-        if (readRow !== writeRow) {
-          for (let c = 0; c < this.width; c++) {
-            this.matrix[writeRow][c] = { ...this.matrix[readRow][c] };
-          }
-        }
-        writeRow--;
       }
     }
+    return { linesCleared, specialBlocksToTrigger, clearedRows };
+  }
 
-    // Fill the remaining top rows with empty cells
+  // Execute the physical shift-down of blocks
+  public executeLineClear(rowsToClear: number[]): void {
+    if (rowsToClear.length === 0) return;
+
+    let writeRow = this.height - 1;
+
+    for (let readRow = this.height - 1; readRow >= 0; readRow--) {
+      if (rowsToClear.includes(readRow)) {
+        continue;
+      }
+      
+      if (readRow !== writeRow) {
+        for (let c = 0; c < this.width; c++) {
+          this.matrix[writeRow][c] = { ...this.matrix[readRow][c] };
+        }
+      }
+      writeRow--;
+    }
+
     while (writeRow >= 0) {
       for (let c = 0; c < this.width; c++) {
         this.matrix[writeRow][c] = { type: null };
       }
       writeRow--;
     }
-
-    return { linesCleared, specialBlocksToTrigger, clearedRows };
   }
 
   // Effect implementations for items

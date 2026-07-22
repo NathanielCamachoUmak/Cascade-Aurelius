@@ -36,8 +36,8 @@ const lobbyPlayerList = document.getElementById('lobby-player-list')!;
 const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
 const btnLobbyBack = document.getElementById('btn-lobby-back')!;
 
-const hudP2 = document.getElementById('hud-p2')!;
 
+<<<<<<< Updated upstream
 const scoreElementP1 = document.getElementById('score-p1')!;
 const levelElementP1 = document.getElementById('level-p1')!;
 const comboElementP1 = document.getElementById('combo-p1')!;
@@ -49,6 +49,8 @@ const levelElementP2 = document.getElementById('level-p2')!;
 const comboElementP2 = document.getElementById('combo-p2')!;
 const multiplierElementP2 = document.getElementById('multiplier-p2')!;
 const nextCanvasP2 = document.getElementById('next-canvas-p2') as HTMLCanvasElement;
+=======
+>>>>>>> Stashed changes
 
 const gameManager = new GameManager(render);
 
@@ -198,14 +200,7 @@ function startOnlineGame(playerCount: number, myIndex: number) {
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
   canvas.height = ROWS * BLOCK_SIZE;
 
-  // Show P2 HUD if there are 2+ players
-  if (playerCount >= 2) {
-    hudP2.classList.remove('hidden');
-    hudP2.classList.add('flex');
-  } else {
-    hudP2.classList.add('hidden');
-    hudP2.classList.remove('flex');
-  }
+
 
   // Initialize the online game
   gameManager.initOnline(playerCount, myIndex, network!);
@@ -220,13 +215,15 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
   canvas.height = ROWS * BLOCK_SIZE;
 
+  // Clear previous dynamic overlays
+  const overlaysContainer = document.getElementById('overlays-container');
+  if (overlaysContainer) {
+    overlaysContainer.innerHTML = '';
+  }
+
   if (mode === 'SOLO') {
-    hudP2.classList.add('hidden');
-    hudP2.classList.remove('flex');
     gameManager.initSolo();
   } else {
-    hudP2.classList.remove('hidden');
-    hudP2.classList.add('flex');
     gameManager.init1v1(mode);
   }
 }
@@ -399,22 +396,74 @@ function render() {
     renderPlayer(gameManager.players[i], i);
   }
 
+<<<<<<< Updated upstream
   // In online mode, figure out which player index is "ours" for the left HUD
-  const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
-  const opIdx = gameManager.isOnline 
-    ? gameManager.players.findIndex((_, i) => i !== myIdx)
-    : 1;
+=======
+  // Render visual effects
+  const effects = gameManager.getEffects();
+  
+  // Draw line clear flashes
+  for (const flash of effects.lineClearEffects) {
+    const BLOCK_SIZE_LOCAL = 30;
+    const myIdx2 = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
+    const offsetX = myIdx2 * (COLS * BLOCK_SIZE + PADDING);
+    ctx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
+    ctx.fillRect(offsetX, flash.row * BLOCK_SIZE_LOCAL, COLS * BLOCK_SIZE_LOCAL, BLOCK_SIZE_LOCAL);
+  }
+  
+  // Draw particles
+  for (const p of effects.particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  
+  // Draw combo texts
+  for (const t of effects.comboTexts) {
+    const alpha = Math.max(0, t.life / t.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = t.color;
+    ctx.font = `bold ${t.size}px "Press Start 2P"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Glow effect
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 20;
+    ctx.fillText(t.text, t.x, t.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
 
-  // Update UI for Player 1 (our player)
+>>>>>>> Stashed changes
+  const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
+
+  // Update UI for Player 1 (our player main HUD)
   const p1 = gameManager.players[myIdx];
   if (p1) {
+<<<<<<< Updated upstream
     scoreElementP1.innerText = `${p1.scoreManager.score}`;
+=======
+    const scoreElementP1 = document.getElementById('score-p1')!;
+    const levelElementP1 = document.getElementById('level-p1')!;
+    const comboElementP1 = document.getElementById('combo-p1')!;
+    const multiplierElementP1 = document.getElementById('multiplier-p1')!;
+    const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
+    const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
+
+    scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
+>>>>>>> Stashed changes
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
   }
 
+<<<<<<< Updated upstream
   // Update UI for Player 2 (opponent / bot)
   const p2 = opIdx >= 0 ? gameManager.players[opIdx] : undefined;
   if (p2) {
@@ -423,6 +472,83 @@ function render() {
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(nextCanvasP2, p2.nextPiece, PLAYER_COLORS[opIdx] || '#FF007F');
+=======
+  // Dynamic overlays for Usernames and Opponent Scores
+  const overlaysContainer = document.getElementById('overlays-container');
+  if (overlaysContainer) {
+    for (let i = 0; i < gameManager.players.length; i++) {
+      const p = gameManager.players[i];
+      const offsetX = i * (COLS * BLOCK_SIZE + PADDING);
+      
+      // Username overlay (for all players)
+      let nameOverlay = document.getElementById(`name-overlay-${i}`);
+      if (!nameOverlay) {
+        nameOverlay = document.createElement('div');
+        nameOverlay.id = `name-overlay-${i}`;
+        nameOverlay.className = 'absolute text-center font-bold text-xs uppercase tracking-widest text-white';
+        nameOverlay.style.width = `${COLS * BLOCK_SIZE}px`;
+        nameOverlay.style.top = '-25px';
+        overlaysContainer.appendChild(nameOverlay);
+      }
+      nameOverlay.style.left = `${offsetX}px`;
+      
+      let pName = `Player ${i+1}`;
+      if (gameManager.isOnline) pName = onlinePlayerNames[i] || pName;
+      else if (p.bot) pName = p.id; // 'Bot'
+      else if (i === myIdx) pName = "You";
+      
+      nameOverlay.innerText = pName;
+      nameOverlay.style.color = PLAYER_COLORS[i] || '#FFFFFF';
+
+      // Score overlay (for opposing players only)
+      if (i !== myIdx) {
+        let scoreOverlay = document.getElementById(`score-overlay-${i}`);
+        if (!scoreOverlay) {
+          scoreOverlay = document.createElement('div');
+          scoreOverlay.id = `score-overlay-${i}`;
+          scoreOverlay.className = 'absolute text-center bg-bgPanel/90 border border-bgPanelBorder p-2 rounded';
+          scoreOverlay.style.width = `${COLS * BLOCK_SIZE}px`;
+          scoreOverlay.style.top = `${ROWS * BLOCK_SIZE + 10}px`;
+          overlaysContainer.appendChild(scoreOverlay);
+        }
+        scoreOverlay.style.left = `${offsetX}px`;
+        scoreOverlay.innerHTML = `
+          <div class="text-[10px] text-gray-400 uppercase tracking-widest">Score</div>
+          <div class="font-pixel text-lg" style="color: ${PLAYER_COLORS[i]}">${Math.round(p.scoreManager.score)}</div>
+        `;
+      }
+    }
+  }
+
+  // Update multiplayer scoreboard
+  if (gameManager.isOnline && onlinePlayerNames.length > 0) {
+    const scoreboard = document.getElementById('multiplayer-scoreboard')!;
+    const entries = document.getElementById('scoreboard-entries')!;
+    scoreboard.classList.remove('hidden');
+    
+    entries.innerHTML = '';
+    const playerData: {name: string, score: number, lines: number, alive: boolean}[] = [];
+    for (let i = 0; i < gameManager.players.length; i++) {
+      const p = gameManager.players[i];
+      playerData.push({
+        name: onlinePlayerNames[i] || `Player ${i+1}`,
+        score: p.scoreManager.score,
+        lines: p.scoreManager.totalLinesCleared,
+        alive: !p.isToppedOut
+      });
+    }
+    // Sort by score descending
+    playerData.sort((a, b) => b.score - a.score);
+    for (const pd of playerData) {
+      const row = document.createElement('div');
+      row.className = `flex justify-between items-center gap-4 text-sm ${pd.alive ? 'text-white' : 'text-gray-600 line-through'}`;
+      row.innerHTML = `
+        <span class="font-bold truncate max-w-[100px]">${pd.name}</span>
+        <span class="font-pixel text-xs">${Math.round(pd.score)}</span>
+      `;
+      entries.appendChild(row);
+    }
+>>>>>>> Stashed changes
   }
 
   // Draw Game Over global overlay

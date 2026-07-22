@@ -199,6 +199,7 @@
           <div id="canvas-spacer" class="relative shrink-0 flex justify-center">
              <!-- The actual canvas lives here, injected or positioned absolutely via JS. 
                   Wait, it's easier to just put the canvas in the normal flow here so the flex gap works. -->
+<<<<<<< Updated upstream
              <canvas id="gameCanvas" class="bg-black/80 border-2 border-neonCyan shadow-[0_0_20px_rgba(0,229,255,0.1)] backdrop-blur-sm pointer-events-none"></canvas>
           </div>
 
@@ -225,6 +226,20 @@
               <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
             </div>
           </div>
+=======
+             <canvas id="gameCanvas" class="bg-black/80 backdrop-blur-sm pointer-events-none"></canvas>
+             <!-- Dynamic Overlays Container (for names, scores, animations) -->
+             <div id="overlays-container" class="absolute inset-0 pointer-events-none z-30"></div>
+          </div>
+
+          <!-- Multiplayer Scoreboard (shown during online games) -->
+          <div id="multiplayer-scoreboard" class="hidden shrink-0 bg-bgPanel border border-bgPanelBorder p-4 rounded-l z-20 pointer-events-auto min-w-[200px]">
+            <h3 class="text-xs font-bold text-neonYellow tracking-widest uppercase mb-3">SCOREBOARD</h3>
+            <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
+          </div>
+
+
+>>>>>>> Stashed changes
 
         </div>
       </div>

@@ -25,6 +25,12 @@ export class Player {
   public timeSurvived: number = 0;
   public isToppedOut: boolean = false;
 
+  public isClearingLines: boolean = false;
+  public clearTimer: number = 0;
+  public clearDelay: number = 0;
+  public clearingRows: number[] = [];
+  public clearingSpecialBlocks: string[] = [];
+
   constructor(id: string, isBot: boolean = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard: boolean = true) {
     this.id = id;
     this.grid = new Grid();
@@ -51,5 +57,9 @@ export class Player {
     this.dropTimer = 0;
     this.dropInterval = 1000;
     this.isToppedOut = false;
+    this.isClearingLines = false;
+    this.clearTimer = 0;
+    this.clearingRows = [];
+    this.clearingSpecialBlocks = [];
   }
 }

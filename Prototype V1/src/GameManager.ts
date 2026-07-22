@@ -5,6 +5,7 @@ import { SpecialBlockType } from "./ItemManager";
 import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
+import anime from 'animejs/lib/anime.es.js';
 
 export const GameState = {
   MAIN_MENU: "MAIN_MENU",
@@ -198,6 +199,15 @@ export class GameManager {
       } else {
         // Human input auto-repeat tick
         player.inputHandler.update(dt);
+      }
+
+      // Handle Line Clear Delay
+      if (player.isClearingLines) {
+        player.clearTimer += dt;
+        if (player.clearTimer >= player.clearDelay) {
+          this.executeClearAndResume(player);
+        }
+        continue; // Pause piece spawning and dropping
       }
 
       // Spawning
@@ -399,16 +409,48 @@ export class GameManager {
     
     player.hasHeld = false;
     
-    const { linesCleared, specialBlocksToTrigger, clearedRows } = player.grid.clearLines();
+    const { linesCleared, specialBlocksToTrigger, clearedRows } = player.grid.getLinesToClear();
+
+    if (linesCleared > 0 || specialBlocksToTrigger.length > 0) {
+      player.isClearingLines = true;
+      player.clearingRows = clearedRows;
+      player.clearingSpecialBlocks = specialBlocksToTrigger;
+      
+      if (linesCleared >= 4) player.clearDelay = 900;
+      else if (linesCleared === 3) player.clearDelay = 500;
+      else player.clearDelay = 300;
+      
+      player.clearTimer = 0;
+
+      if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
+        this.triggerLineClearEffects(linesCleared, clearedRows, specialBlocksToTrigger, this.players.indexOf(player));
+      }
+    } else {
+      // After locking (if no clear), send immediate grid + score sync for responsiveness
+      if (this.isOnline && this.network) {
+        this.network.sendGridUpdate(player.grid.matrix);
+        this.network.sendScoreUpdate({
+          score: player.scoreManager.score,
+          lines: player.scoreManager.totalLinesCleared,
+          combo: player.scoreManager.combo,
+          multiplier: player.scoreManager.scoreMultiplier,
+        });
+      }
+    }
+  }
+
+  private executeClearAndResume(player: Player) {
+    player.isClearingLines = false;
+    const linesCleared = player.clearingRows.length;
+    
+    player.grid.executeLineClear(player.clearingRows);
 
     if (linesCleared > 0) {
       player.scoreManager.addScoreForLines(linesCleared);
       
-      // Garbage mechanic
       if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
         if (this.isOnline) {
-          // In online mode, send garbage through the server
           this.network?.sendGarbage(garbageCount);
         } else {
           this.distributeGarbage(player, garbageCount);
@@ -416,18 +458,16 @@ export class GameManager {
       }
     }
 
-    // Special blocks
-    for (const special of specialBlocksToTrigger) {
+    for (const special of player.clearingSpecialBlocks) {
       if (special === SpecialBlockType.BOMB) {
-        player.grid.clearBombArea(clearedRows[0], Math.floor(player.grid.width / 2));
+        player.grid.clearBombArea(player.clearingRows[0], Math.floor(player.grid.width / 2));
       } else if (special === SpecialBlockType.HEAVY) {
-        player.grid.clearLineDirectlyBeneath(clearedRows[0]);
+        player.grid.clearLineDirectlyBeneath(player.clearingRows[0]);
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
       }
     }
 
-    // After locking, send immediate grid + score sync for responsiveness
     if (this.isOnline && this.network) {
       this.network.sendGridUpdate(player.grid.matrix);
       this.network.sendScoreUpdate({
@@ -452,6 +492,199 @@ export class GameManager {
     }
   }
 
+<<<<<<< Updated upstream
+=======
+  // ==============================
+  // Visual Effects
+  // ==============================
+
+  private triggerLineClearEffects(linesCleared: number, clearedRows: number[], specialBlocks: string[], playerIndex: number) {
+    const BLOCK_SIZE = 30;
+    const COLS = 10;
+    const PADDING = 40;
+    const offsetX = playerIndex * (COLS * BLOCK_SIZE + PADDING);
+    const container = document.getElementById('overlays-container');
+    if (!container) return;
+
+    // Anime.js DOM Overlays for line clears
+    for (const row of clearedRows) {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'absolute';
+      overlay.style.left = `${offsetX}px`;
+      overlay.style.top = `${row * BLOCK_SIZE}px`;
+      overlay.style.width = `${COLS * BLOCK_SIZE}px`;
+      overlay.style.height = `${BLOCK_SIZE}px`;
+      
+      if (linesCleared >= 4) {
+        // Tetris - Lingering Blinking
+        overlay.style.backgroundColor = '#FF007F';
+        overlay.style.boxShadow = '0 0 20px #FF007F';
+        container.appendChild(overlay);
+        anime({
+          targets: overlay,
+          opacity: [0, 1],
+          direction: 'alternate',
+          loop: 6, // 3 full blinks
+          duration: 150,
+          easing: 'linear',
+          complete: () => overlay.remove()
+        });
+      } else if (linesCleared === 3) {
+        // Triple
+        overlay.style.backgroundColor = '#FFC107';
+        container.appendChild(overlay);
+        anime({
+          targets: overlay,
+          opacity: [1, 0],
+          scaleX: [1, 1.2, 1],
+          duration: 500,
+          easing: 'easeOutElastic(1, .8)',
+          complete: () => overlay.remove()
+        });
+      } else {
+        // Single/Double
+        overlay.style.backgroundColor = '#00E5FF';
+        container.appendChild(overlay);
+        anime({
+          targets: overlay,
+          opacity: [1, 0],
+          duration: 300,
+          easing: 'easeOutExpo',
+          complete: () => overlay.remove()
+        });
+      }
+    }
+
+    // Special block animations
+    for (const special of specialBlocks) {
+      const row = clearedRows[0];
+      const effectDiv = document.createElement('div');
+      effectDiv.style.position = 'absolute';
+      effectDiv.style.left = `${offsetX}px`;
+      effectDiv.style.width = `${COLS * BLOCK_SIZE}px`;
+
+      if (special === SpecialBlockType.MULTIPLIER) {
+        // Gold Glint
+        effectDiv.style.top = `${row * BLOCK_SIZE}px`;
+        effectDiv.style.height = `${BLOCK_SIZE}px`;
+        effectDiv.style.background = 'linear-gradient(90deg, transparent, rgba(255,215,0,0.8), transparent)';
+        container.appendChild(effectDiv);
+        anime({
+          targets: effectDiv,
+          translateX: [-200, 200],
+          opacity: [1, 0],
+          duration: 800,
+          easing: 'easeInOutSine',
+          complete: () => effectDiv.remove()
+        });
+      } else if (special === SpecialBlockType.BOMB) {
+        // Explosion
+        effectDiv.style.top = `${row * BLOCK_SIZE - BLOCK_SIZE}px`;
+        effectDiv.style.height = `${BLOCK_SIZE * 3}px`; // 3x3 area height
+        effectDiv.style.borderRadius = '50%';
+        effectDiv.style.background = 'radial-gradient(circle, rgba(255,69,0,1) 0%, rgba(255,0,0,0) 70%)';
+        effectDiv.style.left = `${offsetX - BLOCK_SIZE}px`;
+        effectDiv.style.width = `${COLS * BLOCK_SIZE + BLOCK_SIZE*2}px`;
+        container.appendChild(effectDiv);
+        anime({
+          targets: effectDiv,
+          scale: [0, 2],
+          opacity: [1, 0],
+          duration: 600,
+          easing: 'easeOutCirc',
+          complete: () => effectDiv.remove()
+        });
+      } else if (special === SpecialBlockType.HEAVY) {
+        // Silver Glint and Squish
+        effectDiv.style.top = `${row * BLOCK_SIZE}px`;
+        effectDiv.style.height = `${BLOCK_SIZE}px`;
+        effectDiv.style.backgroundColor = '#C0C0C0';
+        effectDiv.style.boxShadow = '0 0 15px #C0C0C0';
+        container.appendChild(effectDiv);
+        anime({
+          targets: effectDiv,
+          height: [BLOCK_SIZE, 0],
+          top: [row * BLOCK_SIZE, row * BLOCK_SIZE + BLOCK_SIZE],
+          opacity: [1, 0],
+          duration: 400,
+          easing: 'easeInQuad',
+          complete: () => effectDiv.remove()
+        });
+      }
+    }
+
+    // Screen shake for Tetris (4+)
+    if (linesCleared >= 4) {
+      this.screenShake = {
+        intensity: Math.min(linesCleared * 3, 15) * 1.5,
+        duration: 400,
+        timer: 400,
+      };
+      if (this.isOnline && this.network) {
+        const pName = this.players[this.myPlayerIndex]?.id || "Someone";
+        this.network.sendRibbon(`${pName} GOT A TETRIS!`);
+      }
+    } else if (linesCleared === 3) {
+      this.screenShake = {
+        intensity: 6,
+        duration: 200,
+        timer: 200,
+      };
+    }
+  }
+
+  private updateEffects(dt: number) {
+    // Update particles
+    this.particles = this.particles.filter(p => {
+      p.life -= dt;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.15; // gravity
+      return p.life > 0;
+    });
+
+    // Update line clear flashes
+    this.lineClearEffects = this.lineClearEffects.filter(e => {
+      e.flash -= dt / 300;
+      return e.flash > 0;
+    });
+
+    // Update combo texts
+    this.comboTexts = this.comboTexts.filter(t => {
+      t.life -= dt;
+      t.y -= 0.5; // float up
+      return t.life > 0;
+    });
+
+    // Update screen shake
+    if (this.screenShake.timer > 0) {
+      this.screenShake.timer -= dt;
+      if (this.canvasElement) {
+        const progress = this.screenShake.timer / this.screenShake.duration;
+        const intensity = this.screenShake.intensity * progress;
+        const shakeX = (Math.random() - 0.5) * intensity * 2;
+        const shakeY = (Math.random() - 0.5) * intensity * 2;
+        this.canvasElement.style.transform = `translate(${shakeX}px, ${shakeY}px)`;
+      }
+      if (this.screenShake.timer <= 0) {
+        this.screenShake.timer = 0;
+        if (this.canvasElement) {
+          this.canvasElement.style.transform = '';
+        }
+      }
+    }
+  }
+
+  // Public method for render function to draw effects
+  public getEffects() {
+    return {
+      particles: this.particles,
+      lineClearEffects: this.lineClearEffects,
+      comboTexts: this.comboTexts,
+    };
+  }
+
+>>>>>>> Stashed changes
   private checkGameOver() {
     // Game is over if any player tops out (for now, or maybe only if all humans top out)
     // For 1v1, if one tops out, the other wins. Let's just end the game if anyone tops out.
