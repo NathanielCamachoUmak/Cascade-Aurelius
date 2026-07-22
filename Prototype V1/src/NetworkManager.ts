@@ -31,7 +31,7 @@ export interface ScoreData {
 }
 
 // Change this if your server ever runs somewhere other than localhost:3000
-const SERVER_URL = "http://localhost:3000";
+const SERVER_URL = "https://factor-consolidated-introductory-recently.trycloudflare.com  ";
 
 export class NetworkManager {
   private socket: Socket;
