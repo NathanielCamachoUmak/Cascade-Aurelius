@@ -30,8 +30,9 @@ export interface ScoreData {
   multiplier: number;
 }
 
-// Change this if your server ever runs somewhere other than localhost:3000
-const SERVER_URL = "https://factor-consolidated-introductory-recently.trycloudflare.com  ";
+// In production, set VITE_SERVER_URL in Vercel to your public tunnel URL.
+// Locally it falls back to localhost:3000 automatically.
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
 export class NetworkManager {
   private socket: Socket;
