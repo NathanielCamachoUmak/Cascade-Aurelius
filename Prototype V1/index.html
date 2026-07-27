@@ -91,6 +91,27 @@
           </div>
         </div>
 
+        <!-- Screen: Class Select -->
+        <div id="screen-class-select" class="hidden flex-col items-center w-full max-w-5xl px-8">
+          <div class="mb-8 text-center">
+            <h2 class="text-neonCyan text-sm font-bold tracking-widest uppercase mb-2">LOADOUT</h2>
+            <h1 class="text-4xl font-bold">Choose Your Class</h1>
+          </div>
+
+          <div id="class-card-list" class="flex gap-6 w-full mb-12">
+            <!-- Class cards injected by main.ts from PLAYER_CLASSES -->
+          </div>
+
+          <div class="flex gap-4">
+            <button id="btn-class-continue" class="slanted-btn bg-neonCyan text-black font-bold px-10 py-3 hover:bg-white transition-colors">
+              CONTINUE
+            </button>
+            <button id="btn-class-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
+              &lt; BACK
+            </button>
+          </div>
+        </div>
+
         <!-- Screen: Online Lobby -->
         <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-2xl px-8">
           <div class="mb-8 w-full">
@@ -216,6 +237,12 @@
                 <div class="text-xs text-gray-400 uppercase">Lines</div>
                 <div id="level-p1" class="text-lg font-bold">0</div>
               </div>
+              <div id="sabotage-meter-p1" class="hidden mt-2">
+                <div class="text-xs text-neonMagenta uppercase font-bold mb-1">Sabotage</div>
+                <div class="w-full bg-bgDark border border-bgPanelBorder h-3 rounded overflow-hidden">
+                  <div id="sabotage-fill-p1" class="h-full bg-neonMagenta transition-all" style="width: 0%"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -252,6 +279,12 @@
                <div class="text-xs text-gray-400 uppercase">Lines</div>
                <div id="level-p2" class="text-lg font-bold">0</div>
              </div>
+             <div id="sabotage-meter-p2" class="hidden flex-col justify-center w-24">
+               <div class="text-xs text-neonMagenta uppercase font-bold mb-1">Sabotage</div>
+               <div class="w-full bg-bgDark border border-bgPanelBorder h-3 rounded overflow-hidden">
+                 <div id="sabotage-fill-p2" class="h-full bg-neonMagenta transition-all" style="width: 0%"></div>
+               </div>
+             </div>
           </div>
 
         </div>
@@ -261,4 +294,4 @@
     
     <script type="module" src="/src/main.ts"></script>
   </body>
-</html> 
+</html>

@@ -5,6 +5,7 @@ import { SpecialBlockType } from "./ItemManager";
 import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
+import { type PlayerClass } from "./PlayerClass";
 
 // Visual Effects System
 interface Particle {
@@ -42,6 +43,12 @@ export const GameState = {
 } as const;
 export type GameState = typeof GameState[keyof typeof GameState];
 
+// Class passive tuning — change these to rebalance without hunting through the logic.
+const SPEEDSTER_GRAVITY_MULTIPLIER = 1.3; // >1 = slower gravity (more time for fast, technical inputs)
+const TANK_GARBAGE_MITIGATION = 1; // flat reduction to incoming garbage lines
+const SABOTEUR_CHARGE_SINGLE = 10; // sabotage meter gained per single-line clear
+const SABOTEUR_CHARGE_DOUBLE = 20; // sabotage meter gained per double-line clear
+
 export class GameManager {
   public state: GameState = GameState.MAIN_MENU;
   public players: Player[] = [];
@@ -76,19 +83,21 @@ export class GameManager {
     this.renderFn = renderFn;
   }
 
-  public initSolo() {
+  public initSolo(humanClass: PlayerClass = 'TANK') {
     this.isOnline = false;
     this.network = null;
-    this.players = [new Player("P1", false)];
+    this.players = [new Player("P1", false, 'HARD', true, humanClass)];
     this.start();
   }
 
-  public init1v1(difficulty: Difficulty) {
+  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK') {
     this.isOnline = false;
     this.network = null;
+    const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
+    const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
     this.players = [
-      new Player("P1", false),
-      new Player("P2", true, difficulty)
+      new Player("P1", false, 'HARD', true, humanClass),
+      new Player("P2", true, difficulty, true, botClass)
     ];
     this.start();
   }
@@ -100,7 +109,7 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = []) {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK') {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
@@ -111,10 +120,12 @@ export class GameManager {
     for (let i = 0; i < playerCount; i++) {
       const pName = playerNames[i] || `P${i + 1}`;
       if (i === myIndex) {
-        // Our local player — listens to keyboard
-        this.players.push(new Player(pName, false));
+        // Our local player — listens to keyboard, uses our chosen class.
+        this.players.push(new Player(pName, false, 'HARD', true, humanClass));
       } else {
         // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
+        // Their class doesn't affect anything rendered/simulated on THIS machine, so
+        // it's left at the default; only your own class needs to be known locally.
         this.players.push(new Player(pName, false, 'HARD', false));
       }
     }
@@ -173,7 +184,12 @@ export class GameManager {
     net.onReceiveGarbage = (count: number) => {
       const myPlayer = this.players[myIndex];
       if (myPlayer && !myPlayer.isToppedOut) {
-        myPlayer.grid.addGarbageLines(count, 'HUMAN');
+        const mitigated = myPlayer.playerClass === 'TANK'
+          ? Math.max(0, count - TANK_GARBAGE_MITIGATION)
+          : count;
+        if (mitigated > 0) {
+          myPlayer.grid.addGarbageLines(mitigated, 'HUMAN');
+        }
       }
     };
 
@@ -344,6 +360,12 @@ export class GameManager {
       const timeFactor = player.timeSurvived / 1000 * 2;
       player.dropInterval = Math.max(100, baseInterval - linesFactor - timeFactor);
     }
+
+    // Speedster passive: slower gravity — more time to execute fast, technical
+    // inputs (this is the class for players who move fast, not fall fast).
+    if (player.playerClass === 'SPEEDSTER') {
+      player.dropInterval *= SPEEDSTER_GRAVITY_MULTIPLIER;
+    }
     
     player.dropTimer = 0;
 
@@ -471,9 +493,14 @@ export class GameManager {
       if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
         this.triggerLineClearEffects(linesCleared, clearedRows);
       }
-      
-      // Garbage mechanic
-      if (linesCleared >= 2) {
+
+      if (player.playerClass === 'SABOTEUR' && linesCleared <= 2) {
+        // Saboteur passive: small clears build the Sabotage Meter instead of
+        // sending garbage. (Triples/Tetrises still send garbage normally —
+        // spending the meter on an actual sabotage move is a later milestone.)
+        const charge = linesCleared === 1 ? SABOTEUR_CHARGE_SINGLE : SABOTEUR_CHARGE_DOUBLE;
+        player.sabotageMeter = Math.min(100, player.sabotageMeter + charge);
+      } else if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
         if (this.isOnline) {
           // In online mode, send garbage through the server
@@ -515,7 +542,12 @@ export class GameManager {
 
     for (const target of this.players) {
       if (target.id !== sender.id && !target.isToppedOut) {
-        target.grid.addGarbageLines(count, senderType);
+        const mitigated = target.playerClass === 'TANK'
+          ? Math.max(0, count - TANK_GARBAGE_MITIGATION)
+          : count;
+        if (mitigated > 0) {
+          target.grid.addGarbageLines(mitigated, senderType);
+        }
       }
     }
   }

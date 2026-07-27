@@ -4,6 +4,7 @@ import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData } from './NetworkManager'
+import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -26,6 +27,12 @@ const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
 
+// Class select elements
+const screenClassSelect = document.getElementById('screen-class-select')!;
+const classCardList = document.getElementById('class-card-list')!;
+const btnClassContinue = document.getElementById('btn-class-continue')!;
+const btnClassBack = document.getElementById('btn-class-back')!;
+
 // Online Lobby elements
 const screenLobby = document.getElementById('screen-lobby')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
@@ -45,25 +52,78 @@ const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
 const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
 const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
+const sabotageMeterP1 = document.getElementById('sabotage-meter-p1')!;
+const sabotageFillP1 = document.getElementById('sabotage-fill-p1')!;
 
 const scoreElementP2 = document.getElementById('score-p2')!;
 const levelElementP2 = document.getElementById('level-p2')!;
 const comboElementP2 = document.getElementById('combo-p2')!;
 const multiplierElementP2 = document.getElementById('multiplier-p2')!;
+const sabotageMeterP2 = document.getElementById('sabotage-meter-p2')!;
+const sabotageFillP2 = document.getElementById('sabotage-fill-p2')!;
 
 const gameManager = new GameManager(render);
 
 let showGhostPiece = true;
 
+// --- Class Select ---
+let selectedClass: PlayerClass = 'TANK';
+let pendingMode: 'SOLO' | 'VS_BOT' | 'ONLINE' | null = null;
+
+function renderClassCards() {
+  classCardList.innerHTML = '';
+  for (const info of PLAYER_CLASSES) {
+    const isSelected = info.id === selectedClass;
+    const card = document.createElement('button');
+    card.className = `flex-1 bg-bgPanel border-2 ${isSelected ? 'border-neonCyan shadow-[0_0_20px_rgba(0,229,255,0.2)]' : 'border-bgPanelBorder'} transition-all p-6 text-left slanted-btn`;
+    card.innerHTML = `
+      <h3 class="text-2xl font-bold mb-2 ${isSelected ? 'text-neonCyan' : ''}">${info.name}</h3>
+      <p class="text-gray-400 text-sm mb-4">${info.tagline}</p>
+      <p class="text-xs text-gray-500">${info.passiveDescription}</p>
+    `;
+    card.addEventListener('click', () => {
+      selectedClass = info.id;
+      renderClassCards();
+    });
+    classCardList.appendChild(card);
+  }
+}
+renderClassCards();
+
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {
-  startGame('SOLO');
+  pendingMode = 'SOLO';
+  screenMain.classList.add('hidden');
+  screenClassSelect.classList.remove('hidden');
+  screenClassSelect.classList.add('flex');
 });
 
 btnVsBot.addEventListener('click', () => {
+  pendingMode = 'VS_BOT';
   screenMain.classList.add('hidden');
-  screenDifficulty.classList.remove('hidden');
-  screenDifficulty.classList.add('flex');
+  screenClassSelect.classList.remove('hidden');
+  screenClassSelect.classList.add('flex');
+});
+
+btnClassBack.addEventListener('click', () => {
+  screenClassSelect.classList.remove('flex');
+  screenClassSelect.classList.add('hidden');
+  screenMain.classList.remove('hidden');
+});
+
+btnClassContinue.addEventListener('click', () => {
+  screenClassSelect.classList.remove('flex');
+  screenClassSelect.classList.add('hidden');
+
+  if (pendingMode === 'SOLO') {
+    startGame('SOLO');
+  } else if (pendingMode === 'VS_BOT') {
+    screenDifficulty.classList.remove('hidden');
+    screenDifficulty.classList.add('flex');
+  } else if (pendingMode === 'ONLINE') {
+    screenLobby.classList.remove('hidden');
+    screenLobby.classList.add('flex');
+  }
 });
 
 btnBack.addEventListener('click', () => {
@@ -98,9 +158,10 @@ let myReady = false;
 let inRoom = false;
 
 btnPlayOnline.addEventListener('click', () => {
+  pendingMode = 'ONLINE';
   screenMain.classList.add('hidden');
-  screenLobby.classList.remove('hidden');
-  screenLobby.classList.add('flex');
+  screenClassSelect.classList.remove('hidden');
+  screenClassSelect.classList.add('flex');
 });
 
 btnLobbyBack.addEventListener('click', () => {
@@ -228,7 +289,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames);
+  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
@@ -243,11 +304,11 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   if (mode === 'SOLO') {
     hudP2.classList.add('hidden');
     hudP2.classList.remove('flex');
-    gameManager.initSolo();
+    gameManager.initSolo(selectedClass);
   } else {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
-    gameManager.init1v1(mode);
+    gameManager.init1v1(mode, selectedClass);
   }
 }
 
@@ -479,6 +540,12 @@ function render() {
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
     renderPieceOnMiniCanvas(nextCanvasP1, p1.nextPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
+
+    const p1IsSaboteur = p1.playerClass === 'SABOTEUR';
+    sabotageMeterP1.classList.toggle('hidden', !p1IsSaboteur);
+    if (p1IsSaboteur) {
+      sabotageFillP1.style.width = `${p1.sabotageMeter}%`;
+    }
   }
 
   // Update UI for Player 2 (opponent / bot)
@@ -488,6 +555,13 @@ function render() {
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
+
+    const p2IsSaboteur = p2.playerClass === 'SABOTEUR';
+    sabotageMeterP2.classList.toggle('hidden', !p2IsSaboteur);
+    if (p2IsSaboteur) {
+      sabotageMeterP2.classList.toggle('flex', p2IsSaboteur);
+      sabotageFillP2.style.width = `${p2.sabotageMeter}%`;
+    }
   }
 
   // Update multiplayer scoreboard
@@ -553,10 +627,10 @@ window.addEventListener('keydown', (e) => {
         // In online mode, go back to menu (can't restart locally)
         returnToMenu();
       } else if (gameManager.players.length === 1) {
-        gameManager.initSolo();
+        gameManager.initSolo(selectedClass);
       } else {
         const botDiff = gameManager.players[1].bot!.difficulty;
-        gameManager.init1v1(botDiff);
+        gameManager.init1v1(botDiff, selectedClass);
       }
     } else if (e.key === 'Escape') {
       returnToMenu();
@@ -591,4 +665,4 @@ function returnToMenu() {
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
-} 
+}

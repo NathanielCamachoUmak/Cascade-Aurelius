@@ -4,6 +4,7 @@ import { InputHandler } from "./InputHandler";
 import { ItemManager } from "./ItemManager";
 import { ScoreManager } from "./ScoreManager";
 import { AIBot, type Difficulty } from "./AIBot";
+import { type PlayerClass } from "./PlayerClass";
 
 export class Player {
   public id: string;
@@ -13,7 +14,10 @@ export class Player {
   public holdPiece: Tetromino | null = null;
   public hasHeld: boolean = false;
   public bag: TetrominoBag;
-  
+
+  public playerClass: PlayerClass = 'TANK';
+  public sabotageMeter: number = 0; // 0-100, only meaningful for SABOTEUR — charged by small clears
+
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
   public scoreManager: ScoreManager;
@@ -25,10 +29,17 @@ export class Player {
   public timeSurvived: number = 0;
   public isToppedOut: boolean = false;
 
-  constructor(id: string, isBot: boolean = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard: boolean = true) {
+  constructor(
+    id: string,
+    isBot: boolean = false,
+    botDifficulty: Difficulty = 'HARD',
+    listenToKeyboard: boolean = true,
+    playerClass: PlayerClass = 'TANK'
+  ) {
     this.id = id;
     this.grid = new Grid();
     this.bag = new TetrominoBag();
+    this.playerClass = playerClass;
     this.inputHandler = new InputHandler(!isBot && listenToKeyboard);
     this.itemManager = new ItemManager();
     this.scoreManager = new ScoreManager();
@@ -51,5 +62,6 @@ export class Player {
     this.dropTimer = 0;
     this.dropInterval = 1000;
     this.isToppedOut = false;
+    this.sabotageMeter = 0;
   }
 }
