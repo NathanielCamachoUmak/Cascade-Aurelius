@@ -33,7 +33,7 @@ export class AIBot {
   // Delay settings in ms
   private readonly DELAYS = {
     EASY: { think: 1200, action: 120 },
-    HARD: { think: 100, action: 15 }
+    HARD: { think: 250, action: 50 }
   };
 
   // Heuristic weights (CEM-trained, 20 generations, 198.1 avg lines)
