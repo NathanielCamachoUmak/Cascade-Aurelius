@@ -263,7 +263,7 @@ export class GameManager {
 
       // AI update
       if (player.bot) {
-        player.bot.update(player.currentPiece, dt);
+        player.bot.update(player.currentPiece, player.nextPiece, dt);
       } else {
         // Human input auto-repeat tick
         player.inputHandler.update(dt);
