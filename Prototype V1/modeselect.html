@@ -177,12 +177,13 @@
           </a>
 
           <!-- Nav Links -->
-          <nav class="hidden md:flex items-center space-x-1 text-[10px] uppercase tracking-widest font-semibold">
-            <a href="index.html" class="px-3 py-2 text-gray-400 hover:text-gray-200 transition-colors rounded-sm">Opening</a>
-            <a href="#" class="px-3 py-2 nav-active rounded-sm">Menu</a>
-            <a href="#" class="px-3 py-2 text-gray-400 hover:text-gray-200 transition-colors rounded-sm">Lobby</a>
-            <a href="#" class="px-3 py-2 text-gray-400 hover:text-gray-200 transition-colors rounded-sm">Loadout</a>
-            <a href="#" class="px-3 py-2 text-gray-400 hover:text-gray-200 transition-colors rounded-sm">Game</a>
+          <nav class="hidden lg:flex items-center space-x-1">
+            <a href="#" id="nav-menu" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer nav-active text-white uppercase no-underline">Menu</a>
+            <a href="#" id="nav-lobby" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Lobby</a>
+            <a href="#" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Loadout</a>
+            <a href="#" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Game</a>
+            <a href="#" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Settings</a>
+            <a href="#" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Profile</a>
           </nav>
 
           <!-- LIVE Indicator -->
@@ -299,6 +300,7 @@
             </div>
           </div>
 
+          <div id="lobby-countdown" class="hidden text-neon-yellow text-2xl font-bold font-pixel mb-4 animate-pulse"></div>
           <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px]"></div>
 
           <div id="lobby-player-list" class="w-full flex flex-col gap-2 mb-8">
@@ -312,6 +314,9 @@
             </button>
             <button id="btn-lobby-back" class="px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-gray-400 hover:scale-105 cursor-pointer">
               &lt; BACK
+            </button>
+            <button id="btn-lobby-leave" class="hidden px-8 py-3 bg-red-900/50 backdrop-blur-sm border-2 border-red-500/50 text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-red-500 hover:scale-105 cursor-pointer">
+              LEAVE LOBBY
             </button>
           </div>
         </div>
@@ -351,12 +356,61 @@
         <div id="global-ribbon" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full bg-neon-pink/90 text-white font-bold text-4xl py-6 text-center z-[60] shadow-[0_0_40px_rgba(255,20,147,0.8)] border-y-4 border-white tracking-[0.2em] uppercase transition-opacity duration-300">
           TETRIS!
         </div>
+
+        <!-- ───── Screen: Post-Game ───── -->
+        <div id="screen-post-game" class="hidden flex-col items-center w-full max-w-2xl px-8 relative z-10">
+          <div class="mb-8 w-full text-center">
+            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">MATCH FINISHED</h2>
+            <h1 class="text-4xl md:text-5xl font-bold font-pixel text-neon-yellow glow-yellow mb-6">GAME OVER</h1>
+            <p id="post-game-winner" class="text-white text-2xl tracking-widest"></p>
+          </div>
+          
+          <div id="post-game-votes" class="text-gray-400 text-sm mb-8 tracking-widest uppercase">
+            0/0 voted for rematch
+          </div>
+          
+          <div class="flex gap-4">
+            <button id="btn-post-rematch" class="group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+              <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+              <span class="relative">VOTE REMATCH</span>
+            </button>
+            <button id="btn-post-leave" class="px-8 py-3 bg-red-900/50 backdrop-blur-sm border-2 border-red-500/50 text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-red-500 hover:scale-105 cursor-pointer">
+              LEAVE LOBBY
+            </button>
+          </div>
+        </div>
+
+        <!-- ───── Modal: Confirm Join ───── -->
+        <div id="modal-confirm-join" class="hidden absolute inset-0 z-[70] bg-black/80 flex items-center justify-center backdrop-blur-sm">
+          <div class="bg-card-bg border border-neon-pink rounded-xl p-8 max-w-md text-center shadow-[0_0_30px_rgba(255,20,147,0.3)]">
+            <h3 class="text-neon-pink font-bold text-xl mb-4 tracking-widest uppercase">Leave Current Lobby?</h3>
+            <p class="text-gray-300 mb-8">Joining a new lobby will close your current session and forfeit any active game.</p>
+            <div class="flex gap-4 justify-center">
+              <button id="btn-confirm-join-yes" class="px-6 py-2 bg-neon-pink text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer">
+                CONFIRM
+              </button>
+              <button id="btn-confirm-join-no" class="px-6 py-2 bg-card-bg border border-gray-500 text-gray-300 font-bold tracking-widest rounded-lg transition-all hover:border-gray-300 hover:scale-105 cursor-pointer">
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ═══════════════════════════════════════════ -->
       <!--            IN-GAME HUD OVERLAY              -->
       <!-- ═══════════════════════════════════════════ -->
       <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
+        <!-- Pre-Game Countdown Overlay -->
+        <div id="pre-game-overlay" class="absolute inset-0 flex items-center justify-center z-[70] hidden pointer-events-none">
+          <div id="pre-game-text" class="text-7xl font-pixel text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)] animate-pulse"></div>
+        </div>
+        
+        <!-- Spectator Banner -->
+        <div id="spectator-banner" class="absolute top-16 left-1/2 -translate-x-1/2 bg-deep-purple/90 border border-neon-cyan px-8 py-3 rounded-full z-[60] hidden pointer-events-none shadow-[0_0_15px_rgba(0,255,255,0.3)]">
+          <span class="text-neon-cyan font-bold tracking-[0.3em] uppercase glow-cyan text-sm">SPECTATING</span>
+        </div>
+
         <!-- Settings Toggle / Ghost Piece Button -->
         <div class="absolute top-4 right-8 pointer-events-auto flex gap-4">
           <button id="btn-toggle-ghost" class="bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded">
@@ -442,7 +496,7 @@
                <div class="text-[10px] text-neonMagenta uppercase font-bold mb-1 tracking-wider">Sabotage</div>
                <div class="w-full bg-deep-purple border border-card-border h-3 rounded-full overflow-hidden">
                  <div id="sabotage-fill-p2" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
-w               </div>
+               </div>
              </div>
           </div>
 

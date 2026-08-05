@@ -37,9 +37,14 @@ interface ComboText {
 
 export const GameState = {
   MAIN_MENU: "MAIN_MENU",
+  LOBBY: "LOBBY",
+  COUNTDOWN: "COUNTDOWN",
+  PRE_GAME: "PRE_GAME",
   READY: "READY",
   PLAYING: "PLAYING",
-  GAME_OVER: "GAME_OVER"
+  SPECTATING: "SPECTATING",
+  GAME_OVER: "GAME_OVER",
+  POST_GAME: "POST_GAME"
 } as const;
 export type GameState = typeof GameState[keyof typeof GameState];
 
@@ -193,9 +198,9 @@ export class GameManager {
       }
     };
 
-    net.onGameOver = (_winnerId: string, winnerName: string) => {
-      this.onlineWinnerName = winnerName;
-      this.state = GameState.GAME_OVER;
+    net.onPostGameStart = (data: { winnerId: string; winnerName: string }) => {
+      this.onlineWinnerName = data.winnerName;
+      this.state = GameState.POST_GAME;
       this.renderFn(); // Final render
     };
 
@@ -233,7 +238,7 @@ export class GameManager {
   }
 
   private update(dt: number) {
-    if (this.state !== GameState.PLAYING) return;
+    if (this.state !== GameState.PLAYING && this.state !== GameState.SPECTATING) return;
 
     this.gameTime += dt;
 
@@ -274,8 +279,9 @@ export class GameManager {
         this.handleSpawning(player);
         if (player.isToppedOut) {
           if (this.isOnline) {
-            // Tell server we topped out
-            this.network?.sendToppedOut();
+            // Tell server we topped out, transition to spectator
+            this.state = GameState.SPECTATING;
+            this.network?.sendEliminated();
           }
           this.checkGameOver();
           continue;

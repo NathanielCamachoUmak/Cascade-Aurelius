@@ -44,6 +44,22 @@ const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
 const btnLobbyBack = document.getElementById('btn-lobby-back')!;
 const lobbyNicknameInput = document.getElementById('lobby-nickname-input') as HTMLInputElement;
 
+// NEW: Lobby & Post-Game Elements
+const navLobby = document.getElementById('nav-lobby')!;
+const btnLobbyLeave = document.getElementById('btn-lobby-leave')!;
+const lobbyCountdown = document.getElementById('lobby-countdown')!;
+const modalConfirmJoin = document.getElementById('modal-confirm-join')!;
+const btnConfirmJoinYes = document.getElementById('btn-confirm-join-yes')!;
+const btnConfirmJoinNo = document.getElementById('btn-confirm-join-no')!;
+const screenPostGame = document.getElementById('screen-post-game')!;
+const postGameWinner = document.getElementById('post-game-winner')!;
+const postGameVotes = document.getElementById('post-game-votes')!;
+const btnPostRematch = document.getElementById('btn-post-rematch')!;
+const btnPostLeave = document.getElementById('btn-post-leave')!;
+const preGameOverlay = document.getElementById('pre-game-overlay')!;
+const preGameText = document.getElementById('pre-game-text')!;
+const spectatorBanner = document.getElementById('spectator-banner')!;
+
 const hudP2 = document.getElementById('hud-p2')!;
 
 const scoreElementP1 = document.getElementById('score-p1')!;
@@ -121,8 +137,13 @@ btnClassContinue.addEventListener('click', () => {
     screenDifficulty.classList.remove('hidden');
     screenDifficulty.classList.add('flex');
   } else if (pendingMode === 'ONLINE') {
-    screenLobby.classList.remove('hidden');
-    screenLobby.classList.add('flex');
+    if (network && network.currentRoomId) {
+      screenLobby.classList.remove('hidden');
+      screenLobby.classList.add('flex');
+    } else {
+      screenLobby.classList.remove('hidden');
+      screenLobby.classList.add('flex');
+    }
   }
 });
 
@@ -152,10 +173,28 @@ btnToggleGhost.addEventListener('click', () => {
   }
 });
 
+navLobby.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (network && network.currentRoomId) {
+    screenMain.classList.add('hidden');
+    screenClassSelect.classList.remove('flex');
+    screenClassSelect.classList.add('hidden');
+    screenDifficulty.classList.remove('flex');
+    screenDifficulty.classList.add('hidden');
+    screenPostGame.classList.remove('flex');
+    screenPostGame.classList.add('hidden');
+    
+    screenLobby.classList.remove('hidden');
+    screenLobby.classList.add('flex');
+    uiLayer.classList.remove('hidden');
+  }
+});
+
 // --- Online Lobby ---
 let network: NetworkManager | null = null;
 let myReady = false;
 let inRoom = false;
+let pendingJoinRoomId = '';
 
 btnPlayOnline.addEventListener('click', () => {
   pendingMode = 'ONLINE';
@@ -165,47 +204,153 @@ btnPlayOnline.addEventListener('click', () => {
 });
 
 btnLobbyBack.addEventListener('click', () => {
-  // Disconnect from server when leaving lobby
-  if (network) {
-    network.disconnect();
-    network = null;
-  }
-  myReady = false;
-  inRoom = false;
-  lobbyStatus.innerText = '';
-  lobbyPlayerList.innerHTML = '';
-  btnLobbyReady.classList.add('hidden');
-  btnLobbyReady.innerText = 'READY UP';
-  btnJoinLobby.removeAttribute('disabled');
-
+  // If we are connected, keep the lobby session active! Don't disconnect.
   screenLobby.classList.remove('flex');
   screenLobby.classList.add('hidden');
   screenMain.classList.remove('hidden');
 });
 
+btnLobbyLeave.addEventListener('click', () => {
+  network?.leaveLobby();
+  returnToMenu();
+});
+
+btnConfirmJoinYes.addEventListener('click', () => {
+  modalConfirmJoin.classList.add('hidden');
+  const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+  network?.confirmJoin(pendingJoinRoomId, nickname);
+});
+
+btnConfirmJoinNo.addEventListener('click', () => {
+  modalConfirmJoin.classList.add('hidden');
+  lobbyStatus.innerText = 'Join cancelled.';
+  btnJoinLobby.removeAttribute('disabled');
+});
+
+btnPostRematch.addEventListener('click', () => {
+  network?.voteRematch();
+  btnPostRematch.classList.add('hidden');
+});
+
+btnPostLeave.addEventListener('click', () => {
+  network?.leaveLobby();
+  returnToMenu();
+});
+
 btnJoinLobby.addEventListener('click', () => {
   const roomId = lobbyRoomInput.value.trim() || 'test-room';
 
-  // Only create one connection, even if the player clicks Join more than once.
   if (!network) {
     network = new NetworkManager();
 
     network.onConnected = () => {
       lobbyStatus.innerText = 'Connected. Joining room...';
-          const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+      const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
       network!.joinRoom(roomId, nickname);
     };
 
     network.onJoinError = (message: string) => {
       lobbyStatus.innerText = `Error: ${message}`;
+      btnJoinLobby.removeAttribute('disabled');
     };
 
     network.onRoomUpdate = (state: RoomState) => {
       inRoom = true;
+      
+      // Auto-ready resets
+      const me = state.players.find(p => p.id === network?.mySocketId);
+      if (me) myReady = me.ready;
+      btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
+      
+      // If we came from post-game, make sure we go back to lobby UI
+      if (gameManager.state === GameState.POST_GAME) {
+        screenPostGame.classList.remove('flex');
+        screenPostGame.classList.add('hidden');
+        screenLobby.classList.remove('hidden');
+        screenLobby.classList.add('flex');
+      }
+
       renderLobbyPlayers(state);
     };
 
-    // Wire up the game-start event: this is where the magic happens
+    network.onConfirmJoin = (data) => {
+      pendingJoinRoomId = data.newRoom;
+      modalConfirmJoin.classList.remove('hidden');
+    };
+
+    network.onCountdownStart = (seconds: number) => {
+      lobbyCountdown.classList.remove('hidden');
+      lobbyCountdown.innerText = `Starting in ${seconds}...`;
+      let s = seconds;
+      const interval = setInterval(() => {
+        s--;
+        if (s > 0) lobbyCountdown.innerText = `Starting in ${s}...`;
+        else clearInterval(interval);
+      }, 1000);
+      lobbyCountdown.dataset.interval = interval.toString();
+    };
+
+    network.onCountdownCancel = () => {
+      lobbyCountdown.classList.add('hidden');
+      const interval = lobbyCountdown.dataset.interval;
+      if (interval) clearInterval(parseInt(interval));
+      lobbyStatus.innerText = 'Countdown cancelled.';
+    };
+
+    network.onPreGameCountdown = (seconds: number) => {
+      preGameOverlay.classList.remove('hidden');
+      // Freeze inputs for pre-game
+      gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
+      
+      let s = seconds;
+      preGameText.innerText = s.toString();
+      const interval = setInterval(() => {
+        s--;
+        if (s > 0) {
+          preGameText.innerText = s.toString();
+        } else if (s === 0) {
+          preGameText.innerText = "GO!";
+        } else {
+          clearInterval(interval);
+          preGameOverlay.classList.add('hidden');
+          gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
+        }
+      }, 1000);
+    };
+
+    network.onPlayerStateUpdate = (data) => {
+      if (data.playerId === network?.mySocketId && data.state === 'spectating') {
+        spectatorBanner.classList.remove('hidden');
+      }
+    };
+
+    network.onPostGameStart = (data) => {
+      uiLayer.classList.remove('hidden');
+      screenLobby.classList.add('hidden');
+      screenLobby.classList.remove('flex');
+      screenPostGame.classList.remove('hidden');
+      screenPostGame.classList.add('flex');
+      gameHud.classList.add('hidden');
+      
+      postGameWinner.innerText = `Winner: ${data.winnerName}`;
+      postGameVotes.innerText = `0 voted for rematch`;
+      btnPostRematch.classList.remove('hidden');
+      
+      // Cleanup lobby countdown just in case
+      lobbyCountdown.classList.add('hidden');
+      const interval = lobbyCountdown.dataset.interval;
+      if (interval) clearInterval(parseInt(interval));
+    };
+
+    network.onRematchUpdate = (data) => {
+      postGameVotes.innerText = `${data.votes}/${data.required} voted for rematch`;
+    };
+
+    network.onPlayerDisconnected = () => {
+       // A player left during game
+       gameManager.network?.sendRibbon('A PLAYER DISCONNECTED');
+    };
+
     network.onGameStart = (data: GameStartData) => {
       startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name));
     };
@@ -242,6 +387,7 @@ function renderLobbyPlayers(state: RoomState) {
 
   if (inRoom) {
     btnLobbyReady.classList.remove('hidden');
+    btnLobbyLeave.classList.remove('hidden');
   }
 
   lobbyPlayerList.innerHTML = '';
@@ -274,6 +420,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
+  spectatorBanner.classList.add('hidden');
 
   // Size canvas for the number of players
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
@@ -594,7 +741,7 @@ function render() {
     }
   }
 
-  // Draw Game Over global overlay
+  // Draw Game Over global overlay (only for offline games now)
   if (gameManager.state === GameState.GAME_OVER) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -603,20 +750,10 @@ function render() {
     ctx.font = '30px "Press Start 2P"';
     ctx.textAlign = 'center';
     
-    if (gameManager.isOnline && gameManager.onlineWinnerName) {
-      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
-      ctx.font = '16px "Press Start 2P"';
-      ctx.fillStyle = '#FFC107';
-      ctx.fillText(`Winner: ${gameManager.onlineWinnerName}`, canvas.width / 2, canvas.height / 2);
-      ctx.font = '12px "Press Start 2P"';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('PRESS ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 40);
-    } else {
-      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
-      ctx.font = '12px "Press Start 2P"';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
-    }
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.font = '12px "Press Start 2P"';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
   }
 }
 
@@ -624,8 +761,7 @@ window.addEventListener('keydown', (e) => {
   if (gameManager.state === GameState.GAME_OVER) {
     if (e.key === 'Enter') {
       if (gameManager.isOnline) {
-        // In online mode, go back to menu (can't restart locally)
-        returnToMenu();
+        // Handled by UI buttons in POST_GAME state instead
       } else if (gameManager.players.length === 1) {
         gameManager.initSolo(selectedClass);
       } else {
@@ -651,15 +787,22 @@ function returnToMenu() {
   myReady = false;
   inRoom = false;
 
-  // Reset menus to show Main by default
+  // Reset menus
   screenDifficulty.classList.add('hidden');
   screenDifficulty.classList.remove('flex');
   screenLobby.classList.remove('flex');
   screenLobby.classList.add('hidden');
+  screenPostGame.classList.remove('flex');
+  screenPostGame.classList.add('hidden');
+  spectatorBanner.classList.add('hidden');
+  preGameOverlay.classList.add('hidden');
+  modalConfirmJoin.classList.add('hidden');
+  
   lobbyStatus.innerText = '';
   lobbyPlayerList.innerHTML = '';
   btnLobbyReady.classList.add('hidden');
   btnLobbyReady.innerText = 'READY UP';
+  btnLobbyLeave.classList.add('hidden');
   btnJoinLobby.removeAttribute('disabled');
 
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');

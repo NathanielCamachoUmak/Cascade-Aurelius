@@ -12,6 +12,7 @@ export type InputAction = typeof InputAction[keyof typeof InputAction];
 export class InputHandler {
   private inputQueue: InputAction[] = [];
   private keysDown: Set<string> = new Set();
+  public isFrozen: boolean = false;
   
   // Maps keyboard keys to InputActions
   private keyMap: Record<string, InputAction> = {
@@ -49,6 +50,7 @@ export class InputHandler {
 
   private initListeners() {
     window.addEventListener("keydown", (e) => {
+      if (this.isFrozen) return;
       if (this.keyMap[e.key]) {
         e.preventDefault();
         const action = this.keyMap[e.key];
@@ -91,6 +93,7 @@ export class InputHandler {
    * Called every frame to process DAS (Delayed Auto Shift)
    */
   public update(dt: number) {
+    if (this.isFrozen) return;
     // Only apply auto-repeat to movement and soft drops
     const repeatableActions = [InputAction.LEFT, InputAction.RIGHT, InputAction.SOFT_DROP];
 
@@ -131,5 +134,14 @@ export class InputHandler {
     for (const action in this.heldActions) {
       this.heldActions[action as InputAction].active = false;
     }
+  }
+
+  public freeze() {
+    this.isFrozen = true;
+    this.clear();
+  }
+
+  public unfreeze() {
+    this.isFrozen = false;
   }
 } 

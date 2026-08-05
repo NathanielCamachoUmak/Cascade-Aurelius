@@ -4,10 +4,12 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   ready: boolean;
+  state: 'lobby' | 'playing' | 'spectating';
 }
 
 export interface RoomState {
   roomId: string;
+  phase: 'lobby' | 'countdown' | 'in-game' | 'post-game';
   players: LobbyPlayer[];
 }
 
@@ -37,11 +39,20 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 export class NetworkManager {
   private socket: Socket;
   public mySocketId: string = "";
+  public currentRoomId: string | null = null;
 
   // --- Lobby callbacks ---
   public onRoomUpdate: ((state: RoomState) => void) | null = null;
   public onJoinError: ((message: string) => void) | null = null;
   public onConnected: (() => void) | null = null;
+  public onConfirmJoin: ((data: { currentRoom: string; newRoom: string }) => void) | null = null;
+  public onCountdownStart: ((seconds: number) => void) | null = null;
+  public onCountdownCancel: (() => void) | null = null;
+  public onPreGameCountdown: ((seconds: number) => void) | null = null;
+  public onPlayerStateUpdate: ((data: { playerId: string; state: string }) => void) | null = null;
+  public onPostGameStart: ((data: { winnerId: string; winnerName: string }) => void) | null = null;
+  public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
+  public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
 
   // --- Game callbacks ---
   public onGameStart: ((data: GameStartData) => void) | null = null;
@@ -62,11 +73,44 @@ export class NetworkManager {
     });
 
     this.socket.on("room-update", (state: RoomState) => {
+      this.currentRoomId = state.roomId;
       this.onRoomUpdate?.(state);
     });
 
     this.socket.on("join-error", (err: { message: string }) => {
       this.onJoinError?.(err.message);
+    });
+
+    this.socket.on("confirm-join", (data: { currentRoom: string; newRoom: string }) => {
+      this.onConfirmJoin?.(data);
+    });
+
+    this.socket.on("countdown-start", (seconds: number) => {
+      this.onCountdownStart?.(seconds);
+    });
+
+    this.socket.on("countdown-cancel", () => {
+      this.onCountdownCancel?.();
+    });
+
+    this.socket.on("pre-game-countdown", (seconds: number) => {
+      this.onPreGameCountdown?.(seconds);
+    });
+
+    this.socket.on("player-state-update", (data: { playerId: string; state: string }) => {
+      this.onPlayerStateUpdate?.(data);
+    });
+
+    this.socket.on("post-game-start", (data: { winnerId: string; winnerName: string }) => {
+      this.onPostGameStart?.(data);
+    });
+
+    this.socket.on("rematch-update", (data: { votes: number; required: number }) => {
+      this.onRematchUpdate?.(data);
+    });
+    
+    this.socket.on("player-disconnected", (data: { playerId: string }) => {
+      this.onPlayerDisconnected?.(data);
     });
 
     // --- Game events ---
@@ -83,8 +127,8 @@ export class NetworkManager {
       this.onOpponentPieceUpdate?.(playerIndex, piece);
     });
 
-    this.socket.on("opponent-score-update", ({ playerIndex, score, lines, combo, multiplier }: { playerIndex: number; score: number; lines: number; combo: number; multiplier: number }) => {
-      this.onOpponentScoreUpdate?.(playerIndex, { score, lines, combo, multiplier });
+    this.socket.on("opponent-score-update", (data: any) => {
+      this.onOpponentScoreUpdate?.(data.playerIndex, { score: data.score, lines: data.lines, combo: data.combo, multiplier: data.multiplier });
     });
 
     this.socket.on("opponent-topped-out", ({ playerIndex }: { playerIndex: number }) => {
@@ -110,8 +154,21 @@ export class NetworkManager {
     this.socket.emit("join-room", { roomId, name });
   }
 
+  public confirmJoin(newRoomId: string, name: string) {
+    this.socket.emit("confirm-join", { newRoomId, name });
+  }
+
+  public leaveLobby() {
+    this.currentRoomId = null;
+    this.socket.emit("leave-lobby");
+  }
+
   public setReady(ready: boolean) {
     this.socket.emit("player-ready", { ready });
+  }
+
+  public voteRematch() {
+    this.socket.emit("vote-rematch");
   }
 
   // --- Game emitters ---
@@ -132,6 +189,14 @@ export class NetworkManager {
     this.socket.emit("player-topped-out");
   }
 
+  public sendEliminated() {
+    this.socket.emit("player-eliminated");
+  }
+
+  public sendGameOver(winnerName: string) {
+    this.socket.emit("game-over", { winnerName });
+  }
+
   public sendGarbage(count: number) {
     this.socket.emit("send-garbage", { count });
   }
@@ -143,6 +208,7 @@ export class NetworkManager {
   // --- Connection management --- 
 
   public disconnect() {
+    this.currentRoomId = null;
     this.socket.disconnect();
   }
 }
