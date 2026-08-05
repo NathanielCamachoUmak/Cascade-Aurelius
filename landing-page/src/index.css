@@ -1,0 +1,119 @@
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+/* Custom Tailwind theme */
+@theme {
+  --color-neon-cyan: #00FFFF;
+  --color-neon-yellow: #FFD700;
+  --color-neon-pink: #FF1493;
+  --color-neon-green: #00FF00;
+  --color-deep-purple: #0D0B1A;
+  --color-card-bg: #1A1530;
+  --color-card-border: #2A2245;
+  --color-nav-bg: #130F25;
+  --color-surface: #15112A;
+  --font-pixel: 'Press Start 2P', monospace;
+  --font-body: 'Inter', sans-serif;
+}
+
+/* Global styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: linear-gradient(180deg, #0D0B1A 0%, #1A0E2E 50%, #0D0B1A 100%);
+  color: #E0E0E0;
+  min-height: 100vh;
+}
+
+/* Neon glow effects */
+@utility glow-cyan {
+  text-shadow: 0 0 7px #00FFFF, 0 0 10px #00FFFF, 0 0 21px #00FFFF, 0 0 42px #0fa;
+}
+
+@utility glow-pink {
+  text-shadow: 0 0 7px #FF1493, 0 0 10px #FF1493, 0 0 21px #FF1493;
+}
+
+@utility glow-yellow {
+  text-shadow: 0 0 7px #FFD700, 0 0 10px #FFD700, 0 0 21px #FFD700;
+}
+
+@utility glow-green {
+  text-shadow: 0 0 7px #00FF00, 0 0 10px #00FF00, 0 0 21px #00FF00;
+}
+
+/* Neon box glow utilities */
+@utility box-glow-cyan {
+  box-shadow: 0 0 5px rgba(0, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.15), inset 0 0 5px rgba(0, 255, 255, 0.05);
+}
+
+@utility box-glow-yellow {
+  box-shadow: 0 0 5px rgba(255, 215, 0, 0.3), 0 0 10px rgba(255, 215, 0, 0.15), inset 0 0 5px rgba(255, 215, 0, 0.05);
+}
+
+@utility box-glow-pink {
+  box-shadow: 0 0 5px rgba(255, 20, 147, 0.3), 0 0 10px rgba(255, 20, 147, 0.15), inset 0 0 5px rgba(255, 20, 147, 0.05);
+}
+
+@utility box-glow-green {
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.3), 0 0 10px rgba(0, 255, 0, 0.15), inset 0 0 5px rgba(0, 255, 0, 0.05);
+}
+
+/* Pulsating animation for LIVE indicator */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@utility animate-pulse-live {
+  animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+/* Subtle float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@utility animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Scanline overlay effect */
+@utility scanlines {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+}
+
+/* Gradient text utility */
+@utility text-gradient-neon {
+  background: linear-gradient(90deg, #00FFFF, #FF1493, #FFD700);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0D0B1A;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2245;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3265;
+}
