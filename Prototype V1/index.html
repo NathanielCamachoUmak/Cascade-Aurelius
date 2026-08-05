@@ -2,296 +2,461 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Block Quartet</title>
-    
-    <!-- Google Fonts: Press Start 2P for blocky text, Inter for UI -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-    
-    <!-- Tailwind CSS with custom config -->
+    <meta name="description" content="Block Quartet — A deterministic, event-driven multiplayer puzzle game featuring asymmetric classes, proximity-based sabotage, roguelike item progression, and dynamic difficulty adjustment." />
+    <meta name="theme-color" content="#0D0B1A" />
+    <title>Block Quartet — Multiplayer Puzzle Game by Aurelius</title>
+
+    <!-- Google Fonts: Press Start 2P + Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Tailwind CSS CDN (matches existing project setup) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              bgDark: '#0D0614',
-              bgPanel: '#1A0B2E',
-              bgPanelBorder: '#2D1B4E',
-              neonCyan: '#00E5FF',
-              neonMagenta: '#FF007F',
-              neonYellow: '#FFC107'
+              'deep-purple': '#0D0B1A',
+              'card-bg': '#1A1530',
+              'card-border': '#2A2245',
+              'nav-bg': '#130F25',
+              'surface': '#15112A',
+              'neon-cyan': '#00FFFF',
+              'neon-yellow': '#FFD700',
+              'neon-pink': '#FF1493',
+              'neon-green': '#00FF00',
             },
             fontFamily: {
-              pixel: ['"Press Start 2P"', 'cursive'],
-              sans: ['Inter', 'sans-serif']
-            }
-          }
-        }
+              pixel: ['"Press Start 2P"', 'monospace'],
+              body: ['Inter', 'sans-serif'],
+            },
+            animation: {
+              'pulse-live': 'pulse-live 1.5s ease-in-out infinite',
+              'float': 'float 3s ease-in-out infinite',
+              'glow-pulse': 'glow-pulse 2s ease-in-out infinite',
+            },
+            keyframes: {
+              'pulse-live': {
+                '0%, 100%': { opacity: '1' },
+                '50%': { opacity: '0.4' },
+              },
+              'float': {
+                '0%, 100%': { transform: 'translateY(0px)' },
+                '50%': { transform: 'translateY(-6px)' },
+              },
+              'glow-pulse': {
+                '0%, 100%': { boxShadow: '0 0 5px currentColor, 0 0 10px currentColor' },
+                '50%': { boxShadow: '0 0 15px currentColor, 0 0 30px currentColor' },
+              },
+            },
+          },
+        },
       }
     </script>
-    <link rel="stylesheet" href="/src/style.css" />
+
     <style>
-      /* Custom Clip Paths for slanted buttons */
-      .slanted-btn {
-        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+      body {
+        font-family: 'Inter', sans-serif;
+        background: linear-gradient(180deg, #0D0B1A 0%, #1A0E2E 50%, #0D0B1A 100%);
+        color: #E0E0E0;
       }
-      .slanted-btn-reverse {
-        clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+
+      /* Scanline overlay */
+      .scanlines::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 100;
+        opacity: 0.12;
+        background-image: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.15) 2px,
+          rgba(0, 0, 0, 0.15) 4px
+        );
+      }
+
+      /* Glow text effects */
+      .glow-cyan {
+        text-shadow: 0 0 10px rgba(0,255,255,0.5), 0 0 30px rgba(0,255,255,0.3), 0 0 60px rgba(0,255,255,0.15);
+      }
+      .glow-green {
+        text-shadow: 0 0 7px rgba(0,255,0,0.6), 0 0 14px rgba(0,255,0,0.3);
+      }
+
+      /* Card hover glow */
+      .card-glow {
+        transition: all 0.3s ease;
+      }
+      .card-glow:hover {
+        transform: translateY(-4px);
+      }
+
+      /* Grid background pattern */
+      .grid-bg {
+        background-image:
+          linear-gradient(rgba(0,255,255,0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0,255,255,0.06) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #0D0B1A; }
+      ::-webkit-scrollbar-thumb { background: #2A2245; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3A3265; }
+
+      /* Nav link active underline */
+      .nav-active {
+        color: white;
+        border-bottom: 2px solid #00FFFF;
+        padding-bottom: 2px;
       }
     </style>
   </head>
-  <body class="bg-bgDark text-white font-sans h-screen w-screen overflow-hidden flex flex-col m-0 p-0 selection:bg-neonMagenta">
-    
-    <!-- Top Nav Bar -->
-    <header class="w-full h-16 flex items-center justify-between px-8 border-b-2 border-bgPanelBorder bg-[#110B19]">
-      <div class="text-xl font-bold flex gap-2">
-        <span>Block</span>
-        <span class="text-neonMagenta">&lt;Quartet&gt;</span>
-      </div>
-      <nav class="hidden md:flex gap-6 text-xs uppercase tracking-widest text-gray-400 font-bold">
-        <a href="#" class="hover:text-white transition-colors">Opening</a>
-        <a href="#" class="text-white border-b-2 border-neonMagenta pb-1">Menu</a>
-        <a href="#" class="hover:text-white transition-colors">Lobby</a>
-        <a href="#" class="hover:text-white transition-colors">Loadout</a>
-        <a href="#" class="hover:text-white transition-colors">Game</a>
-      </nav>
-      <div class="flex items-center gap-2 text-xs font-bold text-neonMagenta">
-        <div class="w-2 h-2 rounded-full bg-neonMagenta animate-pulse"></div>
-        LIVE
-      </div>
-    </header>
 
-    <!-- Main Viewport -->
-    <main class="relative flex-1 w-full h-full flex justify-center items-center">
-      
-      <!-- MENU OVERLAY -->
-      <div id="ui-layer" class="absolute inset-0 z-50 flex flex-col items-center pt-24 bg-gradient-to-b from-bgDark to-[#19092c]">
-        
-        <!-- Screen: Main Menu -->
-        <div id="screen-main" class="flex flex-col items-center w-full max-w-4xl">
-          <h1 class="text-6xl font-pixel text-white drop-shadow-[0_0_15px_rgba(0,229,255,0.5)] mb-2 text-center leading-tight">
-            BLOCK<br/>
-            <span class="text-neonCyan">QUARTET</span>
-          </h1>
-          
-          <div class="flex gap-4 mt-12 mb-16">
-            <button id="btn-solo" class="slanted-btn bg-neonCyan text-black font-bold px-12 py-4 text-xl hover:bg-white transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(0,229,255,0.4)]">
-              ▶ PLAY SOLO
-            </button>
-            <button id="btn-vs-bot" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white font-bold px-12 py-4 text-xl hover:bg-bgPanelBorder transition-colors">
-              ▶ PLAY VS BOT
-            </button>
-            <button id="btn-play-online" class="slanted-btn bg-bgPanel border border-neonMagenta text-neonMagenta font-bold px-12 py-4 text-xl hover:bg-neonMagenta hover:text-black transition-colors">
-              ▶ PLAY ONLINE
-            </button>
-          </div>
-        </div>
+  <body class="min-h-screen overflow-x-hidden scanlines">
 
-        <!-- Screen: Class Select -->
-        <div id="screen-class-select" class="hidden flex-col items-center w-full max-w-5xl px-8">
-          <div class="mb-8 text-center">
-            <h2 class="text-neonCyan text-sm font-bold tracking-widest uppercase mb-2">LOADOUT</h2>
-            <h1 class="text-4xl font-bold">Choose Your Class</h1>
-          </div>
-
-          <div id="class-card-list" class="flex gap-6 w-full mb-12">
-            <!-- Class cards injected by main.ts from PLAYER_CLASSES -->
-          </div>
-
-          <div class="flex gap-4">
-            <button id="btn-class-continue" class="slanted-btn bg-neonCyan text-black font-bold px-10 py-3 hover:bg-white transition-colors">
-              CONTINUE
-            </button>
-            <button id="btn-class-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
-              &lt; BACK
-            </button>
-          </div>
-        </div>
-
-        <!-- Screen: Online Lobby -->
-        <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-2xl px-8">
-          <div class="mb-8 w-full">
-            <h2 class="text-neonMagenta text-sm font-bold tracking-widest uppercase mb-2">ONLINE</h2>
-            <h1 class="text-4xl font-bold">Lobby</h1>
-            <p class="text-gray-400 text-sm mt-1 uppercase tracking-wider">Join a room with up to 4 players</p>
-          </div>
-
-          <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-4">
-            <label for="lobby-nickname-input" class="text-xs text-gray-400 uppercase tracking-widest">Nickname</label>
-            <div class="mt-2">
-              <input id="lobby-nickname-input" type="text" placeholder="Enter your nickname..." maxlength="16"
-                class="w-full bg-bgDark border border-bgPanelBorder text-white px-4 py-2 text-lg focus:outline-none focus:border-neonMagenta" />
-            </div>
-          </div>
-
-          <div class="w-full bg-bgPanel border-2 border-bgPanelBorder p-6 mb-6">
-            <label for="lobby-room-input" class="text-xs text-gray-400 uppercase tracking-widest">Room Code</label>
-            <div class="flex gap-3 mt-2">
-              <input id="lobby-room-input" type="text" value="test-room"
-                class="flex-1 bg-bgDark border border-bgPanelBorder text-white px-4 py-2 text-lg focus:outline-none focus:border-neonCyan" />
-              <button id="btn-join-lobby" class="slanted-btn bg-neonCyan text-black font-bold px-6 py-2 hover:bg-white transition-colors">
-                JOIN
-              </button>
-            </div>
-          </div>
-
-          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px]"></div>
-
-          <div id="lobby-player-list" class="w-full flex flex-col gap-2 mb-8">
-            <!-- Player rows injected by main.ts -->
-          </div>
-
-          <div class="flex gap-4">
-            <button id="btn-lobby-ready" class="hidden slanted-btn bg-neonCyan text-black font-bold px-10 py-3 hover:bg-white transition-colors">
-              READY UP
-            </button>
-            <button id="btn-lobby-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
-              &lt; BACK
-            </button>
-          </div>
-        </div>
-
-        <!-- Screen: Difficulty Select -->
-        <div id="screen-difficulty" class="hidden flex-col items-start w-full max-w-5xl px-8">
-          <div class="mb-8">
-            <h2 class="text-neonYellow text-sm font-bold tracking-widest uppercase mb-2">MAIN MENU</h2>
-            <h1 class="text-4xl font-bold">Choose Your Mode</h1>
-            <p class="text-gray-400 text-sm mt-1 uppercase tracking-wider">Game Mode Selection</p>
-          </div>
-          
-          <div class="flex gap-6 w-full">
-            <!-- Mode Card 1 -->
-            <button id="btn-easy-bot" class="flex-1 bg-bgPanel border-2 border-bgPanelBorder hover:border-neonCyan hover:shadow-[0_0_20px_rgba(0,229,255,0.2)] transition-all p-6 text-left slanted-btn group">
-              <h3 class="text-2xl font-bold mb-2 group-hover:text-neonCyan">EASY BOT</h3>
-              <p class="text-gray-400 text-sm mb-6">Relaxed pace block battles</p>
-              <div class="inline-block border border-neonCyan text-neonCyan text-xs px-2 py-1">1 PLAYER</div>
-            </button>
-            
-            <!-- Mode Card 2 -->
-            <button id="btn-hard-bot" class="flex-1 bg-bgPanel border-2 border-bgPanelBorder hover:border-neonMagenta hover:shadow-[0_0_20px_rgba(255,0,127,0.2)] transition-all p-6 text-left slanted-btn group">
-              <h3 class="text-2xl font-bold mb-2 group-hover:text-neonMagenta">HARD BOT</h3>
-              <p class="text-gray-400 text-sm mb-6">Intense head-to-head block battles</p>
-              <div class="inline-block border border-neonMagenta text-neonMagenta text-xs px-2 py-1">2 PLAYERS</div>
-            </button>
-          </div>
-
-          <div class="mt-12 flex gap-4">
-            <button id="btn-back" class="slanted-btn bg-bgPanel border border-bgPanelBorder text-white px-8 py-3 font-bold hover:bg-bgPanelBorder transition-colors">
-              &lt; BACK
-            </button>
-          </div>
-        
-        <!-- Global Ribbon -->
-        <div id="global-ribbon" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full bg-neonMagenta/90 text-white font-bold text-4xl py-6 text-center z-50 shadow-[0_0_30px_rgba(255,0,127,0.8)] border-y-4 border-white tracking-[0.2em] uppercase transition-opacity duration-300">
-          TETRIS!
-        </div>
-      </div>
+    <!-- ═══════════════════════════════════════════ -->
+    <!--             PAGE INDICATOR                  -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="fixed top-0 left-0 z-[60] px-4 py-1">
+      <span class="font-pixel text-[8px] text-gray-500 tracking-widest">OPENING</span>
     </div>
 
-      <!-- IN-GAME HUD OVERLAY -->
-      <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
-        <!-- Settings Toggle / Ghost Piece Button -->
-        <div class="absolute top-4 right-8 pointer-events-auto flex gap-4">
-          <button id="btn-toggle-ghost" class="bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded">
-            GHOST: ON
-          </button>
-        </div>
+    <!-- ═══════════════════════════════════════════ -->
+    <!--               TOP NAVBAR                    -->
+    <!-- ═══════════════════════════════════════════ -->
+    <nav id="navbar" class="fixed top-5 left-0 right-0 z-50 bg-nav-bg/80 backdrop-blur-sm transition-all duration-300">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-14">
+          <!-- Logo -->
+          <div class="flex-shrink-0">
+            <span class="font-pixel text-sm text-white tracking-wider">
+              Block
+              <span class="text-neon-pink">&lt;</span><span class="text-neon-cyan">Quartet</span><span class="text-neon-pink">&gt;</span>
+            </span>
+          </div>
 
-        <!-- The HUD wraps around the Canvas -->
-        <div class="relative flex justify-center items-start gap-12 w-full max-w-7xl px-8 h-[600px]">
-          
-          <!-- Player 1 HUD (Left Side) -->
-          <div id="hud-p1" class="flex flex-col gap-4 w-48 shrink-0">
-            <!-- Hold Box -->
-            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
-              <h3 class="text-xs font-bold text-gray-400 tracking-widest">HOLD</h3>
-              <canvas id="hold-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
-            </div>
-            
-            <!-- Next Box (P1) -->
-            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded text-center h-32 flex flex-col justify-between">
-              <h3 class="text-xs font-bold text-gray-400 tracking-widest">NEXT</h3>
-              <canvas id="next-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
-            </div>
-            
-            <!-- Stats -->
-            <div class="bg-bgPanel border border-bgPanelBorder p-4 rounded">
-              <h3 class="text-neonCyan text-xs font-bold tracking-widest mb-2">YOU</h3>
-              <div class="mb-4">
-                <div class="text-xs text-gray-400 uppercase">Score</div>
-                <div id="score-p1" class="text-xl font-bold font-pixel text-neonCyan">0</div>
-              </div>
-              <div class="mb-4">
-                <div class="text-xs text-gray-400 uppercase">Multiplier</div>
-                <div id="multiplier-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-              </div>
-              <div class="mb-4">
-                <div class="text-xs text-gray-400 uppercase">Effects</div>
-                <div id="combo-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-              </div>
-              <div class="mb-2">
-                <div class="text-xs text-gray-400 uppercase">Lines</div>
-                <div id="level-p1" class="text-lg font-bold">0</div>
-              </div>
-              <div id="sabotage-meter-p1" class="hidden mt-2">
-                <div class="text-xs text-neonMagenta uppercase font-bold mb-1">Sabotage</div>
-                <div class="w-full bg-bgDark border border-bgPanelBorder h-3 rounded overflow-hidden">
-                  <div id="sabotage-fill-p1" class="h-full bg-neonMagenta transition-all" style="width: 0%"></div>
-                </div>
-              </div>
+          <!-- Navigation Links -->
+          <div class="hidden lg:flex items-center space-x-1" id="nav-links">
+            <!-- Links generated by JS -->
+          </div>
+
+          <!-- LIVE Indicator -->
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 bg-neon-pink/10 px-3 py-1.5 rounded-full border border-neon-pink/30">
+              <span class="w-2 h-2 rounded-full bg-neon-pink animate-pulse-live"></span>
+              <span class="text-neon-pink text-[10px] font-bold tracking-widest">LIVE</span>
             </div>
           </div>
-
-          <!-- Canvas Container (Will be sized dynamically in JS) -->
-          <!-- We put the main canvas underneath this HUD, so this div just creates physical spacing -->
-          <div id="canvas-spacer" class="relative shrink-0 flex justify-center">
-             <!-- The actual canvas lives here, injected or positioned absolutely via JS. 
-                  Wait, it's easier to just put the canvas in the normal flow here so the flex gap works. -->
-             <canvas id="gameCanvas" class="bg-black/80 backdrop-blur-sm pointer-events-none"></canvas>
-          </div>
-
-          <!-- Multiplayer Scoreboard (shown during online games) -->
-          <div id="multiplayer-scoreboard" class="hidden shrink-0 bg-bgPanel border border-bgPanelBorder p-4 rounded-l z-20 pointer-events-auto min-w-[200px]">
-            <h3 class="text-xs font-bold text-neonYellow tracking-widest uppercase mb-3">SCOREBOARD</h3>
-            <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
-          </div>
-
-          <!-- Player 2 HUD (Underneath Grid) -->
-          <div id="hud-p2" class="absolute -bottom-24 right-[15%] flex gap-6 w-auto shrink-0 hidden bg-bgPanel border border-bgPanelBorder p-4 rounded shadow-lg z-10">
-             <!-- Stats Row -->
-             <div class="flex flex-col">
-               <div class="text-xs text-gray-400 uppercase">Score</div>
-               <div id="score-p2" class="text-lg font-bold font-pixel text-neonMagenta">0</div>
-             </div>
-             <div class="flex flex-col">
-               <div class="text-xs text-gray-400 uppercase">Mult</div>
-               <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-             </div>
-             <div class="flex flex-col">
-               <div class="text-xs text-gray-400 uppercase">Effects</div>
-               <div id="combo-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
-             </div>
-             <div class="flex flex-col">
-               <div class="text-xs text-gray-400 uppercase">Lines</div>
-               <div id="level-p2" class="text-lg font-bold">0</div>
-             </div>
-             <div id="sabotage-meter-p2" class="hidden flex-col justify-center w-24">
-               <div class="text-xs text-neonMagenta uppercase font-bold mb-1">Sabotage</div>
-               <div class="w-full bg-bgDark border border-bgPanelBorder h-3 rounded overflow-hidden">
-                 <div id="sabotage-fill-p2" class="h-full bg-neonMagenta transition-all" style="width: 0%"></div>
-               </div>
-             </div>
-          </div>
-
         </div>
       </div>
+    </nav>
 
-    </main>
-    
-    <script type="module" src="/src/main.ts"></script>
+    <!-- ═══════════════════════════════════════════ -->
+    <!--              HERO SECTION                   -->
+    <!-- ═══════════════════════════════════════════ -->
+    <section class="relative min-h-screen flex flex-col items-center justify-center pt-28 pb-12 px-4 overflow-hidden">
+      <!-- Grid background -->
+      <div class="absolute inset-0 grid-bg pointer-events-none"></div>
+
+      <!-- Ambient glow orbs -->
+      <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-neon-cyan/5 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-neon-pink/5 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative z-10 text-center max-w-4xl mx-auto">
+        <!-- Mode Tags -->
+        <div class="mb-8">
+          <p class="text-neon-green text-[10px] sm:text-xs font-semibold tracking-[0.25em] animate-float glow-green">
+            · 1V1 · 4-PLAYER FFA · 2V2 TEAMS · 40-PLAYER DEATHMATCH ·
+          </p>
+        </div>
+
+        <!-- Main Title -->
+        <div class="mb-8">
+          <h1 class="font-pixel text-4xl sm:text-5xl md:text-7xl leading-tight tracking-wider">
+            <span class="block text-white mb-2" style="text-shadow: 0 0 30px rgba(255,255,255,0.15);">BLOCK</span>
+            <span class="block text-neon-cyan glow-cyan">QUARTET</span>
+          </h1>
+        </div>
+
+        <!-- Pill Tags -->
+        <div class="flex flex-wrap justify-center gap-3 mb-10" id="genre-tags">
+          <!-- Generated by JS -->
+        </div>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-wrap justify-center gap-4">
+          <a
+            href="modeselect.html"
+            class="group relative px-8 py-3 bg-neon-cyan text-deep-purple font-bold text-sm tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 no-underline inline-flex items-center gap-2"
+          >
+            <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+            <span class="relative flex items-center gap-2">▶ START</span>
+          </a>
+          <a
+            href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group px-8 py-3 bg-transparent border-2 border-purple-500/50 text-white font-bold text-sm tracking-widest rounded-lg transition-all duration-300 hover:border-purple-400 hover:bg-purple-500/10 hover:scale-105 no-underline inline-flex items-center gap-2"
+          >
+            ▶ Watch Trailer
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--           CLASS SHOWCASE GRID               -->
+    <!-- ═══════════════════════════════════════════ -->
+    <section class="relative py-12 px-4">
+      <div class="max-w-5xl mx-auto">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6" id="class-grid">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--        SYSTEMS & ARCHITECTURE CARDS          -->
+    <!-- ═══════════════════════════════════════════ -->
+    <section class="relative py-12 px-4 pb-20">
+      <div class="max-w-5xl mx-auto">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5" id="systems-grid">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <div class="h-px w-full bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent"></div>
+    <footer class="py-6 text-center">
+      <p class="text-gray-600 text-xs tracking-widest">© 2026 AURELIUS · BLOCK QUARTET</p>
+    </footer>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--              LANDING PAGE JS                -->
+    <!-- ═══════════════════════════════════════════ -->
+    <script>
+      // ── NAV LINKS ──
+      const NAV_ITEMS = [
+        'MENU', 'LOBBY', 'LOADOUT', 'GAME', 'SETTINGS', 'PROFILE'
+      ];
+      const activeNav = 'LOBBY';
+      const navContainer = document.getElementById('nav-links');
+
+      NAV_ITEMS.forEach(item => {
+        const btn = document.createElement('button');
+        btn.textContent = item;
+        btn.className = `px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer ${
+          item === activeNav
+            ? 'nav-active text-white'
+            : 'text-gray-400 hover:text-gray-200'
+        }`;
+        btn.addEventListener('click', () => {
+          navContainer.querySelectorAll('button').forEach(b => {
+            b.className = 'px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200';
+          });
+          btn.className = 'px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer nav-active text-white';
+        });
+        navContainer.appendChild(btn);
+      });
+
+      // Scroll-aware navbar
+      const navbar = document.getElementById('navbar');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 20) {
+          navbar.classList.add('bg-nav-bg/95', 'shadow-lg');
+          navbar.classList.remove('bg-nav-bg/80');
+        } else {
+          navbar.classList.remove('bg-nav-bg/95', 'shadow-lg');
+          navbar.classList.add('bg-nav-bg/80');
+        }
+      });
+
+      // ── GENRE PILL TAGS ──
+      const TAGS = [
+        { name: 'PUZZLE', border: 'border-neon-cyan', text: 'text-neon-cyan' },
+        { name: 'ROGUELIKE', border: 'border-neon-pink', text: 'text-neon-pink' },
+        { name: 'SABOTAGE', border: 'border-neon-yellow', text: 'text-neon-yellow' },
+        { name: 'RANDOMIZED', border: 'border-neon-green', text: 'text-neon-green' },
+      ];
+      const tagsContainer = document.getElementById('genre-tags');
+
+      TAGS.forEach(tag => {
+        const span = document.createElement('span');
+        span.textContent = tag.name;
+        span.className = `px-4 py-1.5 text-[10px] font-bold tracking-widest rounded-full border bg-white/5 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 cursor-default ${tag.border} ${tag.text}`;
+        tagsContainer.appendChild(span);
+      });
+
+      // ── CLASS SHOWCASE ──
+      const CLASSES = [
+        {
+          name: 'Speedster', hex: '#00FFFF', symbol: '⚡',
+          desc: 'Fast drops & quick combos',
+          grid: [
+            [1,0,0,0,0],
+            [1,1,0,1,0],
+            [0,1,0,1,1],
+            [0,1,1,0,1],
+            [0,0,1,0,0],
+          ],
+        },
+        {
+          name: 'Tank', hex: '#FFD700', symbol: '🛡',
+          desc: 'Heavy blocks & high defense',
+          grid: [
+            [0,1,1,0,0],
+            [1,1,0,1,0],
+            [1,0,0,1,1],
+            [0,0,1,1,0],
+            [0,1,1,0,1],
+          ],
+        },
+        {
+          name: 'Saboteur', hex: '#FF1493', symbol: '💣',
+          desc: 'Disrupt enemy boards',
+          grid: [
+            [1,0,1,0,1],
+            [0,1,0,1,0],
+            [1,0,1,0,1],
+            [0,1,0,1,0],
+            [1,0,1,0,1],
+          ],
+        },
+        {
+          name: 'Support', hex: '#00FF00', symbol: '💚',
+          desc: 'Buff allies & heal boards',
+          grid: [
+            [0,1,0,1,0],
+            [1,0,1,0,1],
+            [0,1,1,1,0],
+            [1,0,1,0,1],
+            [0,1,0,1,0],
+          ],
+        },
+      ];
+
+      const classGrid = document.getElementById('class-grid');
+
+      CLASSES.forEach(cls => {
+        const card = document.createElement('div');
+        card.className = 'group relative rounded-xl p-4 sm:p-5 bg-card-bg/80 backdrop-blur-sm transition-all duration-300 card-glow border cursor-default';
+        card.style.borderColor = cls.hex + '30';
+        card.style.boxShadow = `0 0 8px ${cls.hex}15, inset 0 0 8px ${cls.hex}05`;
+
+        card.addEventListener('mouseenter', () => {
+          card.style.boxShadow = `0 0 15px ${cls.hex}30, inset 0 0 10px ${cls.hex}10`;
+          card.style.borderColor = cls.hex + '60';
+        });
+        card.addEventListener('mouseleave', () => {
+          card.style.boxShadow = `0 0 8px ${cls.hex}15, inset 0 0 8px ${cls.hex}05`;
+          card.style.borderColor = cls.hex + '30';
+        });
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'flex items-center gap-2 mb-4';
+        header.innerHTML = `
+          <span class="text-xs">${cls.symbol}</span>
+          <h3 class="font-pixel text-[9px] sm:text-[10px] tracking-wider" style="color: ${cls.hex}">${cls.name}</h3>
+        `;
+
+        // Tetris Grid
+        const gridEl = document.createElement('div');
+        gridEl.className = 'grid grid-cols-5 gap-1 mx-auto w-fit';
+        cls.grid.flat().forEach(cell => {
+          const block = document.createElement('div');
+          block.className = 'w-5 h-5 sm:w-6 sm:h-6 rounded-sm transition-all duration-500';
+          if (cell) {
+            block.style.backgroundColor = cls.hex;
+            block.style.boxShadow = `0 0 6px ${cls.hex}40, inset 0 1px 0 rgba(255,255,255,0.2)`;
+            block.style.border = `1px solid ${cls.hex}60`;
+          } else {
+            block.style.backgroundColor = 'rgba(255,255,255,0.03)';
+            block.style.border = '1px solid rgba(255,255,255,0.05)';
+          }
+          gridEl.appendChild(block);
+        });
+
+        // Description
+        const desc = document.createElement('p');
+        desc.className = 'mt-3 text-[10px] text-gray-500 text-center opacity-0 group-hover:opacity-100 transition-opacity duration-300';
+        desc.textContent = cls.desc;
+
+        card.appendChild(header);
+        card.appendChild(gridEl);
+        card.appendChild(desc);
+        classGrid.appendChild(card);
+      });
+
+      // ── SYSTEMS CARDS ──
+      const SYSTEMS = [
+        {
+          title: 'Core & Sync',
+          icon: 'G', iconColor: '#00FF00',
+          items: ['FSM', 'Grid Logic', 'Delta Compression'],
+          borderColor: '#00FF00',
+        },
+        {
+          title: 'Interaction',
+          icon: 'A', iconColor: '#FF1493',
+          items: ['Class System', 'Garbage Queue', 'Targeting'],
+          borderColor: '#FF1493',
+        },
+        {
+          title: 'Progression',
+          icon: '◆', iconColor: '#FFD700',
+          items: ['Loot Blocks', '7-Bag', 'Weighted RNG'],
+          borderColor: '#FFD700',
+        },
+        {
+          title: 'Balance',
+          icon: '⚖', iconColor: '#00FFFF',
+          items: ['Combo', 'DDA', 'Scaling Elimination'],
+          borderColor: '#00FFFF',
+        },
+      ];
+
+      const systemsGrid = document.getElementById('systems-grid');
+
+      SYSTEMS.forEach(sys => {
+        const card = document.createElement('div');
+        card.className = 'group relative rounded-xl p-5 bg-card-bg/80 backdrop-blur-sm transition-all duration-300 card-glow';
+        card.style.borderTop = `2px solid ${sys.borderColor}40`;
+        card.style.borderLeft = `1px solid ${sys.borderColor}15`;
+        card.style.borderRight = `1px solid ${sys.borderColor}15`;
+        card.style.borderBottom = `1px solid ${sys.borderColor}15`;
+        card.style.boxShadow = `0 0 8px ${sys.borderColor}10`;
+
+        card.addEventListener('mouseenter', () => {
+          card.style.boxShadow = `0 0 15px ${sys.borderColor}25, 0 4px 20px ${sys.borderColor}10`;
+          card.style.borderTopColor = sys.borderColor + '80';
+        });
+        card.addEventListener('mouseleave', () => {
+          card.style.boxShadow = `0 0 8px ${sys.borderColor}10`;
+          card.style.borderTopColor = sys.borderColor + '40';
+        });
+
+        card.innerHTML = `
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold mb-4"
+               style="background-color: ${sys.iconColor}15; color: ${sys.iconColor}; border: 1px solid ${sys.iconColor}30;">
+            ${sys.icon}
+          </div>
+          <h3 class="text-white font-bold text-sm mb-2 tracking-wide">${sys.title}</h3>
+          <p class="text-gray-400 text-xs leading-relaxed">${sys.items.join(' · ')}</p>
+        `;
+
+        systemsGrid.appendChild(card);
+      });
+    </script>
   </body>
 </html>
