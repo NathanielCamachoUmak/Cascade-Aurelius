@@ -16,7 +16,9 @@ export class Player {
   public bag: TetrominoBag;
 
   public playerClass: PlayerClass = 'TANK';
-  public sabotageMeter: number = 0; // 0-100, only meaningful for SABOTEUR — charged by small clears
+  public classMeter: number = 0; // 0-100 — charges via class-specific actions, spent on the class's active ability
+  public activeEffectType: 'OVERDRIVE' | 'FORTIFY' | null = null; // currently-running timed effect, if any
+  public activeEffectTimer: number = 0; // ms remaining on activeEffectType
 
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
@@ -62,6 +64,8 @@ export class Player {
     this.dropTimer = 0;
     this.dropInterval = 1000;
     this.isToppedOut = false;
-    this.sabotageMeter = 0;
+    this.classMeter = 0;
+    this.activeEffectType = null;
+    this.activeEffectTimer = 0;
   }
 }

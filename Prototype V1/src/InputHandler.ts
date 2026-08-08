@@ -6,6 +6,7 @@ export const InputAction = {
   SOFT_DROP: "SOFT_DROP",
   HARD_DROP: "HARD_DROP",
   HOLD: "HOLD",
+  ACTIVATE: "ACTIVATE",
 } as const;
 export type InputAction = typeof InputAction[keyof typeof InputAction];
 
@@ -25,6 +26,7 @@ export class InputHandler {
     "z": InputAction.ROTATE_CCW,
     "c": InputAction.HOLD,
     "C": InputAction.HOLD,
+    "Shift": InputAction.ACTIVATE,
   };
 
   // DAS (Delayed Auto Shift) and ARR (Auto Repeat Rate) settings in ms
@@ -39,7 +41,8 @@ export class InputHandler {
     [InputAction.HARD_DROP]: { active: false, dasTimer: 0, arrTimer: 0 },
     [InputAction.ROTATE_CW]: { active: false, dasTimer: 0, arrTimer: 0 },
     [InputAction.ROTATE_CCW]: { active: false, dasTimer: 0, arrTimer: 0 },
-    [InputAction.HOLD]: { active: false, dasTimer: 0, arrTimer: 0 }
+    [InputAction.HOLD]: { active: false, dasTimer: 0, arrTimer: 0 },
+    [InputAction.ACTIVATE]: { active: false, dasTimer: 0, arrTimer: 0 }
   };
 
   constructor(listenToKeyboard: boolean = true) {
@@ -135,6 +138,7 @@ export class InputHandler {
       this.heldActions[action as InputAction].active = false;
     }
   }
+<<<<<<< HEAD
 
   public freeze() {
     this.isFrozen = true;
@@ -145,3 +149,6 @@ export class InputHandler {
     this.isFrozen = false;
   }
 } 
+=======
+}
+>>>>>>> 8a05621 (add fixed meter for every class with passive and active skills and balanced out the tank class)

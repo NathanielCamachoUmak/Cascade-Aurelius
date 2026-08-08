@@ -68,15 +68,18 @@ const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
 const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
 const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
-const sabotageMeterP1 = document.getElementById('sabotage-meter-p1')!;
-const sabotageFillP1 = document.getElementById('sabotage-fill-p1')!;
+const abilityMeterP1 = document.getElementById('ability-meter-p1')!;
+const abilityLabelP1 = document.getElementById('ability-label-p1')!;
+const abilityFillP1 = document.getElementById('ability-fill-p1')!;
+const abilityReadyP1 = document.getElementById('ability-ready-p1')!;
 
 const scoreElementP2 = document.getElementById('score-p2')!;
 const levelElementP2 = document.getElementById('level-p2')!;
 const comboElementP2 = document.getElementById('combo-p2')!;
 const multiplierElementP2 = document.getElementById('multiplier-p2')!;
-const sabotageMeterP2 = document.getElementById('sabotage-meter-p2')!;
-const sabotageFillP2 = document.getElementById('sabotage-fill-p2')!;
+const abilityMeterP2 = document.getElementById('ability-meter-p2')!;
+const abilityLabelP2 = document.getElementById('ability-label-p2')!;
+const abilityFillP2 = document.getElementById('ability-fill-p2')!;
 
 const gameManager = new GameManager(render);
 
@@ -95,7 +98,8 @@ function renderClassCards() {
     card.innerHTML = `
       <h3 class="text-2xl font-bold mb-2 ${isSelected ? 'text-neonCyan' : ''}">${info.name}</h3>
       <p class="text-gray-400 text-sm mb-4">${info.tagline}</p>
-      <p class="text-xs text-gray-500">${info.passiveDescription}</p>
+      <p class="text-xs text-gray-500 mb-2">${info.passiveDescription}</p>
+      <p class="text-xs text-neonMagenta">${info.activeDescription}</p>
     `;
     card.addEventListener('click', () => {
       selectedClass = info.id;
@@ -688,11 +692,16 @@ function render() {
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
     renderPieceOnMiniCanvas(nextCanvasP1, p1.nextPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
 
-    const p1IsSaboteur = p1.playerClass === 'SABOTEUR';
-    sabotageMeterP1.classList.toggle('hidden', !p1IsSaboteur);
-    if (p1IsSaboteur) {
-      sabotageFillP1.style.width = `${p1.sabotageMeter}%`;
+    const classInfo1 = PLAYER_CLASSES.find((c) => c.id === p1.playerClass);
+    abilityMeterP1.classList.remove('hidden');
+    if (classInfo1) {
+      const isActive = p1.activeEffectTimer > 0;
+      abilityLabelP1.innerText = isActive
+        ? `${classInfo1.activeName.toUpperCase()} ACTIVE (${Math.ceil(p1.activeEffectTimer / 1000)}s)`
+        : classInfo1.activeName.toUpperCase();
     }
+    abilityFillP1.style.width = `${p1.classMeter}%`;
+    abilityReadyP1.classList.toggle('hidden', p1.classMeter < 100);
   }
 
   // Update UI for Player 2 (opponent / bot)
@@ -703,12 +712,16 @@ function render() {
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
 
-    const p2IsSaboteur = p2.playerClass === 'SABOTEUR';
-    sabotageMeterP2.classList.toggle('hidden', !p2IsSaboteur);
-    if (p2IsSaboteur) {
-      sabotageMeterP2.classList.toggle('flex', p2IsSaboteur);
-      sabotageFillP2.style.width = `${p2.sabotageMeter}%`;
+    const classInfo2 = PLAYER_CLASSES.find((c) => c.id === p2.playerClass);
+    abilityMeterP2.classList.remove('hidden');
+    abilityMeterP2.classList.add('flex');
+    if (classInfo2) {
+      const isActive2 = p2.activeEffectTimer > 0;
+      abilityLabelP2.innerText = isActive2
+        ? `${classInfo2.activeName.toUpperCase()} (${Math.ceil(p2.activeEffectTimer / 1000)}s)`
+        : classInfo2.activeName.toUpperCase();
     }
+    abilityFillP2.style.width = `${p2.classMeter}%`;
   }
 
   // Update multiplayer scoreboard
