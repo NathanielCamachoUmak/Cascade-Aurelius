@@ -39,7 +39,8 @@ export const GameState = {
   MAIN_MENU: "MAIN_MENU",
   READY: "READY",
   PLAYING: "PLAYING",
-  GAME_OVER: "GAME_OVER"
+  GAME_OVER: "GAME_OVER",
+  POST_GAME: "POST_GAME"
 } as const;
 export type GameState = typeof GameState[keyof typeof GameState];
 
