@@ -138,8 +138,6 @@ export class InputHandler {
       this.heldActions[action as InputAction].active = false;
     }
   }
-<<<<<<< HEAD
-
   public freeze() {
     this.isFrozen = true;
     this.clear();
@@ -148,7 +146,4 @@ export class InputHandler {
   public unfreeze() {
     this.isFrozen = false;
   }
-} 
-=======
 }
->>>>>>> 8a05621 (add fixed meter for every class with passive and active skills and balanced out the tank class)
