@@ -201,6 +201,10 @@ export class NetworkManager {
     this.socket.emit("send-garbage", { count });
   }
 
+  public setTargetStrategy(strategy: string) {
+    this.socket.emit("set-target-strategy", { strategy });
+  }
+
   public sendRibbon(message: string) {
     this.socket.emit("broadcast-ribbon", { message });
   }

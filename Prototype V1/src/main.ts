@@ -5,6 +5,7 @@ import { Player } from './Player'
 import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
+import { TARGET_STRATEGIES, type TargetStrategy } from './TargetStrategy'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -30,6 +31,7 @@ const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
 // Class select elements
 const screenClassSelect = document.getElementById('screen-class-select')!;
 const classCardList = document.getElementById('class-card-list')!;
+const targetStrategyList = document.getElementById('target-strategy-list')!;
 const btnClassContinue = document.getElementById('btn-class-continue')!;
 const btnClassBack = document.getElementById('btn-class-back')!;
 
@@ -63,6 +65,9 @@ const spectatorBanner = document.getElementById('spectator-banner')!;
 const hudP2 = document.getElementById('hud-p2')!;
 
 const scoreElementP1 = document.getElementById('score-p1')!;
+const matchTimerP1 = document.getElementById('match-timer-p1')!;
+const pendingGarbageP1 = document.getElementById('pending-garbage-p1')!;
+const pendingGarbageCountP1 = document.getElementById('pending-garbage-count-p1')!;
 const levelElementP1 = document.getElementById('level-p1')!;
 const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
@@ -87,7 +92,29 @@ let showGhostPiece = true;
 
 // --- Class Select ---
 let selectedClass: PlayerClass = 'TANK';
+let selectedTargetStrategy: TargetStrategy = 'HIGHEST_SCORE';
 let pendingMode: 'SOLO' | 'VS_BOT' | 'ONLINE' | null = null;
+
+function renderTargetStrategyList() {
+  targetStrategyList.innerHTML = '';
+  for (const info of TARGET_STRATEGIES) {
+    const isSelected = info.id === selectedTargetStrategy;
+    const btn = document.createElement('button');
+    btn.className = `flex-1 text-left rounded-lg px-4 py-3 bg-bgPanel border-2 transition-all cursor-pointer ${
+      isSelected ? 'border-neonMagenta shadow-[0_0_15px_rgba(255,0,127,0.2)]' : 'border-bgPanelBorder hover:border-gray-500'
+    }`;
+    btn.innerHTML = `
+      <div class="font-bold text-sm mb-1 ${isSelected ? 'text-neonMagenta' : ''}">${info.name}</div>
+      <div class="text-[11px] text-gray-500">${info.description}</div>
+    `;
+    btn.addEventListener('click', () => {
+      selectedTargetStrategy = info.id;
+      renderTargetStrategyList();
+    });
+    targetStrategyList.appendChild(btn);
+  }
+}
+renderTargetStrategyList();
 
 function renderClassCards() {
   classCardList.innerHTML = '';
@@ -440,7 +467,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass);
+  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass, selectedTargetStrategy);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
@@ -455,11 +482,11 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   if (mode === 'SOLO') {
     hudP2.classList.add('hidden');
     hudP2.classList.remove('flex');
-    gameManager.initSolo(selectedClass);
+    gameManager.initSolo(selectedClass, selectedTargetStrategy);
   } else {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
-    gameManager.init1v1(mode, selectedClass);
+    gameManager.init1v1(mode, selectedClass, selectedTargetStrategy);
   }
 }
 
@@ -686,6 +713,19 @@ function render() {
   const p1 = gameManager.players[myIdx];
   if (p1) {
     scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
+
+    // The clock that actually drives the gravity ramp differs by mode:
+    // shared match time online, this player's own survival time offline.
+    const elapsedMs = gameManager.isOnline ? gameManager.gameTime : p1.timeSurvived;
+    const totalSeconds = Math.floor(elapsedMs / 1000);
+    const mm = Math.floor(totalSeconds / 60);
+    const ss = totalSeconds % 60;
+    matchTimerP1.innerText = `${mm}:${ss.toString().padStart(2, '0')}`;
+
+    pendingGarbageP1.classList.toggle('hidden', p1.pendingGarbage <= 0);
+    if (p1.pendingGarbage > 0) {
+      pendingGarbageCountP1.innerText = `${p1.pendingGarbage} lines`;
+    }
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
@@ -776,10 +816,10 @@ window.addEventListener('keydown', (e) => {
       if (gameManager.isOnline) {
         // Handled by UI buttons in POST_GAME state instead
       } else if (gameManager.players.length === 1) {
-        gameManager.initSolo(selectedClass);
+        gameManager.initSolo(selectedClass, selectedTargetStrategy);
       } else {
         const botDiff = gameManager.players[1].bot!.difficulty;
-        gameManager.init1v1(botDiff, selectedClass);
+        gameManager.init1v1(botDiff, selectedClass, selectedTargetStrategy);
       }
     } else if (e.key === 'Escape') {
       returnToMenu();

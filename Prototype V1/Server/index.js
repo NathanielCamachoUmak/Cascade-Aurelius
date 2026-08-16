@@ -70,9 +70,11 @@ function checkAllReady(roomId) {
       for (const [id, data] of room.players) {
         data.index = index;
         data.state = 'playing';
+        data.score = 0; // fresh match, ignore any stale score from a previous round
         playerList.push({ id, name: data.name, index });
         index++;
       }
+      room.matchPlayerCount = index; // stable ring size for neighbor targeting, even if someone later disconnects
 
       console.log(`[game-start] Room "${roomId}" starting with ${playerList.length} players`);
 
@@ -151,6 +153,41 @@ function updateRematchVotes(roomId) {
     io.to(roomId).emit('room-update', getRoomState(roomId));
     checkAllReady(roomId);
   }
+}
+
+// Resolves who a player's garbage attack actually goes to, based on their
+// chosen targeting strategy. This runs server-side (not client-trusted)
+// since HIGHEST_SCORE needs authoritative knowledge of everyone's score,
+// and it keeps every client agreeing on the same outcome.
+function resolveTarget(room, senderSocketId) {
+  const sender = room.players.get(senderSocketId);
+  if (!sender) return null;
+
+  const strategy = sender.targetStrategy || 'HIGHEST_SCORE';
+  const allEntries = Array.from(room.players.entries());
+  const activeOthers = allEntries.filter(
+    ([id, p]) => id !== senderSocketId && p.state === 'playing'
+  );
+  if (activeOthers.length === 0) return null;
+
+  if (strategy === 'HIGHEST_SCORE') {
+    activeOthers.sort((a, b) => (b[1].score || 0) - (a[1].score || 0));
+    return activeOthers[0][0];
+  }
+
+  // LEFT_NEIGHBOR / RIGHT_NEIGHBOR: walk the match's original index ring in
+  // that direction until we find someone still actually playing. Using the
+  // ring size captured at game-start (not room.players.size, which shrinks
+  // as people leave) keeps the wraparound math correct all match long.
+  const ringSize = room.matchPlayerCount || allEntries.length;
+  const direction = strategy === 'RIGHT_NEIGHBOR' ? 1 : -1;
+  let idx = sender.index;
+  for (let steps = 0; steps < ringSize; steps++) {
+    idx = (idx + direction + ringSize) % ringSize;
+    const found = allEntries.find(([id, p]) => p.index === idx && p.state === 'playing');
+    if (found) return found[0];
+  }
+  return null;
 }
 
 io.on('connection', (socket) => {
@@ -321,10 +358,26 @@ io.on('connection', (socket) => {
     const player = room.players.get(socket.id);
     if (!player) return;
 
+    player.score = data.score; // stored for HIGHEST_SCORE targeting resolution below
+
     socket.to(roomId).emit('opponent-score-update', {
       playerIndex: player.index,
       ...data,
     });
+  });
+
+  // The player's chosen loadout targeting strategy — who their garbage attacks
+  // go to. Resolved server-side (not trusted from the client) since it needs
+  // authoritative knowledge of everyone's current score.
+  socket.on('set-target-strategy', ({ strategy }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const room = rooms.get(roomId);
+    const player = room.players.get(socket.id);
+    if (!player) return;
+
+    const valid = ['HIGHEST_SCORE', 'LEFT_NEIGHBOR', 'RIGHT_NEIGHBOR'];
+    player.targetStrategy = valid.includes(strategy) ? strategy : 'HIGHEST_SCORE';
   });
 
   socket.on('player-eliminated', () => {
@@ -366,10 +419,9 @@ io.on('connection', (socket) => {
     const sender = room.players.get(socket.id);
     if (!sender) return;
 
-    for (const [id, data] of room.players) {
-      if (id !== socket.id && data.state === 'playing') {
-        io.to(id).emit('receive-garbage', { count, fromIndex: sender.index });
-      }
+    const targetId = resolveTarget(room, socket.id);
+    if (targetId) {
+      io.to(targetId).emit('receive-garbage', { count, fromIndex: sender.index });
     }
   });
 

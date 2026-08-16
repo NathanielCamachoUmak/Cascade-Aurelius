@@ -5,6 +5,7 @@ import { ItemManager } from "./ItemManager";
 import { ScoreManager } from "./ScoreManager";
 import { AIBot, type Difficulty } from "./AIBot";
 import { type PlayerClass } from "./PlayerClass";
+import { type TargetStrategy } from "./TargetStrategy";
 
 export class Player {
   public id: string;
@@ -19,6 +20,9 @@ export class Player {
   public classMeter: number = 0; // 0-100 — charges via class-specific actions, spent on the class's active ability
   public activeEffectType: 'OVERDRIVE' | 'FORTIFY' | null = null; // currently-running timed effect, if any
   public activeEffectTimer: number = 0; // ms remaining on activeEffectType
+
+  public targetStrategy: TargetStrategy = 'HIGHEST_SCORE';
+  public pendingGarbage: number = 0; // queued incoming garbage — resolved onto the grid at next piece spawn, cancelable until then
 
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
@@ -36,12 +40,14 @@ export class Player {
     isBot: boolean = false,
     botDifficulty: Difficulty = 'HARD',
     listenToKeyboard: boolean = true,
-    playerClass: PlayerClass = 'TANK'
+    playerClass: PlayerClass = 'TANK',
+    targetStrategy: TargetStrategy = 'HIGHEST_SCORE'
   ) {
     this.id = id;
     this.grid = new Grid();
     this.bag = new TetrominoBag();
     this.playerClass = playerClass;
+    this.targetStrategy = targetStrategy;
     this.inputHandler = new InputHandler(!isBot && listenToKeyboard);
     this.itemManager = new ItemManager();
     this.scoreManager = new ScoreManager();
@@ -67,5 +73,6 @@ export class Player {
     this.classMeter = 0;
     this.activeEffectType = null;
     this.activeEffectTimer = 0;
+    this.pendingGarbage = 0;
   }
 }

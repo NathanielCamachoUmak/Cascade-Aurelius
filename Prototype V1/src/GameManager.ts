@@ -6,6 +6,7 @@ import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
+import { type TargetStrategy } from "./TargetStrategy";
 
 // Visual Effects System
 interface Particle {
@@ -53,7 +54,9 @@ const SABOTEUR_CHARGE_DOUBLE = 20; // sabotage meter gained per double-line clea
 // Class active-ability tuning
 const SPEEDSTER_CHARGE_PER_HARDDROP = 8; // meter gained per hard drop
 const OVERDRIVE_DURATION_MS = 5000; // how long Speedster's active lasts
-const OVERDRIVE_GRAVITY_MULTIPLIER = 4; // extra gravity slowdown on top of the passive, while active
+const OVERDRIVE_GRAVITY_MULTIPLIER = 4; // extra gravity slowdown on top of the passive, at match start
+const OVERDRIVE_DECAY_PER_MINUTE = 0.5; // how much that multiplier shrinks per minute survived
+const OVERDRIVE_MIN_MULTIPLIER = 1.5; // Overdrive's multiplier never decays below this floor
 
 const TANK_CHARGE_PER_GARBAGE_TAKEN = 15; // meter gained per garbage line actually taken (after mitigation)
 const FORTIFY_DURATION_MS = 6000; // how long Tank's shield blocks all incoming garbage
@@ -94,20 +97,20 @@ export class GameManager {
     this.renderFn = renderFn;
   }
 
-  public initSolo(humanClass: PlayerClass = 'TANK') {
+  public initSolo(humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
     this.isOnline = false;
     this.network = null;
-    this.players = [new Player("P1", false, 'HARD', true, humanClass)];
+    this.players = [new Player("P1", false, 'HARD', true, humanClass, targetStrategy)];
     this.start();
   }
 
-  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK') {
+  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
     this.isOnline = false;
     this.network = null;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
     this.players = [
-      new Player("P1", false, 'HARD', true, humanClass),
+      new Player("P1", false, 'HARD', true, humanClass, targetStrategy),
       new Player("P2", true, difficulty, true, botClass)
     ];
     this.start();
@@ -120,11 +123,16 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK') {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
+
+    // The server resolves who Highest-Score/Left/Right actually points to
+    // (it's the only side with authoritative knowledge of everyone's score),
+    // so it needs to know our choice too.
+    net.setTargetStrategy(targetStrategy);
 
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
@@ -132,7 +140,7 @@ export class GameManager {
       const pName = playerNames[i] || `P${i + 1}`;
       if (i === myIndex) {
         // Our local player — listens to keyboard, uses our chosen class.
-        this.players.push(new Player(pName, false, 'HARD', true, humanClass));
+        this.players.push(new Player(pName, false, 'HARD', true, humanClass, targetStrategy));
       } else {
         // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
         // Their class doesn't affect anything rendered/simulated on THIS machine, so
@@ -195,22 +203,10 @@ export class GameManager {
     net.onReceiveGarbage = (count: number) => {
       const myPlayer = this.players[myIndex];
       if (myPlayer && !myPlayer.isToppedOut) {
-        // Fortify (Tank's active): blocks ALL incoming garbage while it's up.
-        if (myPlayer.activeEffectType === 'FORTIFY' && myPlayer.activeEffectTimer > 0) {
-          return;
-        }
-        // Tank always takes at least 1 line of chip damage from a real attack —
-        // full negation was making the passive too strong AND starving the
-        // meter (most attacks are only 1 line, which fully zeroed out before).
-        const mitigated = myPlayer.playerClass === 'TANK' && count > 0
-          ? Math.max(1, count - TANK_GARBAGE_MITIGATION)
-          : count;
-        if (mitigated > 0) {
-          myPlayer.grid.addGarbageLines(mitigated, 'HUMAN');
-          if (myPlayer.playerClass === 'TANK') {
-            myPlayer.classMeter = Math.min(100, myPlayer.classMeter + mitigated * TANK_CHARGE_PER_GARBAGE_TAKEN);
-          }
-        }
+        // Queued, not applied immediately — this is what lets you cancel it
+        // by sending your own attack before your next piece spawns. See
+        // resolveGarbageQueue() for where it actually lands on the grid.
+        myPlayer.pendingGarbage += count;
       }
     };
 
@@ -369,6 +365,11 @@ export class GameManager {
   }
 
   private handleSpawning(player: Player) {
+    // Queued garbage lands now, right before your next piece — this is the
+    // "brief hold" window: if you sent an attack of your own since it was
+    // queued, it already got reduced or fully cancelled (see sendAttack()).
+    this.resolveGarbageQueue(player);
+
     if (!player.nextPiece) {
       player.nextPiece = new Tetromino(player.bag.getNext());
       player.itemManager.applyItemToTetromino(player.nextPiece);
@@ -395,9 +396,19 @@ export class GameManager {
     if (player.playerClass === 'SPEEDSTER') {
       player.dropInterval *= SPEEDSTER_GRAVITY_MULTIPLIER;
 
-      // Overdrive (active): an even bigger, temporary window while it's up.
+      // Overdrive (active): a temporary window while it's up — but its own
+      // power decays with match time too, same as everything else. Without
+      // this, a Speedster could chain-cast it (charging faster because
+      // Overdrive itself gives more time to hard-drop) and effectively
+      // freeze the game at turn-one speed for the whole match.
       if (player.activeEffectType === 'OVERDRIVE' && player.activeEffectTimer > 0) {
-        player.dropInterval *= OVERDRIVE_GRAVITY_MULTIPLIER;
+        const elapsedMs = this.isOnline ? this.gameTime : player.timeSurvived;
+        const elapsedMinutes = elapsedMs / 60000;
+        const decayedMultiplier = Math.max(
+          OVERDRIVE_MIN_MULTIPLIER,
+          OVERDRIVE_GRAVITY_MULTIPLIER - elapsedMinutes * OVERDRIVE_DECAY_PER_MINUTE
+        );
+        player.dropInterval *= decayedMultiplier;
       }
     }
     
@@ -490,11 +501,7 @@ export class GameManager {
 
       case 'SABOTEUR':
         player.classMeter = 0;
-        if (this.isOnline) {
-          this.network?.sendGarbage(SABOTEUR_BLACKOUT_GARBAGE);
-        } else {
-          this.distributeGarbage(player, SABOTEUR_BLACKOUT_GARBAGE);
-        }
+        this.sendAttack(player, SABOTEUR_BLACKOUT_GARBAGE);
         break;
     }
   }
@@ -576,12 +583,7 @@ export class GameManager {
         player.classMeter = Math.min(100, player.classMeter + charge);
       } else if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
-        if (this.isOnline) {
-          // In online mode, send garbage through the server
-          this.network?.sendGarbage(garbageCount);
-        } else {
-          this.distributeGarbage(player, garbageCount);
-        }
+        this.sendAttack(player, garbageCount);
       }
     }
 
@@ -608,33 +610,91 @@ export class GameManager {
     }
   }
 
-  private distributeGarbage(sender: Player, count: number) {
-    let senderType: 'EASY' | 'HARD' | 'HUMAN' = 'HUMAN';
-    if (sender.bot) {
-      senderType = sender.bot.difficulty;
+  /**
+   * Send an attack of `rawCount` garbage lines from `sender`. This is the
+   * single entry point for all outgoing garbage (normal line clears AND
+   * Saboteur's Blackout), for both offline and online play.
+   *
+   * Split/queue algorithm:
+   * 1. Cancel against the sender's OWN pending (queued, not-yet-landed)
+   *    incoming garbage first — this is what makes garbage "cancelable":
+   *    counter-attacking before your next piece spawns reduces or fully
+   *    negates the queued hit against you.
+   * 2. Whatever's left after cancelling goes to exactly ONE target, chosen
+   *    by the sender's targeting strategy (Highest Score / Left Neighbor /
+   *    Right Neighbor) — not split or broadcast to everyone.
+   */
+  private sendAttack(sender: Player, rawCount: number) {
+    const cancelled = Math.min(sender.pendingGarbage, rawCount);
+    sender.pendingGarbage -= cancelled;
+    const remaining = rawCount - cancelled;
+    if (remaining <= 0) return;
+
+    if (this.isOnline) {
+      // The server resolves who the target actually is (authoritative for
+      // HIGHEST_SCORE) and queues it on their end.
+      this.network?.sendGarbage(remaining);
+      return;
     }
 
-    for (const target of this.players) {
-      if (target.id !== sender.id && !target.isToppedOut) {
-        // Fortify (Tank's active): blocks ALL incoming garbage while it's up.
-        if (target.activeEffectType === 'FORTIFY' && target.activeEffectTimer > 0) {
-          continue;
-        }
+    const target = this.resolveOfflineTarget(sender);
+    if (target) {
+      target.pendingGarbage += remaining;
+    }
+  }
 
-        // Tank always takes at least 1 line of chip damage from a real attack —
-        // full negation was making the passive too strong AND starving the
-        // meter (most attacks are only 1 line, which fully zeroed out before).
-        const mitigated = target.playerClass === 'TANK' && count > 0
-          ? Math.max(1, count - TANK_GARBAGE_MITIGATION)
-          : count;
-        if (mitigated > 0) {
-          target.grid.addGarbageLines(mitigated, senderType);
-          if (target.playerClass === 'TANK') {
-            target.classMeter = Math.min(100, target.classMeter + mitigated * TANK_CHARGE_PER_GARBAGE_TAKEN);
-          }
-        }
+  /**
+   * Mirrors the server's resolveTarget() for offline play (solo/vs-bot),
+   * so both paths use the same targeting logic. Player array order is the
+   * "ring" for LEFT_NEIGHBOR/RIGHT_NEIGHBOR.
+   */
+  private resolveOfflineTarget(sender: Player): Player | null {
+    const senderIndex = this.players.indexOf(sender);
+    const others = this.players.filter((p) => p !== sender && !p.isToppedOut);
+    if (others.length === 0) return null;
+
+    if (sender.targetStrategy === 'HIGHEST_SCORE') {
+      return others.reduce((best, p) =>
+        p.scoreManager.score > best.scoreManager.score ? p : best
+      );
+    }
+
+    const direction = sender.targetStrategy === 'RIGHT_NEIGHBOR' ? 1 : -1;
+    const ringSize = this.players.length;
+    let idx = senderIndex;
+    for (let steps = 0; steps < ringSize; steps++) {
+      idx = (idx + direction + ringSize) % ringSize;
+      const candidate = this.players[idx];
+      if (candidate !== sender && !candidate.isToppedOut) return candidate;
+    }
+    return null;
+  }
+
+  /**
+   * Applies a player's queued garbage (if any) to their grid. Called right
+   * before their next piece spawns — Fortify/Tank mitigation and the Tank
+   * meter charge are resolved HERE, at landing time, not when it was queued,
+   * so a Fortify activated in between still blocks it correctly.
+   */
+  private resolveGarbageQueue(player: Player) {
+    if (player.pendingGarbage <= 0 || player.isToppedOut) return;
+
+    if (player.activeEffectType === 'FORTIFY' && player.activeEffectTimer > 0) {
+      player.pendingGarbage = 0;
+      return;
+    }
+
+    const mitigated = player.playerClass === 'TANK'
+      ? Math.max(1, player.pendingGarbage - TANK_GARBAGE_MITIGATION)
+      : player.pendingGarbage;
+
+    if (mitigated > 0) {
+      player.grid.addGarbageLines(mitigated, 'HUMAN');
+      if (player.playerClass === 'TANK') {
+        player.classMeter = Math.min(100, player.classMeter + mitigated * TANK_CHARGE_PER_GARBAGE_TAKEN);
       }
     }
+    player.pendingGarbage = 0;
   }
 
   // ==============================
