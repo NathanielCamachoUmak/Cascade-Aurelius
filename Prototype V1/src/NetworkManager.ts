@@ -1,21 +1,45 @@
 import { io, Socket } from "socket.io-client";
 
+import type { OnlineModeId } from './OnlineModeSelect';
+
+export interface RoomMode {
+  id: OnlineModeId;
+  title: string;
+  format: string;
+  capacity: number;
+  teamSize: number;
+  isTeamMode: boolean;
+  winnerRule: string;
+}
+
 export interface LobbyPlayer {
   id: string;
   name: string;
   ready: boolean;
   state: 'lobby' | 'playing' | 'spectating';
+  index: number;
+  team: 'cyan' | 'magenta' | null;
+  score: number;
+  lines: number;
 }
 
 export interface RoomState {
   roomId: string;
   phase: 'lobby' | 'countdown' | 'in-game' | 'post-game';
   players: LobbyPlayer[];
+  capacity: number;
+  teamSize: number;
+  matchEndsAt: number | null;
+  teamScores: { cyan: number; magenta: number };
+  mode: RoomMode;
 }
 
 export interface GameStartData {
-  players: { id: string; name: string; index: number }[];
+  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null }[];
   myIndex: number;
+  teamScores: { cyan: number; magenta: number };
+  modeId: OnlineModeId;
+  mode: RoomMode;
 }
 
 export interface PieceData {
@@ -45,14 +69,16 @@ export class NetworkManager {
   public onRoomUpdate: ((state: RoomState) => void) | null = null;
   public onJoinError: ((message: string) => void) | null = null;
   public onConnected: (() => void) | null = null;
-  public onConfirmJoin: ((data: { currentRoom: string; newRoom: string }) => void) | null = null;
+  public onConfirmJoin: ((data: { currentRoom: string; newRoom: string; newModeId?: OnlineModeId }) => void) | null = null;
   public onCountdownStart: ((seconds: number) => void) | null = null;
   public onCountdownCancel: (() => void) | null = null;
   public onPreGameCountdown: ((seconds: number) => void) | null = null;
   public onPlayerStateUpdate: ((data: { playerId: string; state: string }) => void) | null = null;
-  public onPostGameStart: ((data: { winnerId: string; winnerName: string }) => void) | null = null;
+  public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => void) | null = null;
   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
+  public onTeamScoreUpdate: ((data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => void) | null = null;
+  public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
 
   // --- Game callbacks ---
   public onGameStart: ((data: GameStartData) => void) | null = null;
@@ -101,7 +127,7 @@ export class NetworkManager {
       this.onPlayerStateUpdate?.(data);
     });
 
-    this.socket.on("post-game-start", (data: { winnerId: string; winnerName: string }) => {
+    this.socket.on("post-game-start", (data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => {
       this.onPostGameStart?.(data);
     });
 
@@ -111,6 +137,14 @@ export class NetworkManager {
     
     this.socket.on("player-disconnected", (data: { playerId: string }) => {
       this.onPlayerDisconnected?.(data);
+    });
+
+    this.socket.on("team-score-update", (data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => {
+      this.onTeamScoreUpdate?.(data);
+    });
+
+    this.socket.on("match-timer-start", (data: { endsAt: number; durationMs: number }) => {
+      this.onMatchTimerStart?.(data);
     });
 
     // --- Game events ---
@@ -150,12 +184,12 @@ export class NetworkManager {
 
   // --- Lobby emitters ---
 
-  public joinRoom(roomId: string, name: string) {
-    this.socket.emit("join-room", { roomId, name });
+  public joinRoom(roomId: string, name: string, modeId: OnlineModeId) {
+    this.socket.emit("join-room", { roomId, name, modeId });
   }
 
-  public confirmJoin(newRoomId: string, name: string) {
-    this.socket.emit("confirm-join", { newRoomId, name });
+  public confirmJoin(newRoomId: string, name: string, modeId: OnlineModeId) {
+    this.socket.emit("confirm-join", { newRoomId, name, modeId });
   }
 
   public leaveLobby() {
@@ -199,10 +233,6 @@ export class NetworkManager {
 
   public sendGarbage(count: number) {
     this.socket.emit("send-garbage", { count });
-  }
-
-  public setTargetStrategy(strategy: string) {
-    this.socket.emit("set-target-strategy", { strategy });
   }
 
   public sendRibbon(message: string) {

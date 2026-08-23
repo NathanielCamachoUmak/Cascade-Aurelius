@@ -3,9 +3,9 @@ import { GameManager, GameState } from './GameManager'
 import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
-import { NetworkManager, type RoomState, type GameStartData } from './NetworkManager'
+import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
-import { TARGET_STRATEGIES, type TargetStrategy } from './TargetStrategy'
+import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -20,6 +20,20 @@ const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
 const screenDifficulty = document.getElementById('screen-difficulty')!;
 const gameHud = document.getElementById('game-hud')!;
+function getOrCreateOnlineModeSelectScreen() {
+  const existing = document.getElementById('screen-online-mode-select');
+  if (existing) return existing;
+
+  // This fallback keeps the game playable when main.ts is updated before
+  // modeselect.html. The intended HTML mount still takes precedence.
+  const created = document.createElement('div');
+  created.id = 'screen-online-mode-select';
+  created.className = 'hidden relative z-10 w-full max-w-6xl px-4';
+  created.setAttribute('aria-live', 'polite');
+  uiLayer.appendChild(created);
+  return created;
+}
+const screenOnlineModeSelect = getOrCreateOnlineModeSelectScreen();
 
 const btnSolo = document.getElementById('btn-solo')!;
 const btnVsBot = document.getElementById('btn-vs-bot')!;
@@ -31,7 +45,6 @@ const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
 // Class select elements
 const screenClassSelect = document.getElementById('screen-class-select')!;
 const classCardList = document.getElementById('class-card-list')!;
-const targetStrategyList = document.getElementById('target-strategy-list')!;
 const btnClassContinue = document.getElementById('btn-class-continue')!;
 const btnClassBack = document.getElementById('btn-class-back')!;
 
@@ -45,6 +58,8 @@ const lobbyPlayerList = document.getElementById('lobby-player-list')!;
 const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
 const btnLobbyBack = document.getElementById('btn-lobby-back')!;
 const lobbyNicknameInput = document.getElementById('lobby-nickname-input') as HTMLInputElement;
+const onlineModeLabel = document.getElementById('online-mode-label');
+const lobbyModeDescription = document.getElementById('lobby-mode-description');
 
 // NEW: Lobby & Post-Game Elements
 const navLobby = document.getElementById('nav-lobby')!;
@@ -61,13 +76,18 @@ const btnPostLeave = document.getElementById('btn-post-leave')!;
 const preGameOverlay = document.getElementById('pre-game-overlay')!;
 const preGameText = document.getElementById('pre-game-text')!;
 const spectatorBanner = document.getElementById('spectator-banner')!;
+const teamLobbySummary = document.getElementById('team-lobby-summary')!;
+const teamLobbyCyan = document.getElementById('team-lobby-cyan')!;
+const teamLobbyMagenta = document.getElementById('team-lobby-magenta')!;
+const teamMatchStrip = document.getElementById('team-match-strip')!;
+const teamScoreCyan = document.getElementById('team-score-cyan')!;
+const teamScoreMagenta = document.getElementById('team-score-magenta')!;
+const teamMatchTimer = document.getElementById('team-match-timer')!;
+const postGameTeamScores = document.getElementById('post-game-team-scores')!;
 
 const hudP2 = document.getElementById('hud-p2')!;
 
 const scoreElementP1 = document.getElementById('score-p1')!;
-const matchTimerP1 = document.getElementById('match-timer-p1')!;
-const pendingGarbageP1 = document.getElementById('pending-garbage-p1')!;
-const pendingGarbageCountP1 = document.getElementById('pending-garbage-count-p1')!;
 const levelElementP1 = document.getElementById('level-p1')!;
 const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
@@ -92,29 +112,49 @@ let showGhostPiece = true;
 
 // --- Class Select ---
 let selectedClass: PlayerClass = 'TANK';
-let selectedTargetStrategy: TargetStrategy = 'HIGHEST_SCORE';
 let pendingMode: 'SOLO' | 'VS_BOT' | 'ONLINE' | null = null;
+let selectedOnlineMode: OnlineModeId = 'classic-pvp';
 
-function renderTargetStrategyList() {
-  targetStrategyList.innerHTML = '';
-  for (const info of TARGET_STRATEGIES) {
-    const isSelected = info.id === selectedTargetStrategy;
-    const btn = document.createElement('button');
-    btn.className = `flex-1 text-left rounded-lg px-4 py-3 bg-bgPanel border-2 transition-all cursor-pointer ${
-      isSelected ? 'border-neonMagenta shadow-[0_0_15px_rgba(255,0,127,0.2)]' : 'border-bgPanelBorder hover:border-gray-500'
-    }`;
-    btn.innerHTML = `
-      <div class="font-bold text-sm mb-1 ${isSelected ? 'text-neonMagenta' : ''}">${info.name}</div>
-      <div class="text-[11px] text-gray-500">${info.description}</div>
-    `;
-    btn.addEventListener('click', () => {
-      selectedTargetStrategy = info.id;
-      renderTargetStrategyList();
-    });
-    targetStrategyList.appendChild(btn);
+function getSelectedOnlineMode() {
+  return ONLINE_GAME_MODES.find(mode => mode.id === selectedOnlineMode) ?? ONLINE_GAME_MODES[0];
+}
+
+function updateOnlineModeLabel() {
+  const mode = getSelectedOnlineMode();
+  if (onlineModeLabel) {
+    onlineModeLabel.innerText = `Selected mode: ${mode.title} · ${mode.format} · ${mode.playerCount} players`;
   }
 }
-renderTargetStrategyList();
+
+function showOnlineModeSelect() {
+  screenMain.classList.add('hidden');
+  screenClassSelect.classList.remove('flex');
+  screenClassSelect.classList.add('hidden');
+  screenDifficulty.classList.remove('flex');
+  screenDifficulty.classList.add('hidden');
+  screenLobby.classList.remove('flex');
+  screenLobby.classList.add('hidden');
+  screenPostGame.classList.remove('flex');
+  screenPostGame.classList.add('hidden');
+  screenOnlineModeSelect.classList.remove('hidden');
+}
+
+mountOnlineModeSelect({
+  container: screenOnlineModeSelect,
+  initialMode: selectedOnlineMode,
+  onConfirm: mode => {
+    selectedOnlineMode = mode.id;
+    pendingMode = 'ONLINE';
+    updateOnlineModeLabel();
+    screenOnlineModeSelect.classList.add('hidden');
+    screenClassSelect.classList.remove('hidden');
+    screenClassSelect.classList.add('flex');
+  },
+  onBack: () => {
+    screenOnlineModeSelect.classList.add('hidden');
+    screenMain.classList.remove('hidden');
+  },
+});
 
 function renderClassCards() {
   classCardList.innerHTML = '';
@@ -155,7 +195,11 @@ btnVsBot.addEventListener('click', () => {
 btnClassBack.addEventListener('click', () => {
   screenClassSelect.classList.remove('flex');
   screenClassSelect.classList.add('hidden');
-  screenMain.classList.remove('hidden');
+  if (pendingMode === 'ONLINE') {
+    showOnlineModeSelect();
+  } else {
+    screenMain.classList.remove('hidden');
+  }
 });
 
 btnClassContinue.addEventListener('click', () => {
@@ -226,19 +270,32 @@ let network: NetworkManager | null = null;
 let myReady = false;
 let inRoom = false;
 let pendingJoinRoomId = '';
+let onlinePlayerTeams: Array<'cyan' | 'magenta' | null> = [];
+let onlineTeamScores = { cyan: 0, magenta: 0 };
+let teamMatchEndsAt: number | null = null;
+let teamTimerInterval: number | null = null;
+let activeOnlineMode: OnlineModeId = selectedOnlineMode;
+
+function formatTeamTimer() {
+  if (!teamMatchEndsAt) return '3:00';
+  const seconds = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
+  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+}
+
+function updateTeamScoreHud() {
+  teamScoreCyan.innerText = `${Math.round(onlineTeamScores.cyan)}`;
+  teamScoreMagenta.innerText = `${Math.round(onlineTeamScores.magenta)}`;
+  teamMatchTimer.innerText = formatTeamTimer();
+}
 
 btnPlayOnline.addEventListener('click', () => {
   pendingMode = 'ONLINE';
-  screenMain.classList.add('hidden');
-  screenClassSelect.classList.remove('hidden');
-  screenClassSelect.classList.add('flex');
+  showOnlineModeSelect();
 });
 
 btnLobbyBack.addEventListener('click', () => {
   // If we are connected, keep the lobby session active! Don't disconnect.
-  screenLobby.classList.remove('flex');
-  screenLobby.classList.add('hidden');
-  screenMain.classList.remove('hidden');
+  showOnlineModeSelect();
 });
 
 btnLobbyLeave.addEventListener('click', () => {
@@ -249,7 +306,7 @@ btnLobbyLeave.addEventListener('click', () => {
 btnConfirmJoinYes.addEventListener('click', () => {
   modalConfirmJoin.classList.add('hidden');
   const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-  network?.confirmJoin(pendingJoinRoomId, nickname);
+  network?.confirmJoin(pendingJoinRoomId, nickname, selectedOnlineMode);
 });
 
 btnConfirmJoinNo.addEventListener('click', () => {
@@ -277,7 +334,7 @@ btnJoinLobby.addEventListener('click', () => {
     network.onConnected = () => {
       lobbyStatus.innerText = 'Connected. Joining room...';
       const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-      network!.joinRoom(roomId, nickname);
+      network!.joinRoom(roomId, nickname, selectedOnlineMode);
     };
 
     network.onJoinError = (message: string) => {
@@ -287,6 +344,17 @@ btnJoinLobby.addEventListener('click', () => {
 
     network.onRoomUpdate = (state: RoomState) => {
       inRoom = true;
+      activeOnlineMode = state.mode.id;
+      selectedOnlineMode = state.mode.id;
+      onlineTeamScores = state.teamScores || onlineTeamScores;
+      if (onlineModeLabel) {
+        onlineModeLabel.innerText = `${state.mode.title} · ${state.mode.format} · ${state.mode.winnerRule}`;
+      }
+      if (lobbyModeDescription) {
+        lobbyModeDescription.innerText = state.mode.isTeamMode
+          ? 'Cyan Circuit versus Magenta Voltage. Highest combined score wins at the horn.'
+          : state.mode.winnerRule;
+      }
       
       // Auto-ready resets
       const me = state.players.find(p => p.id === network?.mySocketId);
@@ -363,7 +431,14 @@ btnJoinLobby.addEventListener('click', () => {
       screenPostGame.classList.add('flex');
       gameHud.classList.add('hidden');
       
-      postGameWinner.innerText = `Winner: ${data.winnerName}`;
+      if (data.winnerTeam) {
+        postGameWinner.innerText = `${data.winnerName} WINS`;
+        postGameTeamScores.innerHTML = `<span class="text-neon-cyan">CYAN ${Math.round(data.teamScores.cyan)}</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">MAGENTA ${Math.round(data.teamScores.magenta)}</span>`;
+      } else {
+        const isDraw = data.winnerName.startsWith('Draw');
+        postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
+        postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
+      }
       postGameVotes.innerText = `0 voted for rematch`;
       btnPostRematch.classList.remove('hidden');
       
@@ -383,7 +458,23 @@ btnJoinLobby.addEventListener('click', () => {
     };
 
     network.onGameStart = (data: GameStartData) => {
-      startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name));
+      activeOnlineMode = data.modeId;
+      selectedOnlineMode = data.modeId;
+      onlinePlayerTeams = data.players.map(player => player.team);
+      onlineTeamScores = data.teamScores;
+      startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
+    };
+
+    network.onTeamScoreUpdate = (data) => {
+      onlineTeamScores = data.teamScores;
+      updateTeamScoreHud();
+    };
+
+    network.onMatchTimerStart = (data) => {
+      teamMatchEndsAt = data.endsAt;
+      if (teamTimerInterval) clearInterval(teamTimerInterval);
+      teamTimerInterval = window.setInterval(updateTeamScoreHud, 250);
+      updateTeamScoreHud();
     };
 
     network.onShowRibbon = (message: string) => {
@@ -399,7 +490,7 @@ btnJoinLobby.addEventListener('click', () => {
     };
   } else {
     const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-    network.joinRoom(roomId, nickname);
+    network.joinRoom(roomId, nickname, selectedOnlineMode);
   }
 
   lobbyStatus.innerText = 'Connecting...';
@@ -413,7 +504,7 @@ btnLobbyReady.addEventListener('click', () => {
 });
 
 function renderLobbyPlayers(state: RoomState) {
-  lobbyStatus.innerText = `Room "${state.roomId}" — ${state.players.length}/4 players`;
+  lobbyStatus.innerText = `${state.mode.title} · ${state.mode.format} — ${state.players.length}/${state.capacity} players. ${state.mode.winnerRule}.`;
   btnJoinLobby.removeAttribute('disabled');
 
   if (inRoom) {
@@ -422,18 +513,52 @@ function renderLobbyPlayers(state: RoomState) {
   }
 
   lobbyPlayerList.innerHTML = '';
-  for (const p of state.players) {
-    const row = document.createElement('div');
-    row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
+  if (!state.mode.isTeamMode) {
+    teamLobbySummary.classList.add('hidden');
+    const title = document.createElement('div');
+    title.className = 'text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 text-neon-cyan bg-neon-cyan/5';
+    title.innerText = `${state.mode.title} · ${state.capacity} seats`;
+    lobbyPlayerList.appendChild(title);
 
-    const isMe = network && p.id === network.mySocketId;
-    row.innerHTML = `
-      <span class="font-bold">${p.name}${isMe ? ' (you)' : ''}</span>
-      <span class="${p.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">
-        ${p.ready ? '✓ Ready' : 'Not Ready'}
-      </span>
-    `;
-    lobbyPlayerList.appendChild(row);
+    for (let slot = 0; slot < state.capacity; slot++) {
+      const player = state.players[slot];
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
+      if (!player) {
+        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
+      } else {
+        const isMe = network && player.id === network.mySocketId;
+        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+      }
+      lobbyPlayerList.appendChild(row);
+    }
+    return;
+  }
+
+  teamLobbySummary.classList.remove('hidden');
+  const cyanPlayers = state.players.filter(player => player.team === 'cyan');
+  const magentaPlayers = state.players.filter(player => player.team === 'magenta');
+  teamLobbyCyan.innerText = `${cyanPlayers.length}/${state.teamSize}`;
+  teamLobbyMagenta.innerText = `${magentaPlayers.length}/${state.teamSize}`;
+  for (const team of ['cyan', 'magenta'] as const) {
+    const title = document.createElement('div');
+    title.className = `text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 ${team === 'cyan' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neon-pink bg-neon-pink/5'}`;
+    title.innerText = team === 'cyan' ? 'Cyan Circuit · 3 seats' : 'Magenta Voltage · 3 seats';
+    lobbyPlayerList.appendChild(title);
+
+    const teamPlayers = state.players.filter(player => player.team === team);
+    for (let slot = 0; slot < (state.teamSize || 3); slot++) {
+      const player = teamPlayers[slot];
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
+      if (!player) {
+        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
+      } else {
+        const isMe = network && player.id === network.mySocketId;
+        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? (team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink') : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+      }
+      lobbyPlayerList.appendChild(row);
+    }
   }
 }
 
@@ -443,7 +568,7 @@ function renderLobbyPlayers(state: RoomState) {
  */
 let onlinePlayerNames: string[] = [];
 
-function startOnlineGame(playerCount: number, myIndex: number, playerNames?: string[]) {
+function startOnlineGame(playerCount: number, myIndex: number, playerNames?: string[], mode?: RoomMode) {
   if (playerNames) {
     onlinePlayerNames = playerNames;
   }
@@ -452,6 +577,12 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
   spectatorBanner.classList.add('hidden');
+  if (mode?.isTeamMode) {
+    teamMatchStrip.classList.remove('hidden');
+    updateTeamScoreHud();
+  } else {
+    teamMatchStrip.classList.add('hidden');
+  }
 
   // Size canvas for the number of players
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
@@ -467,13 +598,14 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass, selectedTargetStrategy);
+  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
+  teamMatchStrip.classList.add('hidden');
   
   const playerCount = mode === 'SOLO' ? 1 : 2;
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
@@ -482,11 +614,11 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   if (mode === 'SOLO') {
     hudP2.classList.add('hidden');
     hudP2.classList.remove('flex');
-    gameManager.initSolo(selectedClass, selectedTargetStrategy);
+    gameManager.initSolo(selectedClass);
   } else {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
-    gameManager.init1v1(mode, selectedClass, selectedTargetStrategy);
+    gameManager.init1v1(mode, selectedClass);
   }
 }
 
@@ -579,7 +711,7 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
 }
 
 // Assign colors per player index for multiplayer
-const PLAYER_COLORS = ['#00E5FF', '#FF007F', '#FFC107', '#76FF03'];
+const PLAYER_COLORS = ['#00E5FF', '#40C4FF', '#80DEEA', '#FF007F', '#FF4081', '#FF80AB'];
 
 function renderPlayer(player: Player, index: number) {
   const offsetX = index * (COLS * BLOCK_SIZE + PADDING);
@@ -713,19 +845,6 @@ function render() {
   const p1 = gameManager.players[myIdx];
   if (p1) {
     scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
-
-    // The clock that actually drives the gravity ramp differs by mode:
-    // shared match time online, this player's own survival time offline.
-    const elapsedMs = gameManager.isOnline ? gameManager.gameTime : p1.timeSurvived;
-    const totalSeconds = Math.floor(elapsedMs / 1000);
-    const mm = Math.floor(totalSeconds / 60);
-    const ss = totalSeconds % 60;
-    matchTimerP1.innerText = `${mm}:${ss.toString().padStart(2, '0')}`;
-
-    pendingGarbageP1.classList.toggle('hidden', p1.pendingGarbage <= 0);
-    if (p1.pendingGarbage > 0) {
-      pendingGarbageCountP1.innerText = `${p1.pendingGarbage} lines`;
-    }
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
@@ -771,26 +890,37 @@ function render() {
     scoreboard.classList.remove('hidden');
     
     entries.innerHTML = '';
-    const playerData: {name: string, score: number, lines: number, alive: boolean}[] = [];
+    const playerData: {name: string, score: number, lines: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
     for (let i = 0; i < gameManager.players.length; i++) {
       const p = gameManager.players[i];
       playerData.push({
         name: onlinePlayerNames[i] || `Player ${i+1}`,
         score: p.scoreManager.score,
         lines: p.scoreManager.totalLinesCleared,
-        alive: !p.isToppedOut
+        alive: !p.isToppedOut,
+        team: onlinePlayerTeams[i] ?? null
       });
     }
-    // Sort by score descending
-    playerData.sort((a, b) => b.score - a.score);
-    for (const pd of playerData) {
-      const row = document.createElement('div');
-      row.className = `flex justify-between items-center gap-4 text-sm ${pd.alive ? 'text-white' : 'text-gray-600 line-through'}`;
-      row.innerHTML = `
-        <span class="font-bold truncate max-w-[100px]">${pd.name}</span>
-        <span class="font-pixel text-xs">${Math.round(pd.score)}</span>
-      `;
-      entries.appendChild(row);
+    if (activeOnlineMode !== 'team-deathmatch') {
+      for (const player of playerData.sort((a, b) => b.score - a.score)) {
+        const row = document.createElement('div');
+        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
+        row.innerHTML = `<span class="font-bold truncate max-w-[100px]">${player.name}</span><span class="font-pixel text-xs">${Math.round(player.score)}</span>`;
+        entries.appendChild(row);
+      }
+      return;
+    }
+    for (const team of ['cyan', 'magenta'] as const) {
+      const heading = document.createElement('div');
+      heading.className = `flex justify-between items-center pt-2 text-[10px] font-pixel ${team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink'}`;
+      heading.innerHTML = `<span>${team === 'cyan' ? 'CYAN' : 'MAGENTA'}</span><span>${Math.round(onlineTeamScores[team])}</span>`;
+      entries.appendChild(heading);
+      for (const player of playerData.filter(item => item.team === team).sort((a, b) => b.score - a.score)) {
+        const row = document.createElement('div');
+        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
+        row.innerHTML = `<span class="font-bold truncate max-w-[100px]">${player.name}</span><span class="font-pixel text-xs">${Math.round(player.score)}</span>`;
+        entries.appendChild(row);
+      }
     }
   }
 
@@ -816,10 +946,10 @@ window.addEventListener('keydown', (e) => {
       if (gameManager.isOnline) {
         // Handled by UI buttons in POST_GAME state instead
       } else if (gameManager.players.length === 1) {
-        gameManager.initSolo(selectedClass, selectedTargetStrategy);
+        gameManager.initSolo(selectedClass);
       } else {
         const botDiff = gameManager.players[1].bot!.difficulty;
-        gameManager.init1v1(botDiff, selectedClass, selectedTargetStrategy);
+        gameManager.init1v1(botDiff, selectedClass);
       }
     } else if (e.key === 'Escape') {
       returnToMenu();
@@ -839,6 +969,12 @@ function returnToMenu() {
   }
   myReady = false;
   inRoom = false;
+  onlinePlayerTeams = [];
+  activeOnlineMode = selectedOnlineMode;
+  onlineTeamScores = { cyan: 0, magenta: 0 };
+  teamMatchEndsAt = null;
+  if (teamTimerInterval) clearInterval(teamTimerInterval);
+  teamTimerInterval = null;
 
   // Reset menus
   screenDifficulty.classList.add('hidden');
@@ -847,15 +983,20 @@ function returnToMenu() {
   screenLobby.classList.add('hidden');
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
+  screenOnlineModeSelect.classList.add('hidden');
   spectatorBanner.classList.add('hidden');
   preGameOverlay.classList.add('hidden');
   modalConfirmJoin.classList.add('hidden');
   
   lobbyStatus.innerText = '';
+  if (onlineModeLabel) onlineModeLabel.innerText = '';
+  if (lobbyModeDescription) lobbyModeDescription.innerText = 'Choose a mode to create a room';
   lobbyPlayerList.innerHTML = '';
   btnLobbyReady.classList.add('hidden');
   btnLobbyReady.innerText = 'READY UP';
   btnLobbyLeave.classList.add('hidden');
+  teamLobbySummary.classList.add('hidden');
+  teamMatchStrip.classList.add('hidden');
   btnJoinLobby.removeAttribute('disabled');
 
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
