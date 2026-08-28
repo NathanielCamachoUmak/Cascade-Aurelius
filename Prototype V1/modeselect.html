@@ -446,9 +446,10 @@
             </div>
 
             <!-- Next Box (P1) -->
-            <div class="hud-panel p-4 text-center h-32 flex flex-col justify-between">
+            <div class="hud-panel p-4 text-center min-h-32 flex flex-col justify-between">
               <h3 class="text-[10px] font-bold text-gray-400 tracking-widest">NEXT</h3>
               <canvas id="next-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
+              <div id="next-queue-p1" class="mt-2 text-[9px] font-pixel tracking-[0.15em] text-neon-cyan" aria-label="Next five pieces"></div>
             </div>
 
             <!-- Stats -->
@@ -470,21 +471,37 @@
                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines</div>
                 <div id="level-p1" class="text-lg font-bold">0</div>
               </div>
-              <div id="ability-meter-p1" class="hidden mt-2">
-                <div class="flex justify-between items-baseline mb-1">
-                  <div id="ability-label-p1" class="text-[10px] text-neonMagenta uppercase font-bold tracking-wider"></div>
-                  <div id="ability-ready-p1" class="hidden text-[10px] text-neonYellow font-bold">READY (SHIFT)</div>
+              <div id="ability-meter-p1" class="mt-2 flex flex-col gap-1.5" aria-label="Class abilities">
+                <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-1">
+                  <kbd class="text-center text-[10px] font-pixel text-neon-cyan">Q</kbd>
+                  <span id="ability-q-label-p1" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY Q</span>
+                  <span id="ability-q-status-p1" class="text-[9px] font-bold text-neon-cyan">READY</span>
                 </div>
-                <div class="w-full bg-deep-purple border border-card-border h-3 rounded-full overflow-hidden">
-                  <div id="ability-fill-p1" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-yellow/30 bg-neon-yellow/5 px-2 py-1">
+                  <kbd class="text-center text-[10px] font-pixel text-neon-yellow">E</kbd>
+                  <span id="ability-e-label-p1" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY E</span>
+                  <span id="ability-e-status-p1" class="text-[9px] font-bold text-neon-yellow">READY</span>
+                </div>
+                <div class="rounded border border-neon-magenta/30 bg-neon-magenta/5 px-2 py-1.5">
+                  <div class="flex justify-between items-baseline gap-2">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <kbd class="text-center text-[10px] font-pixel text-neon-magenta">R</kbd>
+                      <div id="ability-label-p1" class="truncate text-[9px] text-neon-magenta uppercase font-bold tracking-wider">ULTIMATE</div>
+                    </div>
+                    <div id="ability-ready-p1" class="hidden whitespace-nowrap text-[9px] text-neon-yellow font-bold">READY</div>
+                  </div>
+                  <div class="mt-1 w-full bg-deep-purple border border-card-border h-2 rounded-full overflow-hidden">
+                    <div id="ability-fill-p1" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                  </div>
+                  <div id="ability-r-status-p1" class="mt-1 text-right text-[9px] font-bold text-neon-magenta">0 LINES</div>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Canvas Container -->
-          <div id="canvas-spacer" class="relative shrink-0 flex justify-center">
-             <canvas id="gameCanvas" class="bg-black/80 backdrop-blur-sm pointer-events-none rounded-lg"></canvas>
+          <div id="canvas-spacer" class="relative shrink-0 flex justify-center max-w-[58vw] overflow-hidden">
+             <canvas id="gameCanvas" class="max-w-full h-auto bg-black/80 backdrop-blur-sm pointer-events-none rounded-lg"></canvas>
           </div>
 
           <!-- Multiplayer Scoreboard -->

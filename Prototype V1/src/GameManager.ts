@@ -6,7 +6,6 @@ import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
-import { type TargetStrategy } from "./TargetStrategy";
 
 // Visual Effects System
 interface Particle {
@@ -45,23 +44,12 @@ export const GameState = {
 } as const;
 export type GameState = typeof GameState[keyof typeof GameState];
 
-// Class passive tuning — change these to rebalance without hunting through the logic.
-const SPEEDSTER_GRAVITY_MULTIPLIER = 1.3; // >1 = slower gravity (more time for fast, technical inputs)
-const TANK_GARBAGE_MITIGATION = 1; // reduction to incoming garbage lines (never reduces a real attack all the way to 0 — see below)
-const SABOTEUR_CHARGE_SINGLE = 10; // sabotage meter gained per single-line clear
-const SABOTEUR_CHARGE_DOUBLE = 20; // sabotage meter gained per double-line clear
-
-// Class active-ability tuning
-const SPEEDSTER_CHARGE_PER_HARDDROP = 8; // meter gained per hard drop
-const OVERDRIVE_DURATION_MS = 5000; // how long Speedster's active lasts
-const OVERDRIVE_GRAVITY_MULTIPLIER = 4; // extra gravity slowdown on top of the passive, at match start
-const OVERDRIVE_DECAY_PER_MINUTE = 0.5; // how much that multiplier shrinks per minute survived
-const OVERDRIVE_MIN_MULTIPLIER = 1.5; // Overdrive's multiplier never decays below this floor
-
-const TANK_CHARGE_PER_GARBAGE_TAKEN = 15; // meter gained per garbage line actually taken (after mitigation)
-const FORTIFY_DURATION_MS = 6000; // how long Tank's shield blocks all incoming garbage
-
-const SABOTEUR_BLACKOUT_GARBAGE = 4; // garbage lines sent when Saboteur's active fires
+const CLASS_Q_COOLDOWN_MS = 10_000;
+const CLASS_E_COOLDOWN_MS = 15_000;
+const TIME_WARP_DURATION_MS = 6_000;
+const BULLET_TIME_DURATION_MS = 5_000;
+const CHAOS_DURATION_MS = 8_000;
+const PERFECT_CLEAR_WINDOW_MS = 15_000;
 
 export class GameManager {
   public state: GameState = GameState.MAIN_MENU;
@@ -97,20 +85,20 @@ export class GameManager {
     this.renderFn = renderFn;
   }
 
-  public initSolo(humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
+  public initSolo(humanClass: PlayerClass = 'TANK') {
     this.isOnline = false;
     this.network = null;
-    this.players = [new Player("P1", false, 'HARD', true, humanClass, targetStrategy)];
+    this.players = [new Player("P1", false, 'HARD', true, humanClass)];
     this.start();
   }
 
-  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
+  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK') {
     this.isOnline = false;
     this.network = null;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
     this.players = [
-      new Player("P1", false, 'HARD', true, humanClass, targetStrategy),
+      new Player("P1", false, 'HARD', true, humanClass),
       new Player("P2", true, difficulty, true, botClass)
     ];
     this.start();
@@ -123,16 +111,11 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK', targetStrategy: TargetStrategy = 'HIGHEST_SCORE') {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK') {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
-
-    // The server resolves who Highest-Score/Left/Right actually points to
-    // (it's the only side with authoritative knowledge of everyone's score),
-    // so it needs to know our choice too.
-    net.setTargetStrategy(targetStrategy);
 
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
@@ -140,7 +123,7 @@ export class GameManager {
       const pName = playerNames[i] || `P${i + 1}`;
       if (i === myIndex) {
         // Our local player — listens to keyboard, uses our chosen class.
-        this.players.push(new Player(pName, false, 'HARD', true, humanClass, targetStrategy));
+        this.players.push(new Player(pName, false, 'HARD', true, humanClass));
       } else {
         // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
         // Their class doesn't affect anything rendered/simulated on THIS machine, so
@@ -200,13 +183,46 @@ export class GameManager {
       }
     };
 
-    net.onReceiveGarbage = (count: number) => {
+    net.onReceiveGarbage = (count: number, fromIndex?: number) => {
       const myPlayer = this.players[myIndex];
       if (myPlayer && !myPlayer.isToppedOut) {
-        // Queued, not applied immediately — this is what lets you cancel it
-        // by sending your own attack before your next piece spawns. See
-        // resolveGarbageQueue() for where it actually lands on the grid.
-        myPlayer.pendingGarbage += count;
+        if (myPlayer.fortifyCharges > 0) {
+          myPlayer.fortifyCharges--;
+          return;
+        }
+        if (myPlayer.reflectGarbage && fromIndex !== undefined) {
+          myPlayer.reflectGarbage = false;
+          this.network?.sendReflectedGarbage(fromIndex, count);
+          return;
+        }
+        myPlayer.grid.addGarbageLines(count, 'HUMAN');
+        if (myPlayer.supportPassiveConversion) {
+          myPlayer.grid.convertGarbageToSpecialBlocks(count);
+          myPlayer.supportPassiveConversion = false;
+        } else if (myPlayer.recycleGarbageLines > 0) {
+          const converted = myPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, myPlayer.recycleGarbageLines));
+          myPlayer.recycleGarbageLines = Math.max(0, myPlayer.recycleGarbageLines - converted);
+        }
+      }
+    };
+
+    net.onClassEffect = effect => {
+      const myPlayer = this.players[myIndex];
+      if (!myPlayer || myPlayer.isToppedOut) return;
+      if (effect.type === 'FREEZE') {
+        myPlayer.activeEffectType = 'FROZEN';
+        myPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
+        myPlayer.inputHandler.freezeFor(myPlayer.activeEffectTimer);
+      } else if (effect.type === 'CHAOS') {
+        myPlayer.activeEffectType = 'CHAOS';
+        myPlayer.activeEffectTimer = effect.durationMs ?? CHAOS_DURATION_MS;
+        myPlayer.inputHandler.reverseFor(myPlayer.activeEffectTimer);
+      } else if (effect.type === 'SCRAMBLE') {
+        this.scramblePreview(myPlayer, effect.amount ?? 5);
+      } else if (effect.type === 'GRID_SHIFT') {
+        myPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
+      } else if (effect.type === 'GUARDIAN_ANGEL') {
+        myPlayer.grid.clearBottomLines(effect.amount ?? 4);
       }
     };
 
@@ -277,11 +293,16 @@ export class GameManager {
 
       player.timeSurvived += dt;
       player.scoreManager.update(dt);
+      player.abilityCooldowns.Q = Math.max(0, player.abilityCooldowns.Q - dt);
+      player.abilityCooldowns.E = Math.max(0, player.abilityCooldowns.E - dt);
+      player.perfectClearWindow = Math.max(0, player.perfectClearWindow - dt);
 
-      // Tick down any active class ability (Overdrive / Fortify)
       if (player.activeEffectTimer > 0) {
         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
         if (player.activeEffectTimer === 0) {
+          if (player.activeEffectType === 'TIME_WARP') {
+            player.dropInterval = Math.max(100, player.dropInterval / 2);
+          }
           player.activeEffectType = null;
         }
       }
@@ -292,6 +313,10 @@ export class GameManager {
       } else {
         // Human input auto-repeat tick
         player.inputHandler.update(dt);
+      }
+
+      if (player.activeEffectType === 'FROZEN' && player.activeEffectTimer > 0) {
+        continue;
       }
 
       // Spawning
@@ -365,14 +390,15 @@ export class GameManager {
   }
 
   private handleSpawning(player: Player) {
-    // Queued garbage lands now, right before your next piece — this is the
-    // "brief hold" window: if you sent an attack of your own since it was
-    // queued, it already got reduced or fully cancelled (see sendAttack()).
-    this.resolveGarbageQueue(player);
-
     if (!player.nextPiece) {
       player.nextPiece = new Tetromino(player.bag.getNext());
       player.itemManager.applyItemToTetromino(player.nextPiece);
+    }
+
+    if (player.scramblePreviewCount > 0) {
+      player.nextPiece = new Tetromino(player.bag.getNext());
+      player.itemManager.applyItemToTetromino(player.nextPiece);
+      player.scramblePreviewCount--;
     }
     
     player.currentPiece = player.nextPiece;
@@ -391,25 +417,8 @@ export class GameManager {
       player.dropInterval = Math.max(100, baseInterval - linesFactor - timeFactor);
     }
 
-    // Speedster passive: slower gravity — more time to execute fast, technical
-    // inputs (this is the class for players who move fast, not fall fast).
-    if (player.playerClass === 'SPEEDSTER') {
-      player.dropInterval *= SPEEDSTER_GRAVITY_MULTIPLIER;
-
-      // Overdrive (active): a temporary window while it's up — but its own
-      // power decays with match time too, same as everything else. Without
-      // this, a Speedster could chain-cast it (charging faster because
-      // Overdrive itself gives more time to hard-drop) and effectively
-      // freeze the game at turn-one speed for the whole match.
-      if (player.activeEffectType === 'OVERDRIVE' && player.activeEffectTimer > 0) {
-        const elapsedMs = this.isOnline ? this.gameTime : player.timeSurvived;
-        const elapsedMinutes = elapsedMs / 60000;
-        const decayedMultiplier = Math.max(
-          OVERDRIVE_MIN_MULTIPLIER,
-          OVERDRIVE_GRAVITY_MULTIPLIER - elapsedMinutes * OVERDRIVE_DECAY_PER_MINUTE
-        );
-        player.dropInterval *= decayedMultiplier;
-      }
+    if (player.activeEffectType === 'TIME_WARP' && player.activeEffectTimer > 0) {
+      player.dropInterval *= 2;
     }
     
     player.dropTimer = 0;
@@ -435,8 +444,20 @@ export class GameManager {
   }
 
   private processAction(player: Player, action: InputAction) {
-    if (action === InputAction.ACTIVATE) {
-      this.tryActivateAbility(player);
+    if (action === InputAction.ABILITY_Q) {
+      this.tryUseClassAbility(player, 'Q');
+      return;
+    }
+    if (action === InputAction.ABILITY_E) {
+      this.tryUseClassAbility(player, 'E');
+      return;
+    }
+    if (action === InputAction.ULTIMATE) {
+      this.tryUseClassAbility(player, 'R');
+      return;
+    }
+    if (action === InputAction.TARGET_NEXT) {
+      this.cycleClassTarget(player);
       return;
     }
 
@@ -456,16 +477,7 @@ export class GameManager {
         }
         break;
       case InputAction.HARD_DROP:
-        let dropped = 0;
-        while (this.movePiece(player, 0, 1)) {
-          dropped++;
-        }
-        player.scoreManager.addDropScore(dropped * 2);
-        this.handlePieceLock(player);
-
-        if (player.playerClass === 'SPEEDSTER') {
-          player.classMeter = Math.min(100, player.classMeter + SPEEDSTER_CHARGE_PER_HARDDROP);
-        }
+        this.hardDropPiece(player);
         break;
       case InputAction.ROTATE_CW:
         this.rotatePiece(player, 1);
@@ -479,30 +491,106 @@ export class GameManager {
     }
   }
 
-  /**
-   * Spend a full class meter to trigger that class's active ability.
-   * No-ops silently if the meter isn't full yet.
-   */
-  private tryActivateAbility(player: Player) {
-    if (player.classMeter < 100) return;
+  private hardDropPiece(player: Player) {
+    if (!player.currentPiece) return;
+    let dropped = 0;
+    while (this.movePiece(player, 0, 1)) dropped++;
+    player.scoreManager.addDropScore(dropped * 2);
+    this.handlePieceLock(player);
+  }
 
-    switch (player.playerClass) {
-      case 'SPEEDSTER':
-        player.classMeter = 0;
-        player.activeEffectType = 'OVERDRIVE';
-        player.activeEffectTimer = OVERDRIVE_DURATION_MS;
-        break;
+  private tryUseClassAbility(player: Player, slot: 'Q' | 'E' | 'R') {
+    if (slot !== 'R' && player.abilityCooldowns[slot] > 0) return;
+    const level = Math.floor(player.scoreManager.totalLinesCleared / 10);
 
-      case 'TANK':
-        player.classMeter = 0;
-        player.activeEffectType = 'FORTIFY';
-        player.activeEffectTimer = FORTIFY_DURATION_MS;
-        break;
+    if (slot === 'Q') {
+      if (player.playerClass === 'SPEEDSTER') {
+        this.hardDropPiece(player);
+        player.abilityCooldowns.Q = 12_000;
+      } else if (player.playerClass === 'TANK') {
+        player.fortifyCharges = 2;
+        player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
+      } else if (player.playerClass === 'SABOTEUR') {
+        this.sendOrApplyClassEffect(player, { type: 'SCRAMBLE', amount: 5, targetIndex: player.selectedTargetIndex ?? undefined });
+        player.abilityCooldowns.Q = 12_000;
+      } else if (player.playerClass === 'SUPPORT') {
+        player.recycleGarbageLines = 4;
+        player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
+      }
+      return;
+    }
 
-      case 'SABOTEUR':
-        player.classMeter = 0;
-        this.sendAttack(player, SABOTEUR_BLACKOUT_GARBAGE);
-        break;
+    if (slot === 'E') {
+      if (player.playerClass === 'SPEEDSTER') {
+        player.activeEffectType = 'TIME_WARP';
+        player.activeEffectTimer = TIME_WARP_DURATION_MS;
+        player.dropInterval *= 2;
+        player.abilityCooldowns.E = CLASS_E_COOLDOWN_MS;
+      } else if (player.playerClass === 'TANK') {
+        player.reflectGarbage = true;
+        player.abilityCooldowns.E = 20_000;
+      } else if (player.playerClass === 'SABOTEUR') {
+        if (player.gridShiftUsedLevel === level) return;
+        player.gridShiftUsedLevel = level;
+        this.sendOrApplyClassEffect(player, { type: 'GRID_SHIFT', direction: Math.random() < 0.5 ? -1 : 1, targetIndex: player.selectedTargetIndex ?? undefined });
+      } else if (player.playerClass === 'SUPPORT') {
+        player.perfectClearWindow = PERFECT_CLEAR_WINDOW_MS;
+        player.abilityCooldowns.E = 25_000;
+      }
+      return;
+    }
+
+    const ultimateCost = player.playerClass === 'SPEEDSTER' ? 40 : player.playerClass === 'TANK' ? 50 : player.playerClass === 'SABOTEUR' ? 35 : 45;
+    if (player.classMeter < ultimateCost) return;
+    player.classMeter = 0;
+    if (player.playerClass === 'SPEEDSTER') {
+      this.sendOrApplyClassEffect(player, { type: 'FREEZE', durationMs: BULLET_TIME_DURATION_MS });
+    } else if (player.playerClass === 'TANK') {
+      this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 10 });
+    } else if (player.playerClass === 'SABOTEUR') {
+      this.sendOrApplyClassEffect(player, { type: 'CHAOS', durationMs: CHAOS_DURATION_MS });
+    } else if (player.playerClass === 'SUPPORT') {
+      this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: player.selectedTargetIndex ?? undefined });
+    }
+  }
+
+  private cycleClassTarget(player: Player) {
+    const candidates = this.players
+      .map((target, index) => ({ target, index }))
+      .filter(({ target }) => target !== player && !target.isToppedOut)
+      .map(({ index }) => index);
+    if (!candidates.length) {
+      player.selectedTargetIndex = null;
+      return;
+    }
+    const current = player.selectedTargetIndex === null ? -1 : candidates.indexOf(player.selectedTargetIndex);
+    player.selectedTargetIndex = candidates[(current + 1) % candidates.length];
+  }
+
+  private sendOrApplyClassEffect(player: Player, effect: { type: 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
+    if (this.isOnline) {
+      this.network?.sendClassAbility(effect);
+      return;
+    }
+    const opponents = this.players.filter(target => target.id !== player.id && !target.isToppedOut);
+    const selectedTarget = effect.targetIndex === undefined ? undefined : this.players[effect.targetIndex];
+    if (effect.type === 'FREEZE') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
+    else if (effect.type === 'CHAOS') opponents.forEach(target => target.inputHandler.reverseFor(effect.durationMs ?? CHAOS_DURATION_MS));
+    else if (effect.type === 'SCRAMBLE') this.scramblePreview(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 5);
+    else if (effect.type === 'GRID_SHIFT') (selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0])?.grid.shiftHorizontally((effect.direction ?? 1) * 2);
+    else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 10, 'HUMAN'));
+    else if (effect.type === 'GUARDIAN_ANGEL') player.grid.clearBottomLines(effect.amount ?? 4);
+  }
+
+  private scramblePreview(player: Player | undefined, count: number) {
+    if (!player) return;
+    const total = Math.max(1, count);
+    player.bag.scramblePreview(total);
+    if (player.nextPiece) {
+      player.nextPiece = new Tetromino(player.bag.getNext());
+      player.itemManager.applyItemToTetromino(player.nextPiece);
+    } else {
+      player.scramblePreviewCount += total;
     }
   }
 
@@ -569,21 +657,41 @@ export class GameManager {
 
     if (linesCleared > 0) {
       player.scoreManager.addScoreForLines(linesCleared);
+      player.classMeter += linesCleared;
 
       // Trigger visual effects for the local player's clears
       if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
         this.triggerLineClearEffects(linesCleared, clearedRows);
       }
 
-      if (player.playerClass === 'SABOTEUR' && linesCleared <= 2) {
-        // Saboteur passive: small clears build the Sabotage Meter instead of
-        // sending garbage. (Triples/Tetrises still send garbage normally —
-        // spending the meter on an actual sabotage move is a later milestone.)
-        const charge = linesCleared === 1 ? SABOTEUR_CHARGE_SINGLE : SABOTEUR_CHARGE_DOUBLE;
-        player.classMeter = Math.min(100, player.classMeter + charge);
-      } else if (linesCleared >= 2) {
+      if (linesCleared >= 4) {
+        if (player.playerClass === 'SPEEDSTER') {
+          if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.SPEED);
+          else player.itemManager.forceNextItem(SpecialBlockType.SPEED);
+        } else if (player.playerClass === 'TANK') {
+          if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.HEAVY);
+          else player.itemManager.forceNextItem(SpecialBlockType.HEAVY);
+        } else if (player.playerClass === 'SABOTEUR') {
+          this.sendOrApplyClassEffect(player, { type: 'SCRAMBLE', amount: 1, targetIndex: player.selectedTargetIndex ?? undefined });
+        } else if (player.playerClass === 'SUPPORT') {
+          player.supportPassiveConversion = true;
+        }
+      }
+
+      if (player.playerClass === 'SUPPORT' && player.perfectClearWindow > 0 && player.grid.isEmpty()) {
+        player.scoreManager.addBonusLines(4);
+        player.classMeter += 4;
+        player.perfectClearWindow = 0;
+      }
+
+      if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
-        this.sendAttack(player, garbageCount);
+        if (this.isOnline) {
+          // In online mode, send garbage through the server
+          this.network?.sendGarbage(garbageCount);
+        } else {
+          this.distributeGarbage(player, garbageCount);
+        }
       }
     }
 
@@ -595,6 +703,8 @@ export class GameManager {
         player.grid.clearLineDirectlyBeneath(clearedRows[0]);
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
+      } else if (special === SpecialBlockType.SPEED) {
+        player.dropInterval = Math.max(100, player.dropInterval * 0.75);
       }
     }
 
@@ -610,91 +720,33 @@ export class GameManager {
     }
   }
 
-  /**
-   * Send an attack of `rawCount` garbage lines from `sender`. This is the
-   * single entry point for all outgoing garbage (normal line clears AND
-   * Saboteur's Blackout), for both offline and online play.
-   *
-   * Split/queue algorithm:
-   * 1. Cancel against the sender's OWN pending (queued, not-yet-landed)
-   *    incoming garbage first — this is what makes garbage "cancelable":
-   *    counter-attacking before your next piece spawns reduces or fully
-   *    negates the queued hit against you.
-   * 2. Whatever's left after cancelling goes to exactly ONE target, chosen
-   *    by the sender's targeting strategy (Highest Score / Left Neighbor /
-   *    Right Neighbor) — not split or broadcast to everyone.
-   */
-  private sendAttack(sender: Player, rawCount: number) {
-    const cancelled = Math.min(sender.pendingGarbage, rawCount);
-    sender.pendingGarbage -= cancelled;
-    const remaining = rawCount - cancelled;
-    if (remaining <= 0) return;
-
-    if (this.isOnline) {
-      // The server resolves who the target actually is (authoritative for
-      // HIGHEST_SCORE) and queues it on their end.
-      this.network?.sendGarbage(remaining);
-      return;
+  private distributeGarbage(sender: Player, count: number) {
+    let senderType: 'EASY' | 'HARD' | 'HUMAN' = 'HUMAN';
+    if (sender.bot) {
+      senderType = sender.bot.difficulty;
     }
 
-    const target = this.resolveOfflineTarget(sender);
-    if (target) {
-      target.pendingGarbage += remaining;
-    }
-  }
-
-  /**
-   * Mirrors the server's resolveTarget() for offline play (solo/vs-bot),
-   * so both paths use the same targeting logic. Player array order is the
-   * "ring" for LEFT_NEIGHBOR/RIGHT_NEIGHBOR.
-   */
-  private resolveOfflineTarget(sender: Player): Player | null {
-    const senderIndex = this.players.indexOf(sender);
-    const others = this.players.filter((p) => p !== sender && !p.isToppedOut);
-    if (others.length === 0) return null;
-
-    if (sender.targetStrategy === 'HIGHEST_SCORE') {
-      return others.reduce((best, p) =>
-        p.scoreManager.score > best.scoreManager.score ? p : best
-      );
-    }
-
-    const direction = sender.targetStrategy === 'RIGHT_NEIGHBOR' ? 1 : -1;
-    const ringSize = this.players.length;
-    let idx = senderIndex;
-    for (let steps = 0; steps < ringSize; steps++) {
-      idx = (idx + direction + ringSize) % ringSize;
-      const candidate = this.players[idx];
-      if (candidate !== sender && !candidate.isToppedOut) return candidate;
-    }
-    return null;
-  }
-
-  /**
-   * Applies a player's queued garbage (if any) to their grid. Called right
-   * before their next piece spawns — Fortify/Tank mitigation and the Tank
-   * meter charge are resolved HERE, at landing time, not when it was queued,
-   * so a Fortify activated in between still blocks it correctly.
-   */
-  private resolveGarbageQueue(player: Player) {
-    if (player.pendingGarbage <= 0 || player.isToppedOut) return;
-
-    if (player.activeEffectType === 'FORTIFY' && player.activeEffectTimer > 0) {
-      player.pendingGarbage = 0;
-      return;
-    }
-
-    const mitigated = player.playerClass === 'TANK'
-      ? Math.max(1, player.pendingGarbage - TANK_GARBAGE_MITIGATION)
-      : player.pendingGarbage;
-
-    if (mitigated > 0) {
-      player.grid.addGarbageLines(mitigated, 'HUMAN');
-      if (player.playerClass === 'TANK') {
-        player.classMeter = Math.min(100, player.classMeter + mitigated * TANK_CHARGE_PER_GARBAGE_TAKEN);
+    for (const target of this.players) {
+      if (target.id !== sender.id && !target.isToppedOut) {
+        if (target.fortifyCharges > 0) {
+          target.fortifyCharges--;
+          continue;
+        }
+        if (target.reflectGarbage) {
+          target.reflectGarbage = false;
+          sender.grid.addGarbageLines(count, senderType);
+          continue;
+        }
+        target.grid.addGarbageLines(count, senderType);
+        if (target.supportPassiveConversion) {
+          target.grid.convertGarbageToSpecialBlocks(count);
+          target.supportPassiveConversion = false;
+        } else if (target.recycleGarbageLines > 0) {
+          const converted = target.grid.convertGarbageToSpecialBlocks(Math.min(count, target.recycleGarbageLines));
+          target.recycleGarbageLines = Math.max(0, target.recycleGarbageLines - converted);
+        }
       }
     }
-    player.pendingGarbage = 0;
   }
 
   // ==============================

@@ -63,4 +63,10 @@ export class ScoreManager {
   public addDropScore(cellsDropped: number) {
     this.score += cellsDropped * this.scoreMultiplier * this.globalMultiplier;
   }
+
+  public addBonusLines(lines: number) {
+    if (lines <= 0) return;
+    this.totalLinesCleared += lines;
+    this.score += lines * 100 * this.scoreMultiplier * this.globalMultiplier;
+  }
 }

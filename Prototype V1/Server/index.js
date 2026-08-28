@@ -443,6 +443,51 @@ io.on('connection', socket => {
     }
   });
 
+  socket.on('reflect-garbage', ({ targetIndex, count }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    const sender = room?.players.get(socket.id);
+    if (!room || !sender || room.phase !== 'in-game') return;
+    const targetEntry = Array.from(room.players.entries()).find(([, player]) => player.index === targetIndex && player.state === 'playing');
+    if (!targetEntry) return;
+    const [targetId, target] = targetEntry;
+    const isOpponent = room.mode.isTeamMode ? target.team !== sender.team : targetId !== socket.id;
+    if (!isOpponent) return;
+    io.to(targetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index });
+  });
+
+  socket.on('class-ability', ({ type, durationMs, amount, direction, targetIndex }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    const sender = room?.players.get(socket.id);
+    if (!room || !sender || room.phase !== 'in-game') return;
+
+    const opponents = Array.from(room.players.entries()).filter(([id, player]) => {
+      if (id === socket.id || player.state !== 'playing') return false;
+      return room.mode.isTeamMode ? player.team !== sender.team : true;
+    });
+    const selectedOpponent = opponents.find(([, player]) => player.index === targetIndex) ?? opponents[0];
+    const safeDuration = Math.max(0, Math.min(10_000, Number(durationMs) || 0));
+    const safeAmount = Math.max(0, Math.min(20, Number(amount) || 0));
+
+    if (type === 'FREEZE' || type === 'CHAOS') {
+      const effect = { type, durationMs: safeDuration };
+      opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+    } else if (type === 'SCRAMBLE' && selectedOpponent) {
+      io.to(selectedOpponent[0]).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)) });
+    } else if (type === 'GRID_SHIFT' && selectedOpponent) {
+      io.to(selectedOpponent[0]).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1 });
+    } else if (type === 'EARTHQUAKE') {
+      opponents.forEach(([id]) => io.to(id).emit('receive-garbage', { count: safeAmount || 10, fromIndex: sender.index }));
+    } else if (type === 'GUARDIAN_ANGEL') {
+      const allies = room.mode.isTeamMode
+        ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
+        : null;
+      const selectedAlly = allies?.find(([, player]) => player.index === targetIndex) ?? allies?.[0];
+      io.to(selectedAlly?.[0] ?? socket.id).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4 });
+    }
+  });
+
   socket.on('broadcast-ribbon', ({ message }) => {
     const roomId = socket.data.roomId;
     if (roomId) socket.to(roomId).emit('show-ribbon', { message });

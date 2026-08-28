@@ -93,10 +93,16 @@ const comboElementP1 = document.getElementById('combo-p1')!;
 const multiplierElementP1 = document.getElementById('multiplier-p1')!;
 const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
 const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
+const nextQueueP1 = document.getElementById('next-queue-p1')!;
 const abilityMeterP1 = document.getElementById('ability-meter-p1')!;
+const abilityQLabelP1 = document.getElementById('ability-q-label-p1')!;
+const abilityQStatusP1 = document.getElementById('ability-q-status-p1')!;
+const abilityELabelP1 = document.getElementById('ability-e-label-p1')!;
+const abilityEStatusP1 = document.getElementById('ability-e-status-p1')!;
 const abilityLabelP1 = document.getElementById('ability-label-p1')!;
 const abilityFillP1 = document.getElementById('ability-fill-p1')!;
 const abilityReadyP1 = document.getElementById('ability-ready-p1')!;
+const abilityRStatusP1 = document.getElementById('ability-r-status-p1')!;
 
 const scoreElementP2 = document.getElementById('score-p2')!;
 const levelElementP2 = document.getElementById('level-p2')!;
@@ -166,7 +172,9 @@ function renderClassCards() {
       <h3 class="text-2xl font-bold mb-2 ${isSelected ? 'text-neonCyan' : ''}">${info.name}</h3>
       <p class="text-gray-400 text-sm mb-4">${info.tagline}</p>
       <p class="text-xs text-gray-500 mb-2">${info.passiveDescription}</p>
-      <p class="text-xs text-neonMagenta">${info.activeDescription}</p>
+      <p class="text-xs text-neonCyan mb-2"><strong>Q · ${info.abilityQName}:</strong> ${info.abilityQDescription}</p>
+      <p class="text-xs text-neonYellow mb-2"><strong>E · ${info.abilityEName}:</strong> ${info.abilityEDescription}</p>
+      <p class="text-xs text-neonMagenta"><strong>R · ${info.ultimateName} (${info.ultimateCost} lines):</strong> ${info.ultimateDescription}</p>
     `;
     card.addEventListener('click', () => {
       selectedClass = info.id;
@@ -584,9 +592,11 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
     teamMatchStrip.classList.add('hidden');
   }
 
-  // Size canvas for the number of players
+  // Size the canvas for the number of players; CSS constrains the visual width
+  // on smaller screens so the left skill HUD remains reachable in 4- and 6-board modes.
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
   canvas.height = ROWS * BLOCK_SIZE;
+  canvas.style.maxWidth = playerCount >= 4 ? '58vw' : 'min(58vw, 600px)';
 
   // Show P2 HUD if there are 2+ players
   if (playerCount >= 2) {
@@ -671,6 +681,7 @@ function drawBlock(
     if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
     if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
     if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
+    if (isSpecial === SpecialBlockType.SPEED) icon = 'S';
 
     targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
   } else {
@@ -850,17 +861,28 @@ function render() {
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
     renderPieceOnMiniCanvas(nextCanvasP1, p1.nextPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
+    nextQueueP1.innerText = p1.bag.getPreview(5).join(' · ');
 
     const classInfo1 = PLAYER_CLASSES.find((c) => c.id === p1.playerClass);
     abilityMeterP1.classList.remove('hidden');
     if (classInfo1) {
-      const isActive = p1.activeEffectTimer > 0;
-      abilityLabelP1.innerText = isActive
-        ? `${classInfo1.activeName.toUpperCase()} ACTIVE (${Math.ceil(p1.activeEffectTimer / 1000)}s)`
-        : classInfo1.activeName.toUpperCase();
+      const qCooldown = Math.max(0, p1.abilityCooldowns.Q);
+      const eCooldown = Math.max(0, p1.abilityCooldowns.E);
+      const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
+      const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
+      const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
+      const targetName = p1.selectedTargetIndex === null ? 'default target' : (onlinePlayerNames[p1.selectedTargetIndex] ?? `P${p1.selectedTargetIndex + 1}`);
+      abilityQLabelP1.innerText = classInfo1.abilityQName.toUpperCase();
+      abilityQStatusP1.innerText = qStatus;
+      abilityQStatusP1.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
+      abilityELabelP1.innerText = classInfo1.abilityEName.toUpperCase();
+      abilityEStatusP1.innerText = eStatus;
+      abilityEStatusP1.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
+      abilityLabelP1.innerText = classInfo1.ultimateName.toUpperCase();
+      abilityRStatusP1.innerText = `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
+      abilityFillP1.style.width = `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`;
+      abilityReadyP1.classList.toggle('hidden', p1.classMeter < classInfo1.ultimateCost);
     }
-    abilityFillP1.style.width = `${p1.classMeter}%`;
-    abilityReadyP1.classList.toggle('hidden', p1.classMeter < 100);
   }
 
   // Update UI for Player 2 (opponent / bot)
@@ -875,12 +897,9 @@ function render() {
     abilityMeterP2.classList.remove('hidden');
     abilityMeterP2.classList.add('flex');
     if (classInfo2) {
-      const isActive2 = p2.activeEffectTimer > 0;
-      abilityLabelP2.innerText = isActive2
-        ? `${classInfo2.activeName.toUpperCase()} (${Math.ceil(p2.activeEffectTimer / 1000)}s)`
-        : classInfo2.activeName.toUpperCase();
+      abilityLabelP2.innerText = `R: ${classInfo2.ultimateName.toUpperCase()} ${p2.classMeter}/${classInfo2.ultimateCost}`;
+      abilityFillP2.style.width = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
     }
-    abilityFillP2.style.width = `${p2.classMeter}%`;
   }
 
   // Update multiplayer scoreboard

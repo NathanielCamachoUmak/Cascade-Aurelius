@@ -1,3 +1,23 @@
+/**
+ * Drop-in responsive online mode selector for Block Quartet.
+ *
+ * Minimal integration:
+ *
+ *   import { mountOnlineModeSelect } from './OnlineModeSelect';
+ *
+ *   const modeSelect = mountOnlineModeSelect({
+ *     container: document.getElementById('screen-online-mode-select')!,
+ *     onConfirm: (mode) => {
+ *       // Use mode.id to route to your existing lobby / matchmaking code.
+ *       // Example: openOnlineLobby(mode.id);
+ *     },
+ *     onBack: () => showMainMenu(),
+ *   });
+ *
+ * The component injects its own scoped CSS and adapts from a three-column
+ * layout to a single-column layout on narrow screens. It has no dependencies.
+ */
+
 export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch';
 
 export interface OnlineGameMode {

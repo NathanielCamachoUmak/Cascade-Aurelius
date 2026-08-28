@@ -153,6 +153,45 @@ export class Grid {
     }
   }
 
+  public isEmpty(): boolean {
+    return this.matrix.every(row => row.every(cell => cell.type === null));
+  }
+
+  /** Removes up to `count` lower rows and lets the rest of the board fall. */
+  public clearBottomLines(count: number): number {
+    const lines = Math.max(0, Math.min(count, this.height));
+    let cleared = 0;
+    for (let r = this.height - 1; r >= this.height - lines; r--) {
+      if (this.matrix[r].some(cell => cell.type !== null)) cleared++;
+      this.matrix[r] = Array.from({ length: this.width }, () => ({ type: null }));
+    }
+    this.applyGravity();
+    return cleared;
+  }
+
+  /** Shifts occupied cells horizontally; blocks pushed through an edge wrap around. */
+  public shiftHorizontally(columns: number): void {
+    const amount = ((columns % this.width) + this.width) % this.width;
+    if (!amount) return;
+    this.matrix = this.matrix.map(row => row.map((_, column) => ({ ...row[(column - amount + this.width) % this.width] })));
+  }
+
+  /** Converts up to `count` garbage cells, prioritising the lower board, into special blocks. */
+  public convertGarbageToSpecialBlocks(count: number): number {
+    const specials = ['BOMB', 'HEAVY', 'MULTIPLIER'];
+    let converted = 0;
+    for (let r = this.height - 1; r >= 0 && converted < count; r--) {
+      for (let c = 0; c < this.width && converted < count; c++) {
+        const cell = this.matrix[r][c];
+        if (cell.type !== 'GARBAGE') continue;
+        cell.type = 'I';
+        cell.special = specials[converted % specials.length];
+        converted++;
+      }
+    }
+    return converted;
+  }
+
   // For when items clear cells non-linearly, we need to "drop" floating blocks
   public applyGravity(): void {
     for (let c = 0; c < this.width; c++) {

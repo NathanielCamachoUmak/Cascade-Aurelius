@@ -128,9 +128,10 @@ export class Tetromino {
 
 export class TetrominoBag {
   private bag: ShapeType[] = [];
+  private previewQueue: ShapeType[] = [];
   
   constructor() {
-    this.fillBag();
+    this.ensurePreview(5);
   }
 
   private fillBag() {
@@ -143,10 +144,38 @@ export class TetrominoBag {
     this.bag = shapes;
   }
 
-  public getNext(): ShapeType {
+  private drawFromBag(): ShapeType {
     if (this.bag.length === 0) {
       this.fillBag();
     }
     return this.bag.pop()!;
+  }
+
+  private ensurePreview(count: number) {
+    while (this.previewQueue.length < count) this.previewQueue.push(this.drawFromBag());
+  }
+
+  public getNext(): ShapeType {
+    this.ensurePreview(5);
+    const next = this.previewQueue.shift()!;
+    this.ensurePreview(5);
+    return next;
+  }
+
+  public getPreview(count: number = 5): ShapeType[] {
+    this.ensurePreview(count);
+    return this.previewQueue.slice(0, count);
+  }
+
+  /** Randomises a real queue window, so future spawns—not merely a label—change. */
+  public scramblePreview(count: number = 5): void {
+    this.ensurePreview(count);
+    const limit = Math.min(count, this.previewQueue.length);
+    const segment = this.previewQueue.slice(0, limit);
+    for (let i = segment.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [segment[i], segment[j]] = [segment[j], segment[i]];
+    }
+    this.previewQueue.splice(0, limit, ...segment);
   }
 }

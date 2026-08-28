@@ -56,9 +56,18 @@ export interface ScoreData {
   multiplier: number;
 }
 
+export type ClassEffectType = 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL';
+export interface ClassEffectData {
+  type: ClassEffectType;
+  durationMs?: number;
+  amount?: number;
+  direction?: -1 | 1;
+  targetIndex?: number;
+}
+
 // In production, set VITE_SERVER_URL in Vercel to your public tunnel URL.
 // Locally it falls back to localhost:3000 automatically.
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+const SERVER_URL = (import.meta as ImportMeta & { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL || "http://localhost:3000";
 
 export class NetworkManager {
   private socket: Socket;
@@ -79,6 +88,7 @@ export class NetworkManager {
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
   public onTeamScoreUpdate: ((data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => void) | null = null;
   public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
+  public onClassEffect: ((data: ClassEffectData) => void) | null = null;
 
   // --- Game callbacks ---
   public onGameStart: ((data: GameStartData) => void) | null = null;
@@ -86,7 +96,7 @@ export class NetworkManager {
   public onOpponentPieceUpdate: ((playerIndex: number, piece: PieceData | null) => void) | null = null;
   public onOpponentScoreUpdate: (playerIndex: number, scoreData: ScoreData) => void = () => {};
   public onOpponentToppedOut: (playerIndex: number) => void = () => {};
-  public onReceiveGarbage: (count: number) => void = () => {};
+  public onReceiveGarbage: (count: number, fromIndex?: number) => void = () => {};
   public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
 
@@ -147,6 +157,10 @@ export class NetworkManager {
       this.onMatchTimerStart?.(data);
     });
 
+    this.socket.on("class-effect", (data: ClassEffectData) => {
+      this.onClassEffect?.(data);
+    });
+
     // --- Game events ---
 
     this.socket.on("game-start", (data: GameStartData) => {
@@ -169,8 +183,8 @@ export class NetworkManager {
       this.onOpponentToppedOut?.(playerIndex);
     });
 
-    this.socket.on("receive-garbage", ({ count }: { count: number }) => {
-      this.onReceiveGarbage(count);
+    this.socket.on("receive-garbage", ({ count, fromIndex }: { count: number; fromIndex?: number }) => {
+      this.onReceiveGarbage(count, fromIndex);
     });
 
     this.socket.on("show-ribbon", ({ message }: { message: string }) => {
@@ -233,6 +247,14 @@ export class NetworkManager {
 
   public sendGarbage(count: number) {
     this.socket.emit("send-garbage", { count });
+  }
+
+  public sendClassAbility(effect: ClassEffectData) {
+    this.socket.emit("class-ability", effect);
+  }
+
+  public sendReflectedGarbage(targetIndex: number, count: number) {
+    this.socket.emit("reflect-garbage", { targetIndex, count });
   }
 
   public sendRibbon(message: string) {
