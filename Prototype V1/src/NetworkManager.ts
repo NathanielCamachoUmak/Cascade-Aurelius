@@ -56,7 +56,7 @@ export interface ScoreData {
   multiplier: number;
 }
 
-export type ClassEffectType = 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL';
+export type ClassEffectType = 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE';
 export interface ClassEffectData {
   type: ClassEffectType;
   durationMs?: number;

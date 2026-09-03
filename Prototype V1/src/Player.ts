@@ -6,7 +6,7 @@ import { ScoreManager } from './ScoreManager';
 import { AIBot, type Difficulty } from './AIBot';
 import { type PlayerClass } from './PlayerClass';
 
-export type ActiveClassEffect = 'TIME_WARP' | 'FROZEN' | 'CHAOS' | null;
+export type ActiveClassEffect = 'TIME_WARP' | 'QUICKSILVER' | 'CHAOS' | 'ABILITY_FREEZE' | null;
 
 export class Player {
   public id: string;
@@ -31,6 +31,8 @@ export class Player {
   public gridShiftUsedLevel = -1;
   public scramblePreviewCount = 0;
   public selectedTargetIndex: number | null = null;
+  public shieldActive = false;
+  public abilityFreezeTimer = 0;
 
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
@@ -77,5 +79,7 @@ export class Player {
     this.gridShiftUsedLevel = -1;
     this.scramblePreviewCount = 0;
     this.selectedTargetIndex = null;
+    this.shieldActive = false;
+    this.abilityFreezeTimer = 0;
   }
 }

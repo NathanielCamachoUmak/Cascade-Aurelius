@@ -40,8 +40,8 @@ try {
   const enemy = sockets[4]; // Magenta; sockets 0-2 are Cyan.
   const ally = sockets[2];
 
-  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'FREEZE' && data.durationMs === 5_000);
-  sockets[0].emit('class-ability', { type: 'FREEZE', durationMs: 5_000 });
+  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'QUICKSILVER' && data.durationMs === 5_000);
+  sockets[0].emit('class-ability', { type: 'QUICKSILVER', durationMs: 5_000 });
   await freeze;
 
   const chaos = waitFor(enemy, 'class-effect', data => data.type === 'CHAOS' && data.durationMs === 8_000);

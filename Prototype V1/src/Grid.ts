@@ -149,7 +149,6 @@ export class Grid {
       for (let c = 0; c < this.width; c++) {
         this.matrix[row + 1][c] = { type: null };
       }
-      this.applyGravity();
     }
   }
 
@@ -169,6 +168,21 @@ export class Grid {
     return cleared;
   }
 
+  /** Clears up to `count` rows containing garbage cells, scanning from the bottom up. Used by Garbage Eater block. */
+  public clearGarbageLines(count: number): number {
+    let cleared = 0;
+    for (let r = this.height - 1; r >= 0 && cleared < count; r--) {
+      if (this.matrix[r].some(cell => cell.type === 'GARBAGE')) {
+        for (let c = 0; c < this.width; c++) {
+          this.matrix[r][c] = { type: null };
+        }
+        cleared++;
+      }
+    }
+    if (cleared > 0) this.applyGravity();
+    return cleared;
+  }
+
   /** Shifts occupied cells horizontally; blocks pushed through an edge wrap around. */
   public shiftHorizontally(columns: number): void {
     const amount = ((columns % this.width) + this.width) % this.width;
@@ -178,7 +192,7 @@ export class Grid {
 
   /** Converts up to `count` garbage cells, prioritising the lower board, into special blocks. */
   public convertGarbageToSpecialBlocks(count: number): number {
-    const specials = ['BOMB', 'HEAVY', 'MULTIPLIER'];
+    const specials = ['BOMB', 'HEAVY', 'MULTIPLIER', 'SHIELD', 'FREEZE', 'GARBAGE_EATER'];
     let converted = 0;
     for (let r = this.height - 1; r >= 0 && converted < count; r--) {
       for (let c = 0; c < this.width && converted < count; c++) {
