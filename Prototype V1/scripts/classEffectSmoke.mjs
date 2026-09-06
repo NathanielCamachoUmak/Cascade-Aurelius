@@ -30,7 +30,7 @@ try {
     const socket = io(SERVER_URL, { transports: ['websocket'], forceNew: true });
     await waitFor(socket, 'connect');
     sockets.push(socket);
-    socket.emit('join-room', { roomId: ROOM_ID, name: `Class ${index}`, modeId: 'team-deathmatch' });
+    socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId: ROOM_ID, name: `Class ${index}`, modeId: 'team-deathmatch' });
   }
 
   const gameStarts = sockets.map(socket => waitFor(socket, 'game-start', data => data.modeId === 'team-deathmatch'));
@@ -40,8 +40,8 @@ try {
   const enemy = sockets[4]; // Magenta; sockets 0-2 are Cyan.
   const ally = sockets[2];
 
-  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'QUICKSILVER' && data.durationMs === 5_000);
-  sockets[0].emit('class-ability', { type: 'QUICKSILVER', durationMs: 5_000 });
+  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'FREEZE' && data.durationMs === 5_000);
+  sockets[0].emit('class-ability', { type: 'FREEZE', durationMs: 5_000 });
   await freeze;
 
   const chaos = waitFor(enemy, 'class-effect', data => data.type === 'CHAOS' && data.durationMs === 8_000);

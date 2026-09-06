@@ -6,7 +6,7 @@ import { ScoreManager } from './ScoreManager';
 import { AIBot, type Difficulty } from './AIBot';
 import { type PlayerClass } from './PlayerClass';
 
-export type ActiveClassEffect = 'TIME_WARP' | 'QUICKSILVER' | 'CHAOS' | 'ABILITY_FREEZE' | null;
+export type ActiveClassEffect = 'TIME_WARP' | 'FROZEN' | 'CHAOS' | null;
 
 export class Player {
   public id: string;
@@ -31,8 +31,6 @@ export class Player {
   public gridShiftUsedLevel = -1;
   public scramblePreviewCount = 0;
   public selectedTargetIndex: number | null = null;
-  public shieldActive = false;
-  public abilityFreezeTimer = 0;
 
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
@@ -42,6 +40,8 @@ export class Player {
   public dropInterval = 1000;
   public timeSurvived = 0;
   public isToppedOut = false;
+  public kills = 0;
+  public battleRoyalEliminated = false;
 
   constructor(id: string, isBot = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard = true, playerClass: PlayerClass = 'TANK') {
     this.id = id;
@@ -67,6 +67,8 @@ export class Player {
     this.dropTimer = 0;
     this.dropInterval = 1000;
     this.isToppedOut = false;
+    this.kills = 0;
+    this.battleRoyalEliminated = false;
     this.classMeter = 0;
     this.activeEffectType = null;
     this.activeEffectTimer = 0;
@@ -79,7 +81,5 @@ export class Player {
     this.gridShiftUsedLevel = -1;
     this.scramblePreviewCount = 0;
     this.selectedTargetIndex = null;
-    this.shieldActive = false;
-    this.abilityFreezeTimer = 0;
   }
 }

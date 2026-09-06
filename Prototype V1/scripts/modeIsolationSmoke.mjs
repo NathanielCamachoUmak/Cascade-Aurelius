@@ -56,7 +56,7 @@ try {
   const classicCreated = waitFor(classicHost, 'room-update', state =>
     state.roomId === ROOM_CODE && state.mode.id === 'classic-pvp' && state.players.length === 1,
   );
-  classicHost.emit('join-room', { roomId: ROOM_CODE, name: 'Classic Host', modeId: 'classic-pvp' });
+  classicHost.emit('host-room', { roomId: ROOM_CODE, name: 'Classic Host', modeId: 'classic-pvp' });
   const firstState = await classicCreated;
   assert(firstState.capacity === 2, 'Classic PvP must create a two-player room.');
   assert(firstState.players[0].team === null, 'Classic PvP players must not receive team assignments.');
@@ -92,7 +92,7 @@ try {
   const ffaCreated = waitFor(ffaHost, 'room-update', state =>
     state.roomId === ffaRoomCode && state.mode.id === 'free-for-all' && state.players.length === 1,
   );
-  ffaHost.emit('join-room', { roomId: ffaRoomCode, name: 'FFA Host', modeId: 'free-for-all' });
+  ffaHost.emit('host-room', { roomId: ffaRoomCode, name: 'FFA Host', modeId: 'free-for-all' });
   const ffaState = await ffaCreated;
   assert(ffaState.capacity === 4, 'Free For All must create a four-player room.');
   assert(ffaState.players[0].team === null, 'Free For All players must not receive team assignments.');

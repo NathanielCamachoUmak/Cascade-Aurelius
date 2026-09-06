@@ -5,9 +5,6 @@ export const SpecialBlockType = {
   HEAVY: 'HEAVY',
   MULTIPLIER: 'MULTIPLIER',
   SPEED: 'SPEED',
-  SHIELD: 'SHIELD',
-  FREEZE: 'FREEZE',
-  GARBAGE_EATER: 'GARBAGE_EATER',
   NONE: 'NONE',
 } as const;
 export type SpecialBlockType = typeof SpecialBlockType[keyof typeof SpecialBlockType];
@@ -20,12 +17,9 @@ interface ItemWeight {
 export class ItemManager {
   private itemPool: ItemWeight[] = [
     { type: SpecialBlockType.NONE, weight: 80 },
+    { type: SpecialBlockType.BOMB, weight: 5 },
+    { type: SpecialBlockType.HEAVY, weight: 5 },
     { type: SpecialBlockType.MULTIPLIER, weight: 10 },
-    { type: SpecialBlockType.BOMB, weight: 2 },
-    { type: SpecialBlockType.HEAVY, weight: 2 },
-    { type: SpecialBlockType.SHIELD, weight: 2 },
-    { type: SpecialBlockType.FREEZE, weight: 2 },
-    { type: SpecialBlockType.GARBAGE_EATER, weight: 2 },
   ];
   private forcedNextItem: SpecialBlockType | null = null;
 

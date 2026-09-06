@@ -10,6 +10,27 @@ export interface RoomMode {
   teamSize: number;
   isTeamMode: boolean;
   winnerRule: string;
+  durationMs?: number | null;
+  targetScore?: number | null;
+}
+
+export interface BattleRoyalState {
+  startedAt: number | null;
+  phase: string | null;
+  targetScore: number;
+  remainingPlayers: number;
+  elapsedMs: number;
+}
+
+export interface BattleRoyalRanking {
+  rank: number;
+  id: string;
+  name: string;
+  score: number;
+  lines: number;
+  kills: number;
+  state: string;
+  eliminated: boolean;
 }
 
 export interface LobbyPlayer {
@@ -21,25 +42,30 @@ export interface LobbyPlayer {
   team: 'cyan' | 'magenta' | null;
   score: number;
   lines: number;
+  kills: number;
+  eliminatedAt?: number | null;
 }
 
 export interface RoomState {
   roomId: string;
+  hostId: string | null;
   phase: 'lobby' | 'countdown' | 'in-game' | 'post-game';
   players: LobbyPlayer[];
   capacity: number;
   teamSize: number;
   matchEndsAt: number | null;
   teamScores: { cyan: number; magenta: number };
+  battleRoyal: BattleRoyalState | null;
   mode: RoomMode;
 }
 
 export interface GameStartData {
-  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null }[];
+  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number }[];
   myIndex: number;
   teamScores: { cyan: number; magenta: number };
   modeId: OnlineModeId;
   mode: RoomMode;
+  battleRoyal?: BattleRoyalState | null;
 }
 
 export interface PieceData {
@@ -52,11 +78,12 @@ export interface PieceData {
 export interface ScoreData {
   score: number;
   lines: number;
+  kills?: number;
   combo: number;
   multiplier: number;
 }
 
-export type ClassEffectType = 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE';
+export type ClassEffectType = 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL';
 export interface ClassEffectData {
   type: ClassEffectType;
   durationMs?: number;
@@ -86,9 +113,13 @@ export class NetworkManager {
   public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => void) | null = null;
   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
+  public onRoomHostChanged: ((data: { hostId: string | null }) => void) | null = null;
   public onTeamScoreUpdate: ((data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => void) | null = null;
   public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
   public onClassEffect: ((data: ClassEffectData) => void) | null = null;
+  public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number }) => void) | null = null;
+  public onBattleRoyalCull: ((data: { reason: string; eliminated: Array<{ id: string; name: string; score: number; lines: number; kills: number }>; remainingPlayers: number }) => void) | null = null;
+  public onBattleRoyalSuddenDeath: ((data: { targetId: string; targetIndex: number; remainingPlayers: number }) => void) | null = null;
 
   // --- Game callbacks ---
   public onGameStart: ((data: GameStartData) => void) | null = null;
@@ -96,9 +127,10 @@ export class NetworkManager {
   public onOpponentPieceUpdate: ((playerIndex: number, piece: PieceData | null) => void) | null = null;
   public onOpponentScoreUpdate: (playerIndex: number, scoreData: ScoreData) => void = () => {};
   public onOpponentToppedOut: (playerIndex: number) => void = () => {};
-  public onReceiveGarbage: (count: number, fromIndex?: number) => void = () => {};
+  public onReceiveGarbage: (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => void = () => {};
   public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
+  public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
 
   constructor() {
     this.socket = io(SERVER_URL);
@@ -160,6 +192,10 @@ export class NetworkManager {
     this.socket.on("class-effect", (data: ClassEffectData) => {
       this.onClassEffect?.(data);
     });
+    this.socket.on('room-host-changed', (data: any) => this.onRoomHostChanged?.(data));
+    this.socket.on('battle-royale-phase', (data: any) => this.onBattleRoyalPhase?.(data));
+    this.socket.on('battle-royale-cull', (data: any) => this.onBattleRoyalCull?.(data));
+    this.socket.on('battle-royale-sudden-death', (data: any) => this.onBattleRoyalSuddenDeath?.(data));
 
     // --- Game events ---
 
@@ -183,8 +219,8 @@ export class NetworkManager {
       this.onOpponentToppedOut?.(playerIndex);
     });
 
-    this.socket.on("receive-garbage", ({ count, fromIndex }: { count: number; fromIndex?: number }) => {
-      this.onReceiveGarbage(count, fromIndex);
+    this.socket.on("receive-garbage", ({ count, fromIndex, solid, unClearable, source }: { count: number; fromIndex?: number; solid?: boolean; unClearable?: boolean; source?: string }) => {
+      this.onReceiveGarbage(count, fromIndex, { solid, unClearable, source });
     });
 
     this.socket.on("show-ribbon", ({ message }: { message: string }) => {
@@ -194,12 +230,23 @@ export class NetworkManager {
     this.socket.on("game-over", ({ winnerId, winnerName }: { winnerId: string; winnerName: string }) => {
       this.onGameOver?.(winnerId, winnerName);
     });
+    this.socket.on('post-game-start', (data: any) => {
+      if (data.battleRoyal) this.onBattleRoyalPostGame?.(data);
+    });
   }
 
   // --- Lobby emitters ---
 
+  public hostRoom(roomId: string, name: string, modeId: OnlineModeId) {
+    this.socket.emit('host-room', { roomId, name, modeId });
+  }
+
   public joinRoom(roomId: string, name: string, modeId: OnlineModeId) {
     this.socket.emit("join-room", { roomId, name, modeId });
+  }
+
+  public startLobbyNow() {
+    this.socket.emit('host-start-now');
   }
 
   public confirmJoin(newRoomId: string, name: string, modeId: OnlineModeId) {
@@ -237,8 +284,8 @@ export class NetworkManager {
     this.socket.emit("player-topped-out");
   }
 
-  public sendEliminated() {
-    this.socket.emit("player-eliminated");
+  public sendEliminated(killerIndex?: number) {
+    this.socket.emit("player-eliminated", { killerIndex });
   }
 
   public sendGameOver(winnerName: string) {

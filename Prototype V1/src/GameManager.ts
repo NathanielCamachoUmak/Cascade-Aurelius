@@ -65,6 +65,12 @@ export class GameManager {
   public isOnline: boolean = false;
   public onlineWinnerName: string = "";
   public gameTime: number = 0;
+  public battleRoyalMode = false;
+  public battleRoyalPhase = '';
+  public battleRoyalRemaining = 0;
+  public battleRoyalKills = 0;
+  public battleRoyalTargetScore = 2_000_000;
+  public battleRoyalRankings: Array<{ rank: number; name: string; score: number; lines: number; kills: number; eliminated: boolean }> = [];
 
   // Visual effects state
   private particles: Particle[] = [];
@@ -116,6 +122,11 @@ export class GameManager {
     this.network = net;
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
+    this.battleRoyalMode = false;
+    this.battleRoyalPhase = '';
+    this.battleRoyalRemaining = playerCount;
+    this.battleRoyalKills = 0;
+    this.battleRoyalRankings = [];
 
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
@@ -172,6 +183,7 @@ export class GameManager {
         const player = this.players[playerIndex];
         player.scoreManager.score = data.score;
         player.scoreManager.totalLinesCleared = data.lines;
+        player.kills = data.kills ?? player.kills;
         player.scoreManager.combo = data.combo;
         player.scoreManager.scoreMultiplier = data.multiplier;
       }
@@ -183,38 +195,77 @@ export class GameManager {
       }
     };
 
-    net.onReceiveGarbage = (count: number, fromIndex?: number) => {
+    net.onPlayerStateUpdate = ({ playerId, state }) => {
+      if (state !== 'spectating') return;
+      const playerIndex = this.players.findIndex(player => player.id === playerId);
+      if (playerIndex >= 0) {
+        this.players[playerIndex].isToppedOut = true;
+        this.players[playerIndex].battleRoyalEliminated = this.battleRoyalMode;
+      }
+      if (playerId === net.mySocketId) {
+        const localPlayer = this.players[myIndex];
+        if (localPlayer) {
+          localPlayer.isToppedOut = true;
+          localPlayer.battleRoyalEliminated = this.battleRoyalMode;
+        }
+        this.renderFn();
+      }
+    };
+
+    net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => {
       const myPlayer = this.players[myIndex];
       if (myPlayer && !myPlayer.isToppedOut) {
-        if (myPlayer.shieldActive) {
-          myPlayer.shieldActive = false;
-          return;
-        }
-        if (myPlayer.fortifyCharges > 0) {
+        const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
+        if (!isSolidSuddenDeath && myPlayer.fortifyCharges > 0) {
           myPlayer.fortifyCharges--;
           return;
         }
-        if (myPlayer.reflectGarbage && fromIndex !== undefined) {
+        if (!isSolidSuddenDeath && myPlayer.reflectGarbage && fromIndex !== undefined) {
           myPlayer.reflectGarbage = false;
           this.network?.sendReflectedGarbage(fromIndex, count);
           return;
         }
-        myPlayer.grid.addGarbageLines(count, 'HUMAN');
-        if (myPlayer.supportPassiveConversion) {
+        myPlayer.grid.addGarbageLines(count, 'HUMAN', { solid: isSolidSuddenDeath, unClearable: Boolean(options?.unClearable) });
+        if (!isSolidSuddenDeath && myPlayer.supportPassiveConversion) {
           myPlayer.grid.convertGarbageToSpecialBlocks(count);
           myPlayer.supportPassiveConversion = false;
-        } else if (myPlayer.recycleGarbageLines > 0) {
+        } else if (!isSolidSuddenDeath && myPlayer.recycleGarbageLines > 0) {
           const converted = myPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, myPlayer.recycleGarbageLines));
           myPlayer.recycleGarbageLines = Math.max(0, myPlayer.recycleGarbageLines - converted);
         }
       }
     };
 
+    net.onBattleRoyalPhase = data => {
+      this.battleRoyalMode = true;
+      this.battleRoyalPhase = data.label;
+      this.battleRoyalRemaining = data.remainingPlayers;
+      this.renderFn();
+    };
+    net.onBattleRoyalCull = data => {
+      this.battleRoyalMode = true;
+      this.battleRoyalRemaining = data.remainingPlayers;
+      this.renderFn();
+    };
+    net.onBattleRoyalSuddenDeath = data => {
+      this.battleRoyalMode = true;
+      this.battleRoyalRemaining = data.remainingPlayers;
+      this.renderFn();
+    };
+    net.onBattleRoyalPostGame = data => {
+      this.battleRoyalMode = true;
+      this.battleRoyalRankings = data.rankings.map(entry => ({ rank: entry.rank, name: entry.name, score: entry.score, lines: entry.lines, kills: entry.kills, eliminated: entry.eliminated }));
+      this.battleRoyalTargetScore = data.targetScore;
+      this.onlineWinnerName = data.winnerName;
+      this.state = GameState.GAME_OVER;
+      this.renderFn();
+    };
+
     net.onClassEffect = effect => {
       const myPlayer = this.players[myIndex];
       if (!myPlayer || myPlayer.isToppedOut) return;
-      if (effect.type === 'QUICKSILVER') {
-        myPlayer.activeEffectType = 'QUICKSILVER';
+      if (effect.type === 'FREEZE') {
+        myPlayer.activeEffectType = 'FROZEN';
         myPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
         myPlayer.inputHandler.freezeFor(myPlayer.activeEffectTimer);
       } else if (effect.type === 'CHAOS') {
@@ -227,8 +278,6 @@ export class GameManager {
         myPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
       } else if (effect.type === 'GUARDIAN_ANGEL') {
         myPlayer.grid.clearBottomLines(effect.amount ?? 4);
-      } else if (effect.type === 'ABILITY_FREEZE') {
-        myPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
       }
     };
 
@@ -302,7 +351,6 @@ export class GameManager {
       player.abilityCooldowns.Q = Math.max(0, player.abilityCooldowns.Q - dt);
       player.abilityCooldowns.E = Math.max(0, player.abilityCooldowns.E - dt);
       player.perfectClearWindow = Math.max(0, player.perfectClearWindow - dt);
-      player.abilityFreezeTimer = Math.max(0, player.abilityFreezeTimer - dt);
 
       if (player.activeEffectTimer > 0) {
         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
@@ -322,7 +370,7 @@ export class GameManager {
         player.inputHandler.update(dt);
       }
 
-      if (player.activeEffectType === 'QUICKSILVER' && player.activeEffectTimer > 0) {
+      if (player.activeEffectType === 'FROZEN' && player.activeEffectTimer > 0) {
         continue;
       }
 
@@ -392,6 +440,7 @@ export class GameManager {
         lines: myPlayer.scoreManager.totalLinesCleared,
         combo: myPlayer.scoreManager.combo,
         multiplier: myPlayer.scoreManager.scoreMultiplier,
+        kills: myPlayer.kills,
       });
     }
   }
@@ -507,7 +556,6 @@ export class GameManager {
   }
 
   private tryUseClassAbility(player: Player, slot: 'Q' | 'E' | 'R') {
-    if (player.abilityFreezeTimer > 0) return;
     if (slot !== 'R' && player.abilityCooldowns[slot] > 0) return;
     const level = Math.floor(player.scoreManager.totalLinesCleared / 10);
 
@@ -552,7 +600,7 @@ export class GameManager {
     if (player.classMeter < ultimateCost) return;
     player.classMeter = 0;
     if (player.playerClass === 'SPEEDSTER') {
-      this.sendOrApplyClassEffect(player, { type: 'QUICKSILVER', durationMs: BULLET_TIME_DURATION_MS });
+      this.sendOrApplyClassEffect(player, { type: 'FREEZE', durationMs: BULLET_TIME_DURATION_MS });
     } else if (player.playerClass === 'TANK') {
       this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 10 });
     } else if (player.playerClass === 'SABOTEUR') {
@@ -575,20 +623,19 @@ export class GameManager {
     player.selectedTargetIndex = candidates[(current + 1) % candidates.length];
   }
 
-  private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
+  private sendOrApplyClassEffect(player: Player, effect: { type: 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
     if (this.isOnline) {
       this.network?.sendClassAbility(effect);
       return;
     }
     const opponents = this.players.filter(target => target.id !== player.id && !target.isToppedOut);
     const selectedTarget = effect.targetIndex === undefined ? undefined : this.players[effect.targetIndex];
-    if (effect.type === 'QUICKSILVER') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
+    if (effect.type === 'FREEZE') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
     else if (effect.type === 'CHAOS') opponents.forEach(target => target.inputHandler.reverseFor(effect.durationMs ?? CHAOS_DURATION_MS));
     else if (effect.type === 'SCRAMBLE') this.scramblePreview(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 5);
     else if (effect.type === 'GRID_SHIFT') (selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0])?.grid.shiftHorizontally((effect.direction ?? 1) * 2);
     else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 10, 'HUMAN'));
     else if (effect.type === 'GUARDIAN_ANGEL') player.grid.clearBottomLines(effect.amount ?? 4);
-    else if (effect.type === 'ABILITY_FREEZE') opponents.forEach(target => { target.abilityFreezeTimer = effect.durationMs ?? 3000; });
   }
 
   private scramblePreview(player: Player | undefined, count: number) {
@@ -603,33 +650,16 @@ export class GameManager {
     }
   }
 
-  /** Freezes all opponents' abilities (Q/E/R) for the specified duration. Triggered by the Freeze special block. */
-  private applyAbilityFreeze(source: Player, durationMs: number) {
-    if (this.isOnline) {
-      this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs });
-      return;
-    }
-    for (const target of this.players) {
-      if (target.id !== source.id && !target.isToppedOut) {
-        target.abilityFreezeTimer = durationMs;
-      }
-    }
-  }
-
   private performHold(player: Player) {
     if (player.hasHeld || !player.currentPiece) return;
 
     if (player.holdPiece) {
       const temp = player.holdPiece;
-      // Store current piece WITH its specials into hold
       player.holdPiece = new Tetromino(player.currentPiece.type);
-      player.holdPiece.specialBlocks = new Map(player.currentPiece.specialBlocks);
-      // Restore held piece WITH its preserved specials
       player.currentPiece = new Tetromino(temp.type);
-      player.currentPiece.specialBlocks = new Map(temp.specialBlocks);
+      player.itemManager.applyItemToTetromino(player.currentPiece); // re-apply special blocks if needed
     } else {
       player.holdPiece = new Tetromino(player.currentPiece.type);
-      player.holdPiece.specialBlocks = new Map(player.currentPiece.specialBlocks);
       this.handleSpawning(player);
     }
     
@@ -721,9 +751,8 @@ export class GameManager {
       }
     }
 
-    // Special blocks — deduplicate so each type fires at most once (does not stack)
-    const uniqueSpecials = new Set(specialBlocksToTrigger);
-    for (const special of uniqueSpecials) {
+    // Special blocks
+    for (const special of specialBlocksToTrigger) {
       if (special === SpecialBlockType.BOMB) {
         player.grid.clearBombArea(clearedRows[0], Math.floor(player.grid.width / 2));
       } else if (special === SpecialBlockType.HEAVY) {
@@ -732,12 +761,6 @@ export class GameManager {
         player.scoreManager.activateMultiplierBlock();
       } else if (special === SpecialBlockType.SPEED) {
         player.dropInterval = Math.max(100, player.dropInterval * 0.75);
-      } else if (special === SpecialBlockType.SHIELD) {
-        player.shieldActive = true;
-      } else if (special === SpecialBlockType.FREEZE) {
-        this.applyAbilityFreeze(player, 3000);
-      } else if (special === SpecialBlockType.GARBAGE_EATER) {
-        player.grid.clearGarbageLines(1);
       }
     }
 
@@ -761,10 +784,6 @@ export class GameManager {
 
     for (const target of this.players) {
       if (target.id !== sender.id && !target.isToppedOut) {
-        if (target.shieldActive) {
-          target.shieldActive = false;
-          continue;
-        }
         if (target.fortifyCharges > 0) {
           target.fortifyCharges--;
           continue;

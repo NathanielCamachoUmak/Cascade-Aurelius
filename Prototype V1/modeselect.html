@@ -294,20 +294,24 @@
           </div>
 
           <!-- Room Code -->
-          <div class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-6 mb-6 panel-glow">
-            <label for="lobby-room-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Room Code</label>
-            <div class="flex gap-3 mt-2">
-              <input id="lobby-room-input" type="text" value="test-room"
-                class="flex-1 bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-cyan focus:shadow-[0_0_15px_rgba(0,255,255,0.2)] transition-all" />
-              <button id="btn-join-lobby" class="group relative px-6 py-2 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.2)]">
-                <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-                <span class="relative">JOIN</span>
-              </button>
+          <div id="lobby-room-panel" class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-6 mb-6 panel-glow">
+            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+              <div class="flex-1">
+                <label for="lobby-room-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Room Code</label>
+                <input id="lobby-room-input" type="text" value="test-room"
+                  class="mt-2 w-full bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-cyan focus:shadow-[0_0_15px_rgba(0,255,255,0.2)] transition-all" />
+              </div>
+              <div class="flex gap-2 sm:shrink-0">
+                <button id="btn-host-lobby" class="px-5 py-2.5 bg-neon-pink text-white font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(255,20,147,0.2)]">HOST</button>
+                <button id="btn-join-lobby" class="px-5 py-2.5 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.2)]">JOIN</button>
+              </div>
             </div>
+            <p id="lobby-action-hint" class="mt-3 text-[10px] text-gray-500 uppercase tracking-widest">Host creates this mode’s room. Join connects to an existing room with the same mode.</p>
           </div>
 
           <div id="lobby-countdown" class="hidden text-neon-yellow text-2xl font-bold font-pixel mb-4 animate-pulse"></div>
-          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px]"></div>
+          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px] text-center"></div>
+          <p id="lobby-start-hint" class="text-[10px] text-gray-500 uppercase tracking-widest text-center mb-4">The host can start with the current roster. Ready starts automatically when the room is full.</p>
           <div id="team-lobby-summary" class="hidden w-full grid grid-cols-2 gap-3 mb-4 text-[10px] font-bold tracking-widest uppercase">
             <div class="border border-neon-cyan/40 bg-neon-cyan/5 px-4 py-3 text-neon-cyan">Cyan Circuit <span id="team-lobby-cyan">0/3</span></div>
             <div class="border border-neon-pink/40 bg-neon-pink/5 px-4 py-3 text-neon-pink text-right">Magenta Voltage <span id="team-lobby-magenta">0/3</span></div>
@@ -317,7 +321,8 @@
             <!-- Player rows injected by main.ts -->
           </div>
 
-          <div class="flex gap-4">
+          <div class="flex flex-wrap justify-center gap-3">
+            <button id="btn-lobby-start-now" class="hidden px-8 py-3 bg-neon-yellow text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(255,220,80,0.25)]">START NOW</button>
             <button id="btn-lobby-ready" class="hidden group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
               <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
               <span class="relative">READY UP</span>

@@ -3,6 +3,7 @@ import { Tetromino } from "./Tetromino";
 export interface Cell {
   type: string | null; // "I", "J", "L", etc., or null if empty
   special?: string;    // "BOMB", "HEAVY", "MULTIPLIER"
+  unClearable?: boolean; // sudden-death garbage — never counts toward a clearable full row
 }
 
 export class Grid {
@@ -90,10 +91,11 @@ export class Grid {
     let writeRow = this.height - 1;
 
     for (let readRow = this.height - 1; readRow >= 0; readRow--) {
-      // Check if readRow is full
+      // Check if readRow is full — a row containing sudden-death (unClearable)
+      // garbage never counts as clearable, even if every cell is filled.
       let isFull = true;
       for (let c = 0; c < this.width; c++) {
-        if (this.matrix[readRow][c].type === null) {
+        if (this.matrix[readRow][c].type === null || this.matrix[readRow][c].unClearable) {
           isFull = false;
           break;
         }
@@ -172,9 +174,11 @@ export class Grid {
   public clearGarbageLines(count: number): number {
     let cleared = 0;
     for (let r = this.height - 1; r >= 0 && cleared < count; r--) {
-      if (this.matrix[r].some(cell => cell.type === 'GARBAGE')) {
+      if (this.matrix[r].some(cell => cell.type === 'GARBAGE' && !cell.unClearable)) {
         for (let c = 0; c < this.width; c++) {
-          this.matrix[r][c] = { type: null };
+          if (!this.matrix[r][c].unClearable) {
+            this.matrix[r][c] = { type: null };
+          }
         }
         cleared++;
       }
@@ -197,7 +201,7 @@ export class Grid {
     for (let r = this.height - 1; r >= 0 && converted < count; r--) {
       for (let c = 0; c < this.width && converted < count; c++) {
         const cell = this.matrix[r][c];
-        if (cell.type !== 'GARBAGE') continue;
+        if (cell.type !== 'GARBAGE' || cell.unClearable) continue;
         cell.type = 'I';
         cell.special = specials[converted % specials.length];
         converted++;
@@ -223,8 +227,14 @@ export class Grid {
   }
 
   // Event-Driven Garbage Logic
-  public addGarbageLines(count: number, senderType: 'EASY' | 'HARD' | 'HUMAN'): void {
+  public addGarbageLines(
+    count: number,
+    senderType: 'EASY' | 'HARD' | 'HUMAN',
+    options?: { solid?: boolean; unClearable?: boolean }
+  ): void {
     if (count <= 0) return;
+
+    const isUnClearable = Boolean(options?.solid || options?.unClearable);
 
     // Shift everything up by `count`
     for (let r = 0; r < this.height - count; r++) {
@@ -241,14 +251,19 @@ export class Grid {
 
     // Fill the bottom `count` rows with garbage
     for (let r = this.height - count; r < this.height; r++) {
-      const holeX = (senderType === 'HARD') ? alignedHoleX : Math.floor(Math.random() * this.width);
-      
+      // Solid sudden-death garbage is truly inescapable — no hole at all.
+      const holeX = options?.solid
+        ? -1
+        : (senderType === 'HARD') ? alignedHoleX : Math.floor(Math.random() * this.width);
+
       for (let c = 0; c < this.width; c++) {
         if (c === holeX) {
           this.matrix[r][c] = { type: null };
         } else {
           // Use a special type or just a grey solid block for garbage
-          this.matrix[r][c] = { type: 'GARBAGE' }; // We'll render GARBAGE as gray
+          this.matrix[r][c] = isUnClearable
+            ? { type: 'GARBAGE', unClearable: true }
+            : { type: 'GARBAGE' };
         }
       }
     }

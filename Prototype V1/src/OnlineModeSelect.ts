@@ -18,7 +18,7 @@
  * layout to a single-column layout on narrow screens. It has no dependencies.
  */
 
-export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch';
+export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
 
 export interface OnlineGameMode {
   id: OnlineModeId;
@@ -57,6 +57,15 @@ export const ONLINE_GAME_MODES: readonly OnlineGameMode[] = [
     description: 'Cyan Circuit versus Magenta Voltage.',
     winCondition: 'Highest combined team score at the horn.',
     accent: 'magenta',
+  },
+  {
+    id: 'battle-royale',
+    title: 'Battle Royale',
+    format: '40 players',
+    playerCount: 40,
+    description: 'A ten-minute solo survival race with scheduled culling phases and sudden death.',
+    winCondition: 'Closest surviving score to 2,000,000 wins. Rankings use score, lines, then kills.',
+    accent: 'yellow',
   },
 ] as const;
 
@@ -137,7 +146,7 @@ function ensureStyles() {
     .bq-mode-select__eyebrow { color: var(--bq-cyan); font-size: .72rem; font-weight: 800; letter-spacing: .18em; margin: 0 0 .65rem; text-transform: uppercase; }
     .bq-mode-select__title { font-size: clamp(1.7rem, 5vw, 3.25rem); line-height: 1; margin: 0; letter-spacing: -.045em; }
     .bq-mode-select__subtitle { color: var(--bq-muted); font-size: clamp(.95rem, 2vw, 1.08rem); line-height: 1.65; margin: .8rem 0 1.8rem; max-width: 44rem; }
-    .bq-mode-select__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .bq-mode-select__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
     .bq-mode-select__card {
       --mode-color: var(--bq-cyan);
       appearance: none;
@@ -176,6 +185,7 @@ function ensureStyles() {
     .bq-mode-select__button--confirm { background: var(--bq-cyan); border: 1px solid var(--bq-cyan); color: #061019; }
     .bq-mode-select__button:hover:not(:disabled) { filter: brightness(1.1); }
     .bq-mode-select__button:disabled { cursor: not-allowed; opacity: .5; }
+    @media (max-width: 1080px) { .bq-mode-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 760px) {
       .bq-mode-select { border-radius: 0; border-left: 0; border-right: 0; min-height: 100dvh; padding: 1.25rem; }
       .bq-mode-select__grid { grid-template-columns: 1fr; }

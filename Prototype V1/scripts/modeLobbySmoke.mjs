@@ -38,7 +38,7 @@ async function runMode({ id, capacity }) {
       await waitFor(socket, 'connect');
       sockets.push(socket);
       if (index === 0) rosterPromise = waitFor(socket, 'room-update', state => state.players.length === capacity);
-      socket.emit('join-room', { roomId, name: `${id}-${index + 1}`, modeId: id });
+      socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId, name: `${id}-${index + 1}`, modeId: id });
       await delay(40);
     }
 

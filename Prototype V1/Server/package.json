@@ -1,18 +1,14 @@
 {
-  "name": "temp",
+  "name": "block-quartet-server",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "node --watch index.js",
+    "start": "node index.js"
   },
   "dependencies": {
-    "socket.io-client": "^4.7.5"
-  },
-  "devDependencies": {
-    "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   }
-} 
+}

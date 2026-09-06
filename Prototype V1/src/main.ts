@@ -1,5 +1,6 @@
 import './style.css'
 import { GameManager, GameState } from './GameManager'
+import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
@@ -51,7 +52,11 @@ const btnClassBack = document.getElementById('btn-class-back')!;
 const screenLobby = document.getElementById('screen-lobby')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
 const lobbyRoomInput = document.getElementById('lobby-room-input') as HTMLInputElement;
+const btnHostLobby = document.getElementById('btn-host-lobby')!;
 const btnJoinLobby = document.getElementById('btn-join-lobby')!;
+const btnLobbyStartNow = document.getElementById('btn-lobby-start-now')!;
+const lobbyActionHint = document.getElementById('lobby-action-hint');
+const lobbyStartHint = document.getElementById('lobby-start-hint');
 const lobbyStatus = document.getElementById('lobby-status')!;
 const lobbyPlayerList = document.getElementById('lobby-player-list')!;
 const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
@@ -277,11 +282,43 @@ let network: NetworkManager | null = null;
 let myReady = false;
 let inRoom = false;
 let pendingJoinRoomId = '';
+let pendingLobbyAction: 'host' | 'join' = 'join';
+let currentLobbyHostId: string | null = null;
+let hostRequested = false;
 let onlinePlayerTeams: Array<'cyan' | 'magenta' | null> = [];
 let onlineTeamScores = { cyan: 0, magenta: 0 };
 let teamMatchEndsAt: number | null = null;
 let teamTimerInterval: number | null = null;
 let activeOnlineMode: OnlineModeId = selectedOnlineMode;
+let battleRoyalRemainingPlayers = 0;
+let battleRoyalPhaseLabel = '';
+let battleRoyalStartedAt: number | null = null;
+let battleRoyalHud: HTMLElement | null = null;
+
+function ensureBattleRoyalHud() {
+  if (battleRoyalHud) return battleRoyalHud;
+  const hud = document.createElement('section');
+  hud.id = 'battle-royale-hud';
+  hud.className = 'hidden fixed top-3 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
+  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">40 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 2,000,000</div>';
+  document.body.appendChild(hud);
+  battleRoyalHud = hud;
+  return hud;
+}
+
+function updateBattleRoyalHud() {
+  const hud = ensureBattleRoyalHud();
+  const remaining = hud.querySelector('#br-remaining');
+  const phase = hud.querySelector('#br-phase');
+  const progress = hud.querySelector('#br-progress') as HTMLElement | null;
+  const kills = hud.querySelector('#br-kills');
+  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers || 40} LEFT`;
+  if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
+  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (10 * 60 * 1000)) * 100))}%`;
+  const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
+  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 2,000,000`;
+  hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
+}
 
 function formatTeamTimer() {
   if (!teamMatchEndsAt) return '3:00';
@@ -332,21 +369,32 @@ btnPostLeave.addEventListener('click', () => {
   returnToMenu();
 });
 
+btnHostLobby.addEventListener('click', () => {
+  hostRequested = true;
+  pendingLobbyAction = 'host';
+  btnJoinLobby.click();
+});
+
 btnJoinLobby.addEventListener('click', () => {
+  if (!hostRequested) pendingLobbyAction = 'join';
+  hostRequested = false;
   const roomId = lobbyRoomInput.value.trim() || 'test-room';
 
   if (!network) {
     network = new NetworkManager();
 
     network.onConnected = () => {
-      lobbyStatus.innerText = 'Connected. Joining room...';
+      lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Connected. Creating room...' : 'Connected. Joining room...';
       const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-      network!.joinRoom(roomId, nickname, selectedOnlineMode);
+      if (pendingLobbyAction === 'host') network!.hostRoom(roomId, nickname, selectedOnlineMode);
+      else network!.joinRoom(roomId, nickname, selectedOnlineMode);
     };
 
     network.onJoinError = (message: string) => {
       lobbyStatus.innerText = `Error: ${message}`;
+      btnHostLobby.removeAttribute('disabled');
       btnJoinLobby.removeAttribute('disabled');
+      hostRequested = false;
     };
 
     network.onRoomUpdate = (state: RoomState) => {
@@ -354,6 +402,14 @@ btnJoinLobby.addEventListener('click', () => {
       activeOnlineMode = state.mode.id;
       selectedOnlineMode = state.mode.id;
       onlineTeamScores = state.teamScores || onlineTeamScores;
+        currentLobbyHostId = state.hostId;
+      const isHost = currentLobbyHostId === network?.mySocketId;
+      btnLobbyStartNow.classList.toggle('hidden', !isHost || state.phase !== 'lobby');
+      btnHostLobby.classList.toggle('hidden', inRoom);
+      btnJoinLobby.classList.toggle('hidden', inRoom);
+      if (lobbyStartHint) lobbyStartHint.innerText = isHost
+        ? `You are hosting ${state.mode.title}. Start with the current roster or wait for the full ${state.capacity}-player room.`
+        : `Waiting for the host. This room currently has ${state.players.length}/${state.capacity} players.`;
       if (onlineModeLabel) {
         onlineModeLabel.innerText = `${state.mode.title} · ${state.mode.format} · ${state.mode.winnerRule}`;
       }
@@ -377,6 +433,12 @@ btnJoinLobby.addEventListener('click', () => {
       }
 
       renderLobbyPlayers(state);
+    };
+
+    network.onRoomHostChanged = ({ hostId }) => {
+      currentLobbyHostId = hostId;
+      const isHost = currentLobbyHostId === network?.mySocketId;
+      btnLobbyStartNow.classList.toggle('hidden', !isHost);
     };
 
     network.onConfirmJoin = (data) => {
@@ -466,12 +528,40 @@ btnJoinLobby.addEventListener('click', () => {
 
     network.onGameStart = (data: GameStartData) => {
       activeOnlineMode = data.modeId;
+      battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
+      battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
+      battleRoyalStartedAt = null;
+      updateBattleRoyalHud();
       selectedOnlineMode = data.modeId;
       onlinePlayerTeams = data.players.map(player => player.team);
       onlineTeamScores = data.teamScores;
       startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
     };
 
+    network.onBattleRoyalPhase = (data) => {
+      battleRoyalPhaseLabel = data.label;
+      battleRoyalRemainingPlayers = data.remainingPlayers;
+      if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
+      updateBattleRoyalHud();
+    };
+    network.onBattleRoyalCull = (data) => {
+      battleRoyalRemainingPlayers = data.remainingPlayers;
+      battleRoyalPhaseLabel = data.reason === 'score-cull'
+        ? 'Culling lowest score · tie-break lines, kills'
+        : data.reason === 'line-cull'
+          ? 'Culling lowest line count · tie-break score, kills'
+          : 'Culling lowest kills · tie-break lines, score';
+      updateBattleRoyalHud();
+    };
+    network.onBattleRoyalSuddenDeath = (data) => {
+      battleRoyalRemainingPlayers = data.remainingPlayers;
+      battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
+      updateBattleRoyalHud();
+    };
+    network.onBattleRoyalPostGame = (data) => {
+      const rankingText = data.rankings.slice(0, 10).map(entry => `${entry.rank}. ${entry.name} · ${Math.round(entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills`).join('<br>');
+      postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
+    };
     network.onTeamScoreUpdate = (data) => {
       onlineTeamScores = data.teamScores;
       updateTeamScoreHud();
@@ -497,11 +587,19 @@ btnJoinLobby.addEventListener('click', () => {
     };
   } else {
     const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-    network.joinRoom(roomId, nickname, selectedOnlineMode);
+    if (pendingLobbyAction === 'host') network.hostRoom(roomId, nickname, selectedOnlineMode);
+    else network.joinRoom(roomId, nickname, selectedOnlineMode);
   }
 
-  lobbyStatus.innerText = 'Connecting...';
+  lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Creating lobby...' : 'Joining lobby...';
+  btnHostLobby.setAttribute('disabled', 'true');
   btnJoinLobby.setAttribute('disabled', 'true');
+});
+
+btnLobbyStartNow.addEventListener('click', () => {
+  network?.startLobbyNow();
+  btnLobbyStartNow.setAttribute('disabled', 'true');
+  lobbyStatus.innerText = 'Host started the match countdown...';
 });
 
 btnLobbyReady.addEventListener('click', () => {
@@ -512,6 +610,10 @@ btnLobbyReady.addEventListener('click', () => {
 
 function renderLobbyPlayers(state: RoomState) {
   lobbyStatus.innerText = `${state.mode.title} · ${state.mode.format} — ${state.players.length}/${state.capacity} players. ${state.mode.winnerRule}.`;
+  if (lobbyActionHint) lobbyActionHint.innerText = state.mode.id === 'battle-royale'
+    ? 'Host a 40-player Battle Royale room or join one with the same room code. The host can start before all seats are filled.'
+    : `Host a ${state.mode.title} room or join an existing ${state.mode.title} room. The host can start before the room reaches ${state.capacity} players.`;
+  btnHostLobby.removeAttribute('disabled');
   btnJoinLobby.removeAttribute('disabled');
 
   if (inRoom) {
@@ -520,6 +622,29 @@ function renderLobbyPlayers(state: RoomState) {
   }
 
   lobbyPlayerList.innerHTML = '';
+  if (state.mode.id === 'battle-royale') {
+    teamLobbySummary.classList.add('hidden');
+    lobbyPlayerList.className = 'w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-8 max-h-[46vh] overflow-y-auto pr-1';
+    const title = document.createElement('div');
+    title.className = 'sm:col-span-2 lg:col-span-4 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
+    title.innerText = `BATTLE ROYALE · ${state.players.length}/${state.capacity} PLAYERS · HOST MAY START EARLY`;
+    lobbyPlayerList.appendChild(title);
+    for (let slot = 0; slot < state.capacity; slot++) {
+      const player = state.players[slot];
+      const row = document.createElement('div');
+      row.className = 'flex min-w-0 items-center justify-between gap-2 border border-card-border bg-card-bg/70 px-3 py-2 text-xs';
+      if (!player) {
+        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN ${String(slot + 1).padStart(2, '0')}</span><span class="text-gray-600 uppercase tracking-widest text-[9px]">Waiting</span>`;
+      } else {
+        const isMe = network && player.id === network.mySocketId;
+        const isHost = state.hostId === player.id;
+        row.innerHTML = `<span class="truncate font-bold ${isMe ? 'text-neon-cyan' : 'text-white'}">${slot + 1}. ${player.name}${isMe ? ' (you)' : ''}</span><span class="shrink-0 text-[9px] uppercase tracking-widest ${isHost ? 'text-neon-pink' : player.ready ? 'text-neon-cyan' : 'text-gray-500'}">${isHost ? 'Host' : player.ready ? 'Ready' : 'Waiting'}</span>`;
+      }
+      lobbyPlayerList.appendChild(row);
+    }
+    return;
+  }
+  lobbyPlayerList.className = 'w-full flex flex-col gap-2 mb-8';
   if (!state.mode.isTeamMode) {
     teamLobbySummary.classList.add('hidden');
     const title = document.createElement('div');
@@ -535,7 +660,8 @@ function renderLobbyPlayers(state: RoomState) {
         row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
       } else {
         const isMe = network && player.id === network.mySocketId;
-        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+        const isHost = state.hostId === player.id;
+        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}${isHost ? ' · HOST' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
       }
       lobbyPlayerList.appendChild(row);
     }
@@ -590,6 +716,14 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   } else {
     teamMatchStrip.classList.add('hidden');
   }
+  if (mode?.id === 'battle-royale') {
+    ensureBattleRoyalHud();
+    battleRoyalPhaseLabel = 'Opening battle';
+    battleRoyalRemainingPlayers = playerCount;
+    updateBattleRoyalHud();
+  } else if (battleRoyalHud) {
+    battleRoyalHud.classList.add('hidden');
+  }
 
   // Size the canvas for the number of players; CSS constrains the visual width
   // on smaller screens so the left skill HUD remains reachable in 4- and 6-board modes.
@@ -628,19 +762,6 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
     gameManager.init1v1(mode, selectedClass);
-  }
-}
-
-function getSpecialBlockLetter(special: string): string {
-  switch (special) {
-    case 'BOMB': return 'B';
-    case 'HEAVY': return 'W';
-    case 'MULTIPLIER': return 'X';
-    case 'SPEED': return 'V';
-    case 'SHIELD': return 'S';
-    case 'FREEZE': return 'F';
-    case 'GARBAGE_EATER': return 'G';
-    default: return '?';
   }
 }
 
@@ -689,7 +810,11 @@ function drawBlock(
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
     
-    const icon = getSpecialBlockLetter(isSpecial);
+    let icon = '';
+    if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
+    if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
+    if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
+    if (isSpecial === SpecialBlockType.SPEED) icon = 'S';
 
     targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
   } else {
@@ -717,26 +842,13 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
         // Draw mini block
         const fx = offsetX + c * MINI_BLOCK_SIZE;
         const fy = offsetY + r * MINI_BLOCK_SIZE;
-        const specialKey = `${r},${c}`;
-        const specialType = piece.specialBlocks.get(specialKey);
-
         tCtx.fillStyle = '#000000';
         tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
         tCtx.strokeStyle = color;
         tCtx.lineWidth = 2;
         tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-
-        if (specialType) {
-          // Draw the special block letter indicator
-          tCtx.fillStyle = color;
-          tCtx.font = 'bold 12px "Press Start 2P"';
-          tCtx.textAlign = 'center';
-          tCtx.textBaseline = 'middle';
-          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
-        } else {
-          tCtx.fillStyle = color;
-          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
-        }
+        tCtx.fillStyle = color;
+        tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
       }
     }
   }
@@ -930,16 +1042,27 @@ function render() {
     scoreboard.classList.remove('hidden');
     
     entries.innerHTML = '';
-    const playerData: {name: string, score: number, lines: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
+    const playerData: {name: string, score: number, lines: number, kills: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
     for (let i = 0; i < gameManager.players.length; i++) {
       const p = gameManager.players[i];
       playerData.push({
         name: onlinePlayerNames[i] || `Player ${i+1}`,
         score: p.scoreManager.score,
         lines: p.scoreManager.totalLinesCleared,
+        kills: p.kills,
         alive: !p.isToppedOut,
         team: onlinePlayerTeams[i] ?? null
       });
+    }
+    if (activeOnlineMode === 'battle-royale') {
+      for (const player of playerData.sort((a, b) => b.score - a.score || b.lines - a.lines || b.kills - a.kills)) {
+        const row = document.createElement('div');
+        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
+        row.innerHTML = `<span class="font-bold truncate max-w-[160px]">${player.name} <small class="text-gray-400">${player.lines}L · ${player.kills}K</small></span><span class="font-pixel text-xs">${Math.round(player.score).toLocaleString()}</span>`;
+        entries.appendChild(row);
+      }
+      updateBattleRoyalHud();
+      return;
     }
     if (activeOnlineMode !== 'team-deathmatch') {
       for (const player of playerData.sort((a, b) => b.score - a.score)) {
@@ -1035,6 +1158,12 @@ function returnToMenu() {
   btnLobbyReady.classList.add('hidden');
   btnLobbyReady.innerText = 'READY UP';
   btnLobbyLeave.classList.add('hidden');
+  btnLobbyStartNow.classList.add('hidden');
+  btnLobbyStartNow.removeAttribute('disabled');
+  btnHostLobby.classList.remove('hidden');
+  btnJoinLobby.classList.remove('hidden');
+  btnHostLobby.removeAttribute('disabled');
+  btnJoinLobby.removeAttribute('disabled');
   teamLobbySummary.classList.add('hidden');
   teamMatchStrip.classList.add('hidden');
   btnJoinLobby.removeAttribute('disabled');
