@@ -1,6 +1,5 @@
 import './style.css'
 import { GameManager, GameState } from './GameManager'
-import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
@@ -765,6 +764,19 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   }
 }
 
+function getSpecialBlockLetter(special: string): string {
+  switch (special) {
+    case 'BOMB': return 'B';
+    case 'HEAVY': return 'W';
+    case 'MULTIPLIER': return 'X';
+    case 'SPEED': return 'V';
+    case 'SHIELD': return 'S';
+    case 'FREEZE': return 'F';
+    case 'GARBAGE_EATER': return 'G';
+    default: return '?';
+  }
+}
+
 function drawBlock(
   targetCtx: CanvasRenderingContext2D,
   x: number, 
@@ -810,11 +822,7 @@ function drawBlock(
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
     
-    let icon = '';
-    if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
-    if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
-    if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
-    if (isSpecial === SpecialBlockType.SPEED) icon = 'S';
+    const icon = getSpecialBlockLetter(isSpecial);
 
     targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
   } else {
@@ -842,13 +850,26 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
         // Draw mini block
         const fx = offsetX + c * MINI_BLOCK_SIZE;
         const fy = offsetY + r * MINI_BLOCK_SIZE;
+        const specialKey = `${r},${c}`;
+        const specialType = piece.specialBlocks.get(specialKey);
+
         tCtx.fillStyle = '#000000';
         tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
         tCtx.strokeStyle = color;
         tCtx.lineWidth = 2;
         tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-        tCtx.fillStyle = color;
-        tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+
+        if (specialType) {
+          // Draw the special block letter indicator
+          tCtx.fillStyle = color;
+          tCtx.font = 'bold 12px "Press Start 2P"';
+          tCtx.textAlign = 'center';
+          tCtx.textBaseline = 'middle';
+          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+        } else {
+          tCtx.fillStyle = color;
+          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+        }
       }
     }
   }

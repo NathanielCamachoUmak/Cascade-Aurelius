@@ -664,8 +664,11 @@ io.on('connection', socket => {
     const safeDuration = Math.max(0, Math.min(10_000, Number(durationMs) || 0));
     const safeAmount = Math.max(0, Math.min(20, Number(amount) || 0));
 
-    if (type === 'FREEZE' || type === 'CHAOS') {
+    if (type === 'QUICKSILVER' || type === 'CHAOS') {
       const effect = { type, durationMs: safeDuration };
+      opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+    } else if (type === 'ABILITY_FREEZE') {
+      const effect = { type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 };
       opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
     } else if (type === 'SCRAMBLE' && selectedOpponent) {
       io.to(selectedOpponent[0]).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)) });
