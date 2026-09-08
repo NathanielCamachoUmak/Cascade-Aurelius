@@ -1,5 +1,5 @@
 /**
- * Drop-in responsive online mode selector for Block Quartet.
+ * Drop-in responsive online mode selector for Cascade.
  *
  * Minimal integration:
  *

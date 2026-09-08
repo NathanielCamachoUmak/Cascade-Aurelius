@@ -696,5 +696,5 @@ io.on('connection', socket => {
   });
 });
 
-app.get('/', (_req, res) => res.send('Block Quartet multi-mode server is running.'));
-httpServer.listen(PORT, () => console.log(`Block Quartet server listening on http://localhost:${PORT}`));
+app.get('/', (_req, res) => res.send('Cascade multi-mode server is running.'));
+httpServer.listen(PORT, () => console.log(`Cascade server listening on http://localhost:${PORT}`));
