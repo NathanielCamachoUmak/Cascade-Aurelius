@@ -117,6 +117,21 @@ const abilityFillP2 = document.getElementById('ability-fill-p2')!;
 
 const gameManager = new GameManager(render);
 
+function updateNavHighlight(activeId: string) {
+  const ids = ['nav-menu', 'nav-lobby', 'nav-loadout', 'nav-game', 'nav-settings', 'nav-profile'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (id === activeId) {
+      el.classList.add('nav-active', 'text-white');
+      el.classList.remove('text-gray-400', 'hover:text-gray-200');
+    } else {
+      el.classList.remove('nav-active', 'text-white');
+      el.classList.add('text-gray-400', 'hover:text-gray-200');
+    }
+  }
+}
+
 let showGhostPiece = true;
 
 // --- Class Select ---
@@ -136,6 +151,7 @@ function updateOnlineModeLabel() {
 }
 
 function showOnlineModeSelect() {
+  updateNavHighlight('nav-lobby');
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('flex');
   screenClassSelect.classList.add('hidden');
@@ -152,6 +168,7 @@ mountOnlineModeSelect({
   container: screenOnlineModeSelect,
   initialMode: selectedOnlineMode,
   onConfirm: mode => {
+    updateNavHighlight('nav-loadout');
     selectedOnlineMode = mode.id;
     pendingMode = 'ONLINE';
     updateOnlineModeLabel();
@@ -160,6 +177,7 @@ mountOnlineModeSelect({
     screenClassSelect.classList.add('flex');
   },
   onBack: () => {
+    updateNavHighlight('nav-lobby');
     screenOnlineModeSelect.classList.add('hidden');
     screenMain.classList.remove('hidden');
   },
@@ -190,6 +208,7 @@ renderClassCards();
 
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {
+  updateNavHighlight('nav-loadout');
   pendingMode = 'SOLO';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
@@ -197,6 +216,7 @@ btnSolo.addEventListener('click', () => {
 });
 
 btnVsBot.addEventListener('click', () => {
+  updateNavHighlight('nav-loadout');
   pendingMode = 'VS_BOT';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
@@ -209,6 +229,7 @@ btnClassBack.addEventListener('click', () => {
   if (pendingMode === 'ONLINE') {
     showOnlineModeSelect();
   } else {
+    updateNavHighlight('nav-lobby');
     screenMain.classList.remove('hidden');
   }
 });
@@ -220,9 +241,11 @@ btnClassContinue.addEventListener('click', () => {
   if (pendingMode === 'SOLO') {
     startGame('SOLO');
   } else if (pendingMode === 'VS_BOT') {
+    updateNavHighlight('nav-lobby');
     screenDifficulty.classList.remove('hidden');
     screenDifficulty.classList.add('flex');
   } else if (pendingMode === 'ONLINE') {
+    updateNavHighlight('nav-lobby');
     if (network && network.currentRoomId) {
       screenLobby.classList.remove('hidden');
       screenLobby.classList.add('flex');
@@ -234,6 +257,7 @@ btnClassContinue.addEventListener('click', () => {
 });
 
 btnBack.addEventListener('click', () => {
+  updateNavHighlight('nav-lobby');
   screenDifficulty.classList.remove('flex');
   screenDifficulty.classList.add('hidden');
   screenMain.classList.remove('hidden');
@@ -262,6 +286,7 @@ btnToggleGhost.addEventListener('click', () => {
 navLobby.addEventListener('click', (e) => {
   e.preventDefault();
   if (network && network.currentRoomId) {
+    updateNavHighlight('nav-lobby');
     screenMain.classList.add('hidden');
     screenClassSelect.classList.remove('flex');
     screenClassSelect.classList.add('hidden');
@@ -492,6 +517,7 @@ btnJoinLobby.addEventListener('click', () => {
     };
 
     network.onPostGameStart = (data) => {
+      updateNavHighlight('nav-lobby');
       uiLayer.classList.remove('hidden');
       screenLobby.classList.add('hidden');
       screenLobby.classList.remove('flex');
@@ -705,6 +731,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
     onlinePlayerNames = playerNames;
   }
   // Hide lobby, show game
+  updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
@@ -744,6 +771,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+  updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
@@ -1190,6 +1218,7 @@ function returnToMenu() {
   btnJoinLobby.removeAttribute('disabled');
 
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
+  updateNavHighlight('nav-lobby');
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
 }
