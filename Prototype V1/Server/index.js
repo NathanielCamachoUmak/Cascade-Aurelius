@@ -5,7 +5,12 @@ import { BATTLE_ROYALE_RULES, getBattleRoyalPhase, selectBattleRoyalCullTargets,
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: '*' } });
+
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://localhost:3000'];
+
+const io = new Server(httpServer, { cors: { origin: ALLOWED_ORIGINS } });
 
 const PORT = process.env.PORT || 3000;
 const MATCH_DURATION_MS = 3 * 60 * 1000;

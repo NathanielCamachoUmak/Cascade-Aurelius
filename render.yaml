@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: cascade-backend
+    runtime: node
+    rootDir: "Prototype V1/Server"
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: "https://cascade-aurelius.vercel.app"
