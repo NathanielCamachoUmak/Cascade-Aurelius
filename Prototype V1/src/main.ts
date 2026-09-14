@@ -649,15 +649,15 @@ function renderLobbyPlayers(state: RoomState) {
   lobbyPlayerList.innerHTML = '';
   if (state.mode.id === 'battle-royale') {
     teamLobbySummary.classList.add('hidden');
-    lobbyPlayerList.className = 'w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-8 max-h-[46vh] overflow-y-auto pr-1';
+    lobbyPlayerList.className = 'w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 mb-4 max-h-[40vh] overflow-y-auto pr-1';
     const title = document.createElement('div');
-    title.className = 'sm:col-span-2 lg:col-span-4 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
+    title.className = 'sm:col-span-3 lg:col-span-5 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
     title.innerText = `BATTLE ROYALE · ${state.players.length}/${state.capacity} PLAYERS · HOST MAY START EARLY`;
     lobbyPlayerList.appendChild(title);
     for (let slot = 0; slot < state.capacity; slot++) {
       const player = state.players[slot];
       const row = document.createElement('div');
-      row.className = 'flex min-w-0 items-center justify-between gap-2 border border-card-border bg-card-bg/70 px-3 py-2 text-xs';
+      row.className = 'flex min-w-0 items-center justify-between gap-1 border border-card-border bg-card-bg/70 px-2 py-1 text-[10px]';
       if (!player) {
         row.innerHTML = `<span class="text-gray-600 font-bold">OPEN ${String(slot + 1).padStart(2, '0')}</span><span class="text-gray-600 uppercase tracking-widest text-[9px]">Waiting</span>`;
       } else {

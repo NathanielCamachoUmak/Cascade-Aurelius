@@ -274,7 +274,7 @@
         </div>
 
         <!-- ───── Screen: Online Lobby ───── -->
-        <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-2xl px-8 relative z-10">
+        <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-2xl px-8 relative z-10 max-h-[calc(100vh-5rem)] overflow-y-auto">
           <div class="mb-8 w-full text-center">
             <h2 class="text-neon-pink text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-pink">ONLINE</h2>
             <h1 class="text-3xl md:text-4xl font-bold">Lobby</h1>
@@ -319,7 +319,7 @@
             <!-- Player rows injected by main.ts -->
           </div>
 
-          <div class="flex flex-wrap justify-center gap-3">
+          <div class="flex flex-wrap justify-center gap-3 sticky bottom-0 bg-deep-purple/95 backdrop-blur-sm py-4 z-20">
             <button id="btn-lobby-start-now" class="hidden px-8 py-3 bg-neon-yellow text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(255,220,80,0.25)]">START NOW</button>
             <button id="btn-lobby-ready" class="hidden group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
               <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
@@ -426,7 +426,7 @@
         </div>
 
         <!-- Settings Toggle / Ghost Piece Button -->
-        <div class="absolute top-4 right-8 pointer-events-auto flex gap-4">
+        <div class="absolute top-4 right-8 pointer-events-auto flex gap-4 z-[60]">
           <button id="btn-toggle-ghost" class="bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded">
             GHOST: ON
           </button>
