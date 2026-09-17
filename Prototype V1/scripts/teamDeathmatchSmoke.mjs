@@ -58,7 +58,7 @@ try {
   const result = await resultPromise;
   if (result.teamScores.cyan !== 400 || result.teamScores.magenta !== 0) throw new Error('Final team score snapshot changed during disconnect.');
 
-  console.log('PASS: Original Block Quartet server verified six seats, 3v3 teams, Cyan 400–0 score aggregation, and highest-score result.');
+  console.log('PASS: Original Cascade server verified six seats, 3v3 teams, Cyan 400–0 score aggregation, and highest-score result.');
 } finally {
   sockets.forEach(socket => socket.disconnect());
 }

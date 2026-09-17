@@ -1,6 +1,5 @@
 import './style.css'
 import { GameManager, GameState } from './GameManager'
-import { SpecialBlockType } from './ItemManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
@@ -118,6 +117,21 @@ const abilityFillP2 = document.getElementById('ability-fill-p2')!;
 
 const gameManager = new GameManager(render);
 
+function updateNavHighlight(activeId: string) {
+  const ids = ['nav-menu', 'nav-lobby', 'nav-loadout', 'nav-game', 'nav-settings', 'nav-profile'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (id === activeId) {
+      el.classList.add('nav-active', 'text-white');
+      el.classList.remove('text-gray-400', 'hover:text-gray-200');
+    } else {
+      el.classList.remove('nav-active', 'text-white');
+      el.classList.add('text-gray-400', 'hover:text-gray-200');
+    }
+  }
+}
+
 let showGhostPiece = true;
 
 // --- Class Select ---
@@ -137,6 +151,7 @@ function updateOnlineModeLabel() {
 }
 
 function showOnlineModeSelect() {
+  updateNavHighlight('nav-lobby');
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('flex');
   screenClassSelect.classList.add('hidden');
@@ -153,6 +168,7 @@ mountOnlineModeSelect({
   container: screenOnlineModeSelect,
   initialMode: selectedOnlineMode,
   onConfirm: mode => {
+    updateNavHighlight('nav-loadout');
     selectedOnlineMode = mode.id;
     pendingMode = 'ONLINE';
     updateOnlineModeLabel();
@@ -161,6 +177,7 @@ mountOnlineModeSelect({
     screenClassSelect.classList.add('flex');
   },
   onBack: () => {
+    updateNavHighlight('nav-lobby');
     screenOnlineModeSelect.classList.add('hidden');
     screenMain.classList.remove('hidden');
   },
@@ -191,6 +208,7 @@ renderClassCards();
 
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {
+  updateNavHighlight('nav-loadout');
   pendingMode = 'SOLO';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
@@ -198,6 +216,7 @@ btnSolo.addEventListener('click', () => {
 });
 
 btnVsBot.addEventListener('click', () => {
+  updateNavHighlight('nav-loadout');
   pendingMode = 'VS_BOT';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
@@ -210,6 +229,7 @@ btnClassBack.addEventListener('click', () => {
   if (pendingMode === 'ONLINE') {
     showOnlineModeSelect();
   } else {
+    updateNavHighlight('nav-lobby');
     screenMain.classList.remove('hidden');
   }
 });
@@ -221,9 +241,11 @@ btnClassContinue.addEventListener('click', () => {
   if (pendingMode === 'SOLO') {
     startGame('SOLO');
   } else if (pendingMode === 'VS_BOT') {
+    updateNavHighlight('nav-lobby');
     screenDifficulty.classList.remove('hidden');
     screenDifficulty.classList.add('flex');
   } else if (pendingMode === 'ONLINE') {
+    updateNavHighlight('nav-lobby');
     if (network && network.currentRoomId) {
       screenLobby.classList.remove('hidden');
       screenLobby.classList.add('flex');
@@ -235,6 +257,7 @@ btnClassContinue.addEventListener('click', () => {
 });
 
 btnBack.addEventListener('click', () => {
+  updateNavHighlight('nav-lobby');
   screenDifficulty.classList.remove('flex');
   screenDifficulty.classList.add('hidden');
   screenMain.classList.remove('hidden');
@@ -263,6 +286,7 @@ btnToggleGhost.addEventListener('click', () => {
 navLobby.addEventListener('click', (e) => {
   e.preventDefault();
   if (network && network.currentRoomId) {
+    updateNavHighlight('nav-lobby');
     screenMain.classList.add('hidden');
     screenClassSelect.classList.remove('flex');
     screenClassSelect.classList.add('hidden');
@@ -495,6 +519,7 @@ btnJoinLobby.addEventListener('click', () => {
     };
 
     network.onPostGameStart = (data) => {
+      updateNavHighlight('nav-lobby');
       uiLayer.classList.remove('hidden');
       screenLobby.classList.add('hidden');
       screenLobby.classList.remove('flex');
@@ -652,9 +677,9 @@ function renderLobbyPlayers(state: RoomState) {
   lobbyPlayerList.innerHTML = '';
   if (state.mode.id === 'battle-royale') {
     teamLobbySummary.classList.add('hidden');
-    lobbyPlayerList.className = 'w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-8 max-h-[46vh] overflow-y-auto pr-1';
+    lobbyPlayerList.className = 'w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 mb-4 max-h-[40vh] overflow-y-auto pr-1';
     const title = document.createElement('div');
-    title.className = 'sm:col-span-2 lg:col-span-4 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
+    title.className = 'sm:col-span-3 lg:col-span-5 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
     title.innerText = `BATTLE ROYALE · ${state.players.length}/${state.capacity} PLAYERS · HOST MAY START EARLY`;
     lobbyPlayerList.appendChild(title);
     // Show everyone present plus a few open slots for context — rendering
@@ -663,7 +688,7 @@ function renderLobbyPlayers(state: RoomState) {
     for (let slot = 0; slot < slotsToShow; slot++) {
       const player = state.players[slot];
       const row = document.createElement('div');
-      row.className = 'flex min-w-0 items-center justify-between gap-2 border border-card-border bg-card-bg/70 px-3 py-2 text-xs';
+      row.className = 'flex min-w-0 items-center justify-between gap-1 border border-card-border bg-card-bg/70 px-2 py-1 text-[10px]';
       if (!player) {
         row.innerHTML = `<span class="text-gray-600 font-bold">OPEN ${String(slot + 1).padStart(2, '0')}</span><span class="text-gray-600 uppercase tracking-widest text-[9px]">Waiting</span>`;
       } else {
@@ -737,6 +762,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
     onlinePlayerNames = playerNames;
   }
   // Hide lobby, show game
+  updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
@@ -776,6 +802,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+  updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
@@ -793,6 +820,19 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
     gameManager.init1v1(mode, selectedClass);
+  }
+}
+
+function getSpecialBlockLetter(special: string): string {
+  switch (special) {
+    case 'BOMB': return 'B';
+    case 'HEAVY': return 'W';
+    case 'MULTIPLIER': return 'X';
+    case 'SPEED': return 'V';
+    case 'SHIELD': return 'S';
+    case 'FREEZE': return 'F';
+    case 'GARBAGE_EATER': return 'G';
+    default: return '?';
   }
 }
 
@@ -841,11 +881,7 @@ function drawBlock(
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
     
-    let icon = '';
-    if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
-    if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
-    if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
-    if (isSpecial === SpecialBlockType.SPEED) icon = 'S';
+    const icon = getSpecialBlockLetter(isSpecial);
 
     targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
   } else {
@@ -873,13 +909,26 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
         // Draw mini block
         const fx = offsetX + c * MINI_BLOCK_SIZE;
         const fy = offsetY + r * MINI_BLOCK_SIZE;
+        const specialKey = `${r},${c}`;
+        const specialType = piece.specialBlocks.get(specialKey);
+
         tCtx.fillStyle = '#000000';
         tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
         tCtx.strokeStyle = color;
         tCtx.lineWidth = 2;
         tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-        tCtx.fillStyle = color;
-        tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+
+        if (specialType) {
+          // Draw the special block letter indicator
+          tCtx.fillStyle = color;
+          tCtx.font = 'bold 12px "Press Start 2P"';
+          tCtx.textAlign = 'center';
+          tCtx.textBaseline = 'middle';
+          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+        } else {
+          tCtx.fillStyle = color;
+          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+        }
       }
     }
   }
@@ -1233,6 +1282,7 @@ function returnToMenu() {
   btnJoinLobby.removeAttribute('disabled');
 
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
+  updateNavHighlight('nav-lobby');
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
 }

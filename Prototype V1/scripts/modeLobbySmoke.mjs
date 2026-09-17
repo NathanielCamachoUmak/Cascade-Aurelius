@@ -83,4 +83,4 @@ for (const testCase of MODE_CASES) {
   await runMode(testCase);
 }
 
-console.log('PASS: all original Block Quartet online mode lobbies passed.');
+console.log('PASS: all original Cascade online mode lobbies passed.');

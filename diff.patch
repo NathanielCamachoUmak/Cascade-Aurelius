@@ -1,0 +1,1966 @@
+﻿diff --git a/Prototype V1/Server/battleRoyal.js b/Prototype V1/Server/battleRoyal.js
+new file mode 100644
+index 0000000..a98d345
+--- /dev/null
++++ b/Prototype V1/Server/battleRoyal.js	
+@@ -0,0 +1,84 @@
++export const BATTLE_ROYALE_RULES = Object.freeze({
++  id: 'battle-royale',
++  title: 'Battle Royale',
++  format: '40-player solo',
++  capacity: 40,
++  teamSize: 0,
++  isTeamMode: false,
++  winnerRule: 'Closest surviving score to 2,000,000 at 10:00',
++  durationMs: 10 * 60 * 1000,
++  targetScore: 2_000_000,
++  suddenDeathAtMs: 9 * 60 * 1000,
++  phaseBreaks: [
++    { atMs: 0, id: 'opening', label: 'Opening battle', durationMs: 3 * 60 * 1000 },
++    { atMs: 3 * 60 * 1000, id: 'cull-score', label: 'Cull: lowest score', eliminate: 10, primary: 'score', tieBreakers: ['lines', 'kills'] },
++    { atMs: 6 * 60 * 1000, id: 'cull-lines', label: 'Cull: lowest line count', eliminate: 12, primary: 'lines', tieBreakers: ['score', 'kills'] },
++    { atMs: 8 * 60 * 1000, id: 'cull-kills', label: 'Cull: lowest kill count', eliminate: 10, primary: 'kills', tieBreakers: ['lines', 'score'] },
++    { atMs: 8 * 60 * 1000, id: 'final-break', label: 'Final break', durationMs: 60 * 1000 },
++    { atMs: 9 * 60 * 1000, id: 'sudden-death', label: 'Sudden death: solid garbage', durationMs: 60 * 1000 },
++  ],
++});
++
++const numeric = value => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
++
++export function getBattleRoyalPhase(elapsedMs) {
++  const elapsed = Math.max(0, Number(elapsedMs) || 0);
++  if (elapsed >= BATTLE_ROYALE_RULES.suddenDeathAtMs) return BATTLE_ROYALE_RULES.phaseBreaks[5];
++  if (elapsed >= 8 * 60 * 1000) return BATTLE_ROYALE_RULES.phaseBreaks[3];
++  if (elapsed >= 6 * 60 * 1000) return BATTLE_ROYALE_RULES.phaseBreaks[2];
++  if (elapsed >= 3 * 60 * 1000) return BATTLE_ROYALE_RULES.phaseBreaks[1];
++  return BATTLE_ROYALE_RULES.phaseBreaks[0];
++}
++
++export function compareForCull(a, b, primary, tieBreakers = []) {
++  const fields = [primary, ...tieBreakers];
++  for (const field of fields) {
++    const difference = numeric(a[field]) - numeric(b[field]);
++    if (difference !== 0) return difference;
++  }
++  return String(a.id ?? '').localeCompare(String(b.id ?? ''));
++}
++
++export function selectBattleRoyalCullTargets(players, count, primary, tieBreakers = []) {
++  return [...players]
++    .filter(player => player.state === 'playing')
++    .sort((a, b) => compareForCull(a, b, primary, tieBreakers))
++    .slice(0, Math.max(0, count));
++}
++
++export function rankBattleRoyalPlayers(players) {
++  return [...players]
++    .sort((a, b) => {
++      const scoreDifference = numeric(b.score) - numeric(a.score);
++      if (scoreDifference !== 0) return scoreDifference;
++      const lineDifference = numeric(b.lines) - numeric(a.lines);
++      if (lineDifference !== 0) return lineDifference;
++      const killDifference = numeric(b.kills) - numeric(a.kills);
++      if (killDifference !== 0) return killDifference;
++      return String(a.name ?? '').localeCompare(String(b.name ?? ''));
++    })
++    .map((player, index) => ({
++      rank: index + 1,
++      id: player.id,
++      name: player.name,
++      score: numeric(player.score),
++      lines: numeric(player.lines),
++      kills: numeric(player.kills),
++      state: player.state,
++      eliminated: player.state !== 'playing',
++    }));
++}
++
++export function closestToTarget(players, targetScore = BATTLE_ROYALE_RULES.targetScore) {
++  return [...players]
++    .filter(player => player.state === 'playing')
++    .sort((a, b) => {
++      const distanceDifference = Math.abs(numeric(a.score) - targetScore) - Math.abs(numeric(b.score) - targetScore);
++      if (distanceDifference !== 0) return distanceDifference;
++      return compareForCull(b, a, 'score', ['lines', 'kills']);
++    })[0] ?? null;
++}
++
++export function hasReachedTarget(score, targetScore = BATTLE_ROYALE_RULES.targetScore) {
++  return numeric(score) >= targetScore;
++}
+diff --git a/Prototype V1/Server/index.js b/Prototype V1/Server/index.js
+index 3e03fc8..2ae73f4 100644
+--- a/Prototype V1/Server/index.js	
++++ b/Prototype V1/Server/index.js	
+@@ -1,6 +1,7 @@
+ import express from 'express';
+ import { createServer } from 'http';
+ import { Server } from 'socket.io';
++import { BATTLE_ROYALE_RULES, getBattleRoyalPhase, selectBattleRoyalCullTargets, rankBattleRoyalPlayers, closestToTarget, hasReachedTarget } from './battleRoyal.js';
+ 
+ const app = express();
+ const httpServer = createServer(app);
+@@ -38,6 +39,7 @@ const MODES = {
+     isTeamMode: true,
+     winnerRule: 'Highest combined team score at the horn',
+   },
++  'battle-royale': BATTLE_ROYALE_RULES,
+ };
+ 
+ const teams = {
+@@ -60,6 +62,8 @@ function publicMode(mode) {
+     teamSize: mode.teamSize,
+     isTeamMode: mode.isTeamMode,
+     winnerRule: mode.winnerRule,
++    durationMs: mode.durationMs || null,
++    targetScore: mode.targetScore || null,
+   };
+ }
+ 
+@@ -68,6 +72,7 @@ function getOrCreateRoom(roomId, requestedModeId) {
+     const mode = getMode(requestedModeId);
+     rooms.set(roomId, {
+       mode,
++      hostId: null,
+       players: new Map(),
+       phase: 'lobby',
+       rematchVotes: new Set(),
+@@ -75,6 +80,11 @@ function getOrCreateRoom(roomId, requestedModeId) {
+       matchTimer: null,
+       pregameTimer: null,
+       matchEndsAt: null,
++      battleRoyalStartedAt: null,
++      battleRoyalPhase: null,
++      battleRoyalCullTimers: [],
++      battleRoyalSuddenDeathTimer: null,
++      battleRoyalSuddenDeathCursor: 0,
+     });
+   }
+   return rooms.get(roomId);
+@@ -84,10 +94,17 @@ function clearTimers(room) {
+   if (room.countdownTimer) clearTimeout(room.countdownTimer);
+   if (room.matchTimer) clearTimeout(room.matchTimer);
+   if (room.pregameTimer) clearTimeout(room.pregameTimer);
++  for (const timer of room.battleRoyalCullTimers || []) clearTimeout(timer);
++  if (room.battleRoyalSuddenDeathTimer) clearInterval(room.battleRoyalSuddenDeathTimer);
+   room.countdownTimer = null;
+   room.matchTimer = null;
+   room.pregameTimer = null;
+   room.matchEndsAt = null;
++  room.battleRoyalStartedAt = null;
++  room.battleRoyalPhase = null;
++  room.battleRoyalCullTimers = [];
++  room.battleRoyalSuddenDeathTimer = null;
++  room.battleRoyalSuddenDeathCursor = 0;
+ }
+ 
+ function teamForOpenSlot(room) {
+@@ -115,11 +132,19 @@ function getRoomState(roomId) {
+   return {
+     roomId,
+     phase: room.phase,
++    hostId: room.hostId,
+     mode: publicMode(room.mode),
+     capacity: room.mode.capacity,
+     teamSize: room.mode.teamSize,
+     matchEndsAt: room.matchEndsAt,
+     teamScores: calculateTeamScores(room),
++    battleRoyal: room.mode.id === 'battle-royale' ? {
++      startedAt: room.battleRoyalStartedAt,
++      phase: room.battleRoyalPhase,
++      targetScore: BATTLE_ROYALE_RULES.targetScore,
++      remainingPlayers: Array.from(room.players.values()).filter(player => player.state === 'playing').length,
++      elapsedMs: room.battleRoyalStartedAt ? Math.max(0, Date.now() - room.battleRoyalStartedAt) : 0,
++    } : null,
+     players: Array.from(room.players.entries()).map(([id, player]) => ({
+       id,
+       name: player.name,
+@@ -129,6 +154,8 @@ function getRoomState(roomId) {
+       team: player.team,
+       score: player.score || 0,
+       lines: player.lines || 0,
++      kills: player.kills || 0,
++      eliminatedAt: player.eliminatedAt || null,
+     })),
+   };
+ }
+@@ -195,6 +222,108 @@ function checkEliminationGameOver(roomId) {
+   if (alive <= 1) finishEliminationMatch(roomId);
+ }
+ 
++function emitBattleRoyalPhase(roomId, phase, extra = {}) {
++  const room = rooms.get(roomId);
++  if (!room || room.mode.id !== 'battle-royale') return;
++  room.battleRoyalPhase = phase.id;
++  io.to(roomId).emit('battle-royale-phase', {
++    phase: phase.id,
++    label: phase.label,
++    atMs: phase.atMs,
++    remainingPlayers: Array.from(room.players.values()).filter(player => player.state === 'playing').length,
++    ...extra,
++  });
++  emitRoomState(roomId);
++}
++
++function eliminateBattleRoyalPlayers(roomId, count, primary, tieBreakers, reason) {
++  const room = rooms.get(roomId);
++  if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return [];
++  const entries = Array.from(room.players.entries());
++  const selected = selectBattleRoyalCullTargets(entries.map(([, player]) => ({ ...player, id: player.index })), count, primary, tieBreakers);
++  const selectedIndexes = new Set(selected.map(player => player.index));
++  const eliminated = [];
++  for (const [id, player] of entries) {
++    if (!selectedIndexes.has(player.index)) continue;
++    player.state = 'spectating';
++    player.eliminatedAt = Date.now();
++    eliminated.push({ id, name: player.name, score: player.score, lines: player.lines, kills: player.kills });
++    io.to(roomId).emit('player-state-update', { playerId: id, state: 'spectating', reason, forced: true });
++  }
++  io.to(roomId).emit('battle-royale-cull', {
++    reason,
++    eliminated,
++    remainingPlayers: Array.from(room.players.values()).filter(player => player.state === 'playing').length,
++  });
++  emitRoomState(roomId);
++  checkBattleRoyalGameOver(roomId);
++  return eliminated;
++}
++
++function runBattleRoyalSuddenDeath(roomId) {
++  const room = rooms.get(roomId);
++  if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
++  const alive = Array.from(room.players.entries())
++    .filter(([, player]) => player.state === 'playing')
++    .sort(([, a], [, b]) => (a.score || 0) - (b.score || 0) || (a.lines || 0) - (b.lines || 0) || (a.kills || 0) - (b.kills || 0));
++  if (!alive.length) return;
++  const [targetId, target] = alive[room.battleRoyalSuddenDeathCursor % alive.length];
++  room.battleRoyalSuddenDeathCursor += 1;
++  io.to(targetId).emit('receive-garbage', { count: 5, solid: true, unClearable: true, fromIndex: target.index, source: 'battle-royale-sudden-death' });
++  io.to(roomId).emit('battle-royale-sudden-death', { targetId, targetIndex: target.index, remainingPlayers: alive.length, cursor: room.battleRoyalSuddenDeathCursor });
++}
++
++function startBattleRoyalSchedule(roomId) {
++  const room = rooms.get(roomId);
++  if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
++  room.battleRoyalStartedAt = Date.now();
++  emitBattleRoyalPhase(roomId, getBattleRoyalPhase(0));
++  room.battleRoyalCullTimers = [
++    setTimeout(() => { emitBattleRoyalPhase(roomId, getBattleRoyalPhase(3 * 60 * 1000)); eliminateBattleRoyalPlayers(roomId, 10, 'score', ['lines', 'kills'], 'score-cull'); }, 3 * 60 * 1000),
++    setTimeout(() => { emitBattleRoyalPhase(roomId, getBattleRoyalPhase(6 * 60 * 1000)); eliminateBattleRoyalPlayers(roomId, 12, 'lines', ['score', 'kills'], 'line-cull'); }, 6 * 60 * 1000),
++    setTimeout(() => {
++      emitBattleRoyalPhase(roomId, getBattleRoyalPhase(8 * 60 * 1000));
++      eliminateBattleRoyalPlayers(roomId, 10, 'kills', ['lines', 'score'], 'kill-cull');
++      emitBattleRoyalPhase(roomId, BATTLE_ROYALE_RULES.phaseBreaks[4]);
++    }, 8 * 60 * 1000),
++    setTimeout(() => {
++      emitBattleRoyalPhase(roomId, getBattleRoyalPhase(9 * 60 * 1000));
++      room.battleRoyalSuddenDeathTimer = setInterval(() => runBattleRoyalSuddenDeath(roomId), 8 * 1000);
++      runBattleRoyalSuddenDeath(roomId);
++    }, 9 * 60 * 1000),
++  ];
++}
++
++function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) {
++  const room = rooms.get(roomId);
++  if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
++  const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing');
++  const winner = winnerOverride || closestToTarget(survivors);
++  const rankings = rankBattleRoyalPlayers(Array.from(room.players.values()));
++  clearTimers(room);
++  resetAfterMatch(room);
++  const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
++  io.to(roomId).emit('post-game-start', {
++    winnerId: winnerEntry?.[0] || '',
++    winnerName: winner?.name || 'No survivor',
++    winnerTeam: null,
++    teamScores: { cyan: 0, magenta: 0 },
++    reason,
++    modeId: room.mode.id,
++    battleRoyal: true,
++    rankings,
++    targetScore: BATTLE_ROYALE_RULES.targetScore,
++  });
++  emitRoomState(roomId);
++}
++
++function checkBattleRoyalGameOver(roomId) {
++  const room = rooms.get(roomId);
++  if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
++  const alive = Array.from(room.players.values()).filter(player => player.state === 'playing');
++  if (alive.length <= 1) finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
++}
++
+ function startTeamMatchTimer(roomId) {
+   const room = rooms.get(roomId);
+   if (!room || room.phase !== 'in-game' || !room.mode.isTeamMode) return;
+@@ -206,7 +335,7 @@ function startTeamMatchTimer(roomId) {
+ 
+ function startMatch(roomId) {
+   const room = rooms.get(roomId);
+-  if (!room || room.phase !== 'countdown' || room.players.size !== room.mode.capacity) return;
++  if (!room || room.phase !== 'countdown' || room.players.size < 1) return;
+ 
+   room.phase = 'in-game';
+   room.countdownTimer = null;
+@@ -217,7 +346,9 @@ function startMatch(roomId) {
+     player.state = 'playing';
+     player.score = 0;
+     player.lines = 0;
+-    playerList.push({ id, name: player.name, index, team: player.team });
++    player.kills = 0;
++    player.eliminatedAt = null;
++    playerList.push({ id, name: player.name, index, team: player.team, kills: 0 });
+     index += 1;
+   }
+ 
+@@ -235,7 +366,28 @@ function startMatch(roomId) {
+   if (room.mode.isTeamMode) io.to(roomId).emit('team-score-update', { teamScores: calculateTeamScores(room) });
+   emitRoomState(roomId);
+ 
+-  room.pregameTimer = setTimeout(() => startTeamMatchTimer(roomId), 3000);
++  room.pregameTimer = setTimeout(() => {
++    if (room.mode.id === 'battle-royale') {
++      room.matchEndsAt = Date.now() + BATTLE_ROYALE_RULES.durationMs;
++      io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: BATTLE_ROYALE_RULES.durationMs });
++      room.matchTimer = setTimeout(() => finishBattleRoyalMatch(roomId, 'time'), BATTLE_ROYALE_RULES.durationMs);
++      startBattleRoyalSchedule(roomId);
++      emitRoomState(roomId);
++    } else {
++      startTeamMatchTimer(roomId);
++    }
++  }, 3000);
++}
++
++function beginRoomCountdown(roomId, initiatedBy = null) {
++  const room = rooms.get(roomId);
++  if (!room || room.phase !== 'lobby' || room.players.size < 1) return false;
++  if (initiatedBy && room.hostId !== initiatedBy) return false;
++  room.phase = 'countdown';
++  io.to(roomId).emit('countdown-start', 5);
++  emitRoomState(roomId);
++  room.countdownTimer = setTimeout(() => startMatch(roomId), 5000);
++  return true;
+ }
+ 
+ function checkAllReady(roomId) {
+@@ -244,10 +396,7 @@ function checkAllReady(roomId) {
+   if (room.players.size !== room.mode.capacity) return;
+   if (!Array.from(room.players.values()).every(player => player.ready)) return;
+ 
+-  room.phase = 'countdown';
+-  io.to(roomId).emit('countdown-start', 5);
+-  emitRoomState(roomId);
+-  room.countdownTimer = setTimeout(() => startMatch(roomId), 5000);
++  beginRoomCountdown(roomId);
+ }
+ 
+ function cancelCountdown(roomId) {
+@@ -292,16 +441,26 @@ function removePlayer(socket, { announceDisconnect = false } = {}) {
+     return;
+   }
+ 
++  if (room.hostId === socket.id) {
++    room.hostId = room.players.keys().next().value || null;
++    io.to(roomId).emit('room-host-changed', { hostId: room.hostId });
++  }
++
+   if (room.phase === 'countdown') cancelCountdown(roomId);
+   if (announceDisconnect) io.to(roomId).emit('player-disconnected', { playerId: socket.id });
+ 
+   // In elimination modes, removing a live board can leave exactly one winner.
+-  checkEliminationGameOver(roomId);
++  if (room.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
++  else checkEliminationGameOver(roomId);
+   emitRoomState(roomId);
+   if (room.phase === 'post-game') updateRematchVotes(roomId);
+ }
+ 
+-function addPlayer(socket, roomId, name, requestedModeId) {
++function addPlayer(socket, roomId, name, requestedModeId, { create = false } = {}) {
++  if (!rooms.has(roomId) && !create) {
++    socket.emit('join-error', { message: 'Room not found. Host this room first or enter an existing room code.' });
++    return;
++  }
+   const room = getOrCreateRoom(roomId, requestedModeId);
+   const requestedMode = getMode(requestedModeId);
+   if (room.mode.id !== requestedMode.id) {
+@@ -326,7 +485,10 @@ function addPlayer(socket, roomId, name, requestedModeId) {
+     team,
+     score: 0,
+     lines: 0,
++    kills: 0,
++    eliminatedAt: null,
+   });
++  if (!room.hostId) room.hostId = socket.id;
+   socket.join(roomId);
+   socket.data.roomId = roomId;
+   console.log(`[join-room] ${socket.id} -> ${roomId} (${room.mode.id}, ${room.players.size}/${room.mode.capacity})`);
+@@ -336,21 +498,41 @@ function addPlayer(socket, roomId, name, requestedModeId) {
+ io.on('connection', socket => {
+   console.log(`[connect] ${socket.id}`);
+ 
++  socket.on('host-room', ({ roomId, name, modeId }) => {
++    if (socket.data.roomId) {
++      socket.emit('join-error', { message: 'Leave your current room before hosting another lobby.' });
++      return;
++    }
++    addPlayer(socket, roomId, name, modeId, { create: true });
++  });
++
+   socket.on('join-room', ({ roomId, name, modeId }) => {
+     if (socket.data.roomId && socket.data.roomId !== roomId && rooms.has(socket.data.roomId)) {
+       socket.emit('confirm-join', { currentRoom: socket.data.roomId, newRoom: roomId, newModeId: modeId });
+       return;
+     }
+-    if (!socket.data.roomId) addPlayer(socket, roomId, name, modeId);
++    if (!socket.data.roomId) addPlayer(socket, roomId, name, modeId, { create: false });
+   });
+ 
+   socket.on('confirm-join', ({ newRoomId, name, modeId }) => {
+     if (socket.data.roomId) removePlayer(socket);
+-    addPlayer(socket, newRoomId, name, modeId);
++    addPlayer(socket, newRoomId, name, modeId, { create: false });
+   });
+ 
+   socket.on('leave-lobby', () => removePlayer(socket));
+ 
++  socket.on('host-start-now', () => {
++    const roomId = socket.data.roomId;
++    const room = roomId && rooms.get(roomId);
++    if (!room || room.hostId !== socket.id) {
++      socket.emit('join-error', { message: 'Only the host can start this lobby.' });
++      return;
++    }
++    if (room.phase !== 'lobby' || room.players.size < 1) return;
++    for (const player of room.players.values()) player.ready = true;
++    beginRoomCountdown(roomId, socket.id);
++  });
++
+   socket.on('player-ready', ({ ready }) => {
+     const roomId = socket.data.roomId;
+     const room = roomId && rooms.get(roomId);
+@@ -397,8 +579,13 @@ io.on('connection', socket => {
+     const player = room?.players.get(socket.id);
+     if (!room || !player || room.phase !== 'in-game') return;
+ 
+-    player.score = Math.max(0, Math.min(999999, Math.floor(Number(data.score) || 0)));
++    const scoreCap = room.mode.id === 'battle-royale' ? 5_000_000 : 999999;
++    player.score = Math.max(0, Math.min(scoreCap, Math.floor(Number(data.score) || 0)));
+     player.lines = Math.max(0, Math.min(9999, Math.floor(Number(data.lines) || 0)));
++    if (room.mode.id === 'battle-royale' && hasReachedTarget(player.score)) {
++      finishBattleRoyalMatch(roomId, 'target-score', player);
++      return;
++    }
+     socket.to(roomId).emit('opponent-score-update', { playerIndex: player.index, ...data });
+     if (room.mode.isTeamMode) {
+       io.to(roomId).emit('team-score-update', {
+@@ -412,22 +599,29 @@ io.on('connection', socket => {
+     }
+   });
+ 
+-  socket.on('player-eliminated', () => {
++  socket.on('player-eliminated', ({ killerIndex } = {}) => {
+     const roomId = socket.data.roomId;
+     const room = roomId && rooms.get(roomId);
+     const player = room?.players.get(socket.id);
+     if (!room || !player || room.phase !== 'in-game') return;
+     player.state = 'spectating';
++    player.eliminatedAt = Date.now();
++    if (room.mode.id === 'battle-royale' && Number.isInteger(killerIndex)) {
++      const killer = Array.from(room.players.values()).find(candidate => candidate.index === killerIndex && candidate.state === 'playing');
++      if (killer) killer.kills = (killer.kills || 0) + 1;
++    }
+     socket.to(roomId).emit('opponent-topped-out', { playerIndex: player.index });
+     io.to(roomId).emit('player-state-update', { playerId: socket.id, state: 'spectating' });
+-    if (!room.mode.isTeamMode) checkEliminationGameOver(roomId);
++    if (room.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
++    else if (!room.mode.isTeamMode) checkEliminationGameOver(roomId);
+     emitRoomState(roomId);
+   });
+ 
+   socket.on('game-over', () => {
+     const roomId = socket.data.roomId;
+     const room = roomId && rooms.get(roomId);
+-    if (room && !room.mode.isTeamMode) checkEliminationGameOver(roomId);
++    if (room?.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
++    else if (room && !room.mode.isTeamMode) checkEliminationGameOver(roomId);
+   });
+ 
+   socket.on('send-garbage', ({ count }) => {
+@@ -470,12 +664,9 @@ io.on('connection', socket => {
+     const safeDuration = Math.max(0, Math.min(10_000, Number(durationMs) || 0));
+     const safeAmount = Math.max(0, Math.min(20, Number(amount) || 0));
+ 
+-    if (type === 'QUICKSILVER' || type === 'CHAOS') {
++    if (type === 'FREEZE' || type === 'CHAOS') {
+       const effect = { type, durationMs: safeDuration };
+       opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+-    } else if (type === 'ABILITY_FREEZE') {
+-      const effect = { type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 };
+-      opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+     } else if (type === 'SCRAMBLE' && selectedOpponent) {
+       io.to(selectedOpponent[0]).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)) });
+     } else if (type === 'GRID_SHIFT' && selectedOpponent) {
+diff --git a/Prototype V1/Server/package-lock.json b/Prototype V1/Server/package-lock.json
+index f1b13a1..05d3494 100644
+--- a/Prototype V1/Server/package-lock.json	
++++ b/Prototype V1/Server/package-lock.json	
+@@ -28,9 +28,9 @@
+       }
+     },
+     "node_modules/@types/node": {
+-      "version": "26.1.1",
+-      "resolved": "https://registry.npmjs.org/@types/node/-/node-26.1.1.tgz",
+-      "integrity": "sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==",
++      "version": "26.4.1",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz",
++      "integrity": "sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA==",
+       "license": "MIT",
+       "dependencies": {
+         "undici-types": "~8.3.0"
+@@ -246,16 +246,15 @@
+       }
+     },
+     "node_modules/engine.io": {
+-      "version": "6.6.9",
+-      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.9.tgz",
+-      "integrity": "sha512-clKkw4C7nJ22mGgoVcCg6V/W/TxdNyIOTr89k2ONZu81qqkddPFDF0LXcbAwhzPD8DjkiRCjzuiO6Y+fkpD4vg==",
++      "version": "6.6.10",
++      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.10.tgz",
++      "integrity": "sha512-9/lX2bdlizlCXMHRMOIm03VBQHQYC7VvydcxtTAUJRxNW1QzM/2PMFSmr6h/lCiMHcyCP6abK+t9Q+j4vekk8Q==",
+       "license": "MIT",
+       "dependencies": {
+         "@types/cors": "^2.8.12",
+         "@types/node": ">=10.0.0",
+         "@types/ws": "^8.5.12",
+         "accepts": "~1.3.4",
+-        "base64id": "2.0.0",
+         "cookie": "~0.7.2",
+         "cors": "~2.8.5",
+         "debug": "~4.4.1",
+@@ -1063,9 +1062,9 @@
+       }
+     },
+     "node_modules/ws": {
+-      "version": "8.21.1",
+-      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.1.tgz",
+-      "integrity": "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==",
++      "version": "8.21.3",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
++      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=10.0.0"
+diff --git a/Prototype V1/Server/package.json b/Prototype V1/Server/package.json
+index b71bc26..de9b5ae 100644
+--- a/Prototype V1/Server/package.json	
++++ b/Prototype V1/Server/package.json	
+@@ -1,18 +1,14 @@
+ {
+-  "name": "temp",
++  "name": "block-quartet-server",
+   "private": true,
+-  "version": "0.0.0",
++  "version": "0.1.0",
+   "type": "module",
+   "scripts": {
+-    "dev": "vite",
+-    "build": "tsc && vite build",
+-    "preview": "vite preview"
++    "dev": "node --watch index.js",
++    "start": "node index.js"
+   },
+   "dependencies": {
+-    "socket.io-client": "^4.7.5"
+-  },
+-  "devDependencies": {
+-    "typescript": "~6.0.2",
+-    "vite": "^8.1.1"
++    "express": "^4.19.2",
++    "socket.io": "^4.7.5"
+   }
+-} 
+\ No newline at end of file
++}
+\ No newline at end of file
+diff --git a/Prototype V1/modeselect.html b/Prototype V1/modeselect.html
+index 14b7d8c..a7b6eaa 100644
+--- a/Prototype V1/modeselect.html	
++++ b/Prototype V1/modeselect.html	
+@@ -294,20 +294,24 @@
+           </div>
+ 
+           <!-- Room Code -->
+-          <div class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-6 mb-6 panel-glow">
+-            <label for="lobby-room-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Room Code</label>
+-            <div class="flex gap-3 mt-2">
+-              <input id="lobby-room-input" type="text" value="test-room"
+-                class="flex-1 bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-cyan focus:shadow-[0_0_15px_rgba(0,255,255,0.2)] transition-all" />
+-              <button id="btn-join-lobby" class="group relative px-6 py-2 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.2)]">
+-                <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+-                <span class="relative">JOIN</span>
+-              </button>
++          <div id="lobby-room-panel" class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-6 mb-6 panel-glow">
++            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
++              <div class="flex-1">
++                <label for="lobby-room-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Room Code</label>
++                <input id="lobby-room-input" type="text" value="test-room"
++                  class="mt-2 w-full bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-cyan focus:shadow-[0_0_15px_rgba(0,255,255,0.2)] transition-all" />
++              </div>
++              <div class="flex gap-2 sm:shrink-0">
++                <button id="btn-host-lobby" class="px-5 py-2.5 bg-neon-pink text-white font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(255,20,147,0.2)]">HOST</button>
++                <button id="btn-join-lobby" class="px-5 py-2.5 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.2)]">JOIN</button>
++              </div>
+             </div>
++            <p id="lobby-action-hint" class="mt-3 text-[10px] text-gray-500 uppercase tracking-widest">Host creates this modeΓÇÖs room. Join connects to an existing room with the same mode.</p>
+           </div>
+ 
+           <div id="lobby-countdown" class="hidden text-neon-yellow text-2xl font-bold font-pixel mb-4 animate-pulse"></div>
+-          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px]"></div>
++          <div id="lobby-status" class="text-gray-400 text-sm mb-4 min-h-[20px] text-center"></div>
++          <p id="lobby-start-hint" class="text-[10px] text-gray-500 uppercase tracking-widest text-center mb-4">The host can start with the current roster. Ready starts automatically when the room is full.</p>
+           <div id="team-lobby-summary" class="hidden w-full grid grid-cols-2 gap-3 mb-4 text-[10px] font-bold tracking-widest uppercase">
+             <div class="border border-neon-cyan/40 bg-neon-cyan/5 px-4 py-3 text-neon-cyan">Cyan Circuit <span id="team-lobby-cyan">0/3</span></div>
+             <div class="border border-neon-pink/40 bg-neon-pink/5 px-4 py-3 text-neon-pink text-right">Magenta Voltage <span id="team-lobby-magenta">0/3</span></div>
+@@ -317,7 +321,8 @@
+             <!-- Player rows injected by main.ts -->
+           </div>
+ 
+-          <div class="flex gap-4">
++          <div class="flex flex-wrap justify-center gap-3">
++            <button id="btn-lobby-start-now" class="hidden px-8 py-3 bg-neon-yellow text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(255,220,80,0.25)]">START NOW</button>
+             <button id="btn-lobby-ready" class="hidden group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+               <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+               <span class="relative">READY UP</span>
+diff --git a/Prototype V1/scripts/battleRoyalSmoke.mjs b/Prototype V1/scripts/battleRoyalSmoke.mjs
+new file mode 100644
+index 0000000..f9c7cc6
+--- /dev/null
++++ b/Prototype V1/scripts/battleRoyalSmoke.mjs	
+@@ -0,0 +1,93 @@
++import assert from 'node:assert/strict';
++import { io } from 'socket.io-client';
++import { BATTLE_ROYALE_RULES, selectBattleRoyalCullTargets, rankBattleRoyalPlayers, closestToTarget } from '../Server/battleRoyal.js';
++
++const serverUrl = process.env.GAME_SERVER_URL || 'http://localhost:3200';
++const roomId = `BR-SMOKE-${Date.now()}`;
++const clients = [];
++const states = new Map();
++
++function waitFor(socket, event, timeout = 12000) {
++  return new Promise((resolve, reject) => {
++    const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), timeout);
++    socket.once(event, value => { clearTimeout(timer); resolve(value); });
++  });
++}
++
++function waitForRoomSize(socket, size, timeout = 12000) {
++  return new Promise((resolve, reject) => {
++    const timer = setTimeout(() => reject(new Error(`Timed out waiting for room size ${size}`)), timeout);
++    const onUpdate = state => {
++      if (state.players.length < size) return;
++      clearTimeout(timer);
++      socket.off('room-update', onUpdate);
++      resolve(state);
++    };
++    socket.on('room-update', onUpdate);
++  });
++}
++
++function makePlayer(index) {
++  return new Promise((resolve, reject) => {
++    const socket = io(serverUrl, { transports: ['websocket'] });
++    clients.push(socket);
++    const timer = setTimeout(() => reject(new Error(`Player ${index} failed to connect`)), 8000);
++    socket.on('connect', () => {
++      clearTimeout(timer);
++      socket.on('room-update', state => states.set(socket.id, state));
++      socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId, name: `BR-${index + 1}`, modeId: 'battle-royale' });
++      resolve(socket);
++    });
++    socket.on('connect_error', reject);
++  });
++}
++
++try {
++  assert.equal(BATTLE_ROYALE_RULES.capacity, 40);
++  assert.equal(BATTLE_ROYALE_RULES.durationMs, 600000);
++  assert.equal(BATTLE_ROYALE_RULES.targetScore, 2000000);
++
++  const sample = Array.from({ length: 40 }, (_, index) => ({ id: String(index), name: `P${index}`, state: 'playing', score: index * 100, lines: 40 - index, kills: index % 4 }));
++  const firstCull = selectBattleRoyalCullTargets(sample, 10, 'score', ['lines', 'kills']);
++  assert.deepEqual(firstCull.map(player => player.id), Array.from({ length: 10 }, (_, index) => String(index)));
++  const secondCull = selectBattleRoyalCullTargets(sample, 12, 'lines', ['score', 'kills']);
++  assert.equal(secondCull.length, 12);
++  assert.equal(secondCull[0].lines, 1);
++  const killTieSample = [
++    { id: 'k1', name: 'K1', state: 'playing', score: 500, lines: 20, kills: 0 },
++    { id: 'k2', name: 'K2', state: 'playing', score: 100, lines: 30, kills: 0 },
++    { id: 'k3', name: 'K3', state: 'playing', score: 200, lines: 10, kills: 1 },
++  ];
++  const killCull = selectBattleRoyalCullTargets(killTieSample, 2, 'kills', ['lines', 'score']);
++  assert.deepEqual(killCull.map(player => player.id), ['k1', 'k2']);
++  assert.equal((await import('../Server/battleRoyal.js')).getBattleRoyalPhase(8 * 60 * 1000).id, 'cull-kills');
++  assert.equal((await import('../Server/battleRoyal.js')).getBattleRoyalPhase(9 * 60 * 1000).id, 'sudden-death');
++
++  const rankings = rankBattleRoyalPlayers([{ id: 'a', name: 'A', state: 'playing', score: 100, lines: 2, kills: 1 }, { id: 'b', name: 'B', state: 'playing', score: 100, lines: 3, kills: 0 }, { id: 'c', name: 'C', state: 'playing', score: 99, lines: 10, kills: 10 }]);
++  assert.deepEqual(rankings.map(player => player.id), ['b', 'a', 'c']);
++  assert.equal(closestToTarget([{ id: 'a', state: 'playing', score: 1_999_900 }, { id: 'b', state: 'playing', score: 1_998_000 }]).id, 'a');
++
++  const sockets = [await makePlayer(0)];
++  await waitFor(sockets[0], 'room-update');
++  for (let index = 1; index < 40; index += 1) sockets.push(await makePlayer(index));
++  const state = await waitForRoomSize(sockets[0], 40);
++  assert.equal(state.mode.id, 'battle-royale');
++  assert.equal(state.capacity, 40);
++  assert.equal(state.players.length, 40);
++
++  for (const socket of sockets) socket.emit('player-ready', { ready: true });
++  const gameStart = await waitFor(sockets[0], 'game-start', 15000);
++  assert.equal(gameStart.modeId, 'battle-royale');
++  assert.equal(gameStart.players.length, 40);
++
++  const finished = waitFor(sockets[0], 'post-game-start', 6000);
++  sockets[0].emit('score-update', { score: 2_000_000, lines: 200, kills: 5, combo: 0, multiplier: 1 });
++  const result = await finished;
++  assert.equal(result.battleRoyal, true);
++  assert.equal(result.reason, 'target-score');
++  assert.equal(result.targetScore, 2_000_000);
++  assert.equal(result.winnerName, 'BR-1');
++  console.log('PASS: Battle Royale rules, 40-player room formation, target-score victory, and ranking helpers verified.');
++} finally {
++  for (const socket of clients) socket.disconnect();
++}
+diff --git a/Prototype V1/scripts/classEffectSmoke.mjs b/Prototype V1/scripts/classEffectSmoke.mjs
+index fe1c6cc..bc6a664 100644
+--- a/Prototype V1/scripts/classEffectSmoke.mjs	
++++ b/Prototype V1/scripts/classEffectSmoke.mjs	
+@@ -30,7 +30,7 @@ try {
+     const socket = io(SERVER_URL, { transports: ['websocket'], forceNew: true });
+     await waitFor(socket, 'connect');
+     sockets.push(socket);
+-    socket.emit('join-room', { roomId: ROOM_ID, name: `Class ${index}`, modeId: 'team-deathmatch' });
++    socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId: ROOM_ID, name: `Class ${index}`, modeId: 'team-deathmatch' });
+   }
+ 
+   const gameStarts = sockets.map(socket => waitFor(socket, 'game-start', data => data.modeId === 'team-deathmatch'));
+@@ -40,8 +40,8 @@ try {
+   const enemy = sockets[4]; // Magenta; sockets 0-2 are Cyan.
+   const ally = sockets[2];
+ 
+-  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'QUICKSILVER' && data.durationMs === 5_000);
+-  sockets[0].emit('class-ability', { type: 'QUICKSILVER', durationMs: 5_000 });
++  const freeze = waitFor(enemy, 'class-effect', data => data.type === 'FREEZE' && data.durationMs === 5_000);
++  sockets[0].emit('class-ability', { type: 'FREEZE', durationMs: 5_000 });
+   await freeze;
+ 
+   const chaos = waitFor(enemy, 'class-effect', data => data.type === 'CHAOS' && data.durationMs === 8_000);
+diff --git a/Prototype V1/scripts/modeIsolationSmoke.mjs b/Prototype V1/scripts/modeIsolationSmoke.mjs
+index fd38782..c906ccf 100644
+--- a/Prototype V1/scripts/modeIsolationSmoke.mjs	
++++ b/Prototype V1/scripts/modeIsolationSmoke.mjs	
+@@ -56,7 +56,7 @@ try {
+   const classicCreated = waitFor(classicHost, 'room-update', state =>
+     state.roomId === ROOM_CODE && state.mode.id === 'classic-pvp' && state.players.length === 1,
+   );
+-  classicHost.emit('join-room', { roomId: ROOM_CODE, name: 'Classic Host', modeId: 'classic-pvp' });
++  classicHost.emit('host-room', { roomId: ROOM_CODE, name: 'Classic Host', modeId: 'classic-pvp' });
+   const firstState = await classicCreated;
+   assert(firstState.capacity === 2, 'Classic PvP must create a two-player room.');
+   assert(firstState.players[0].team === null, 'Classic PvP players must not receive team assignments.');
+@@ -92,7 +92,7 @@ try {
+   const ffaCreated = waitFor(ffaHost, 'room-update', state =>
+     state.roomId === ffaRoomCode && state.mode.id === 'free-for-all' && state.players.length === 1,
+   );
+-  ffaHost.emit('join-room', { roomId: ffaRoomCode, name: 'FFA Host', modeId: 'free-for-all' });
++  ffaHost.emit('host-room', { roomId: ffaRoomCode, name: 'FFA Host', modeId: 'free-for-all' });
+   const ffaState = await ffaCreated;
+   assert(ffaState.capacity === 4, 'Free For All must create a four-player room.');
+   assert(ffaState.players[0].team === null, 'Free For All players must not receive team assignments.');
+diff --git a/Prototype V1/scripts/modeLobbySmoke.mjs b/Prototype V1/scripts/modeLobbySmoke.mjs
+index 9aea772..fbc857f 100644
+--- a/Prototype V1/scripts/modeLobbySmoke.mjs	
++++ b/Prototype V1/scripts/modeLobbySmoke.mjs	
+@@ -38,7 +38,7 @@ async function runMode({ id, capacity }) {
+       await waitFor(socket, 'connect');
+       sockets.push(socket);
+       if (index === 0) rosterPromise = waitFor(socket, 'room-update', state => state.players.length === capacity);
+-      socket.emit('join-room', { roomId, name: `${id}-${index + 1}`, modeId: id });
++      socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId, name: `${id}-${index + 1}`, modeId: id });
+       await delay(40);
+     }
+ 
+diff --git a/Prototype V1/scripts/partialLobbyStartSmoke.mjs b/Prototype V1/scripts/partialLobbyStartSmoke.mjs
+new file mode 100644
+index 0000000..89cf129
+--- /dev/null
++++ b/Prototype V1/scripts/partialLobbyStartSmoke.mjs	
+@@ -0,0 +1,41 @@
++import assert from 'node:assert/strict';
++import { io } from 'socket.io-client';
++
++const URL = process.env.GAME_SERVER_URL || 'http://localhost:3201';
++const modes = ['classic-pvp', 'free-for-all', 'team-deathmatch', 'battle-royale'];
++
++function waitFor(socket, event, predicate = () => true, timeoutMs = 12000) {
++  return new Promise((resolve, reject) => {
++    const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), timeoutMs);
++    const handler = data => {
++      if (!predicate(data)) return;
++      clearTimeout(timeout);
++      socket.off(event, handler);
++      resolve(data);
++    };
++    socket.on(event, handler);
++  });
++}
++
++for (const modeId of modes) {
++  const socket = io(URL, { transports: ['websocket'], forceNew: true });
++  try {
++    await waitFor(socket, 'connect');
++    const roomId = `partial-${modeId}-${Date.now()}`;
++    const roomPromise = waitFor(socket, 'room-update', state => state.mode.id === modeId && state.players.length === 1);
++    socket.emit('host-room', { roomId, name: `Host-${modeId}`, modeId });
++    const room = await roomPromise;
++    assert.equal(room.hostId, socket.id);
++    assert.equal(room.phase, 'lobby');
++    const gameStart = waitFor(socket, 'game-start', data => data.modeId === modeId);
++    socket.emit('host-start-now');
++    const game = await gameStart;
++    assert.equal(game.players.length, 1);
++    assert.equal(game.modeId, modeId);
++    console.log(`PASS: ${modeId} host-created room started early with one player.`);
++  } finally {
++    socket.disconnect();
++  }
++}
++
++console.log('PASS: explicit host/join flow and partial-roster host starts passed for every mode.');
+diff --git a/Prototype V1/scripts/teamDeathmatchSmoke.mjs b/Prototype V1/scripts/teamDeathmatchSmoke.mjs
+new file mode 100644
+index 0000000..fc41812
+--- /dev/null
++++ b/Prototype V1/scripts/teamDeathmatchSmoke.mjs	
+@@ -0,0 +1,64 @@
++import { io } from 'socket.io-client';
++
++const URL = process.env.GAME_SERVER_URL || 'http://localhost:3100';
++const ROOM = 'smoke-3v3';
++const names = ['Cyan One', 'Cyan Two', 'Cyan Three', 'Magenta One', 'Magenta Two', 'Magenta Three'];
++const scores = [400, 0, 0, 0, 0, 0];
++const sockets = [];
++
++function delay(ms) {
++  return new Promise(resolve => setTimeout(resolve, ms));
++}
++
++function waitFor(socket, event, predicate = () => true, timeoutMs = 12_000) {
++  return new Promise((resolve, reject) => {
++    const timeout = setTimeout(() => {
++      socket.off(event, handler);
++      reject(new Error(`Timed out waiting for ${event}`));
++    }, timeoutMs);
++    const handler = data => {
++      if (!predicate(data)) return;
++      clearTimeout(timeout);
++      socket.off(event, handler);
++      resolve(data);
++    };
++    socket.on(event, handler);
++  });
++}
++
++try {
++  for (const [index, name] of names.entries()) {
++    const socket = io(URL, { transports: ['websocket'], forceNew: true });
++    await waitFor(socket, 'connect');
++    sockets.push(socket);
++    const rosterPromise = index === 0
++      ? waitFor(socket, 'room-update', state => state.players.length === 6)
++      : null;
++    socket.emit(index === 0 ? 'host-room' : 'join-room', { roomId: ROOM, name, modeId: 'team-deathmatch' });
++    await delay(50);
++    if (rosterPromise) socket.data = { rosterPromise };
++  }
++
++  const roster = await sockets[0].data.rosterPromise;
++  const cyan = roster.players.filter(player => player.team === 'cyan');
++  const magenta = roster.players.filter(player => player.team === 'magenta');
++  if (cyan.length !== 3 || magenta.length !== 3) throw new Error('Room did not assign a 3v3 roster.');
++
++  const teamScorePromise = waitFor(sockets[0], 'team-score-update', data => data.teamScores?.cyan === 400 && data.teamScores?.magenta === 0);
++  for (const socket of sockets) socket.emit('player-ready', { ready: true });
++  await Promise.all(sockets.map((socket, index) => waitFor(socket, 'game-start').then(() => {
++    socket.emit('score-update', { score: scores[index], lines: index === 0 ? 4 : 0, combo: 0, multiplier: 1 });
++  })));
++
++  const totals = await teamScorePromise;
++  if (totals.teamScores.cyan !== 400 || totals.teamScores.magenta !== 0) throw new Error('Team score aggregation was incorrect.');
++
++  const resultPromise = waitFor(sockets[1], 'post-game-start', data => data.winnerTeam === 'cyan');
++  sockets[0].disconnect();
++  const result = await resultPromise;
++  if (result.teamScores.cyan !== 400 || result.teamScores.magenta !== 0) throw new Error('Final team score snapshot changed during disconnect.');
++
++  console.log('PASS: Original Block Quartet server verified six seats, 3v3 teams, Cyan 400ΓÇô0 score aggregation, and highest-score result.');
++} finally {
++  sockets.forEach(socket => socket.disconnect());
++}
+diff --git a/Prototype V1/src/GameManager.ts b/Prototype V1/src/GameManager.ts
+index 3803fba..49f00c7 100644
+--- a/Prototype V1/src/GameManager.ts	
++++ b/Prototype V1/src/GameManager.ts	
+@@ -65,6 +65,12 @@ export class GameManager {
+   public isOnline: boolean = false;
+   public onlineWinnerName: string = "";
+   public gameTime: number = 0;
++  public battleRoyalMode = false;
++  public battleRoyalPhase = '';
++  public battleRoyalRemaining = 0;
++  public battleRoyalKills = 0;
++  public battleRoyalTargetScore = 2_000_000;
++  public battleRoyalRankings: Array<{ rank: number; name: string; score: number; lines: number; kills: number; eliminated: boolean }> = [];
+ 
+   // Visual effects state
+   private particles: Particle[] = [];
+@@ -116,6 +122,11 @@ export class GameManager {
+     this.network = net;
+     this.myPlayerIndex = myIndex;
+     this.onlineWinnerName = "";
++    this.battleRoyalMode = false;
++    this.battleRoyalPhase = '';
++    this.battleRoyalRemaining = playerCount;
++    this.battleRoyalKills = 0;
++    this.battleRoyalRankings = [];
+ 
+     // Create player instances. Only our own player is human-controlled.
+     this.players = [];
+@@ -172,6 +183,7 @@ export class GameManager {
+         const player = this.players[playerIndex];
+         player.scoreManager.score = data.score;
+         player.scoreManager.totalLinesCleared = data.lines;
++        player.kills = data.kills ?? player.kills;
+         player.scoreManager.combo = data.combo;
+         player.scoreManager.scoreMultiplier = data.multiplier;
+       }
+@@ -183,38 +195,77 @@ export class GameManager {
+       }
+     };
+ 
+-    net.onReceiveGarbage = (count: number, fromIndex?: number) => {
++    net.onPlayerStateUpdate = ({ playerId, state }) => {
++      if (state !== 'spectating') return;
++      const playerIndex = this.players.findIndex(player => player.id === playerId);
++      if (playerIndex >= 0) {
++        this.players[playerIndex].isToppedOut = true;
++        this.players[playerIndex].battleRoyalEliminated = this.battleRoyalMode;
++      }
++      if (playerId === net.mySocketId) {
++        const localPlayer = this.players[myIndex];
++        if (localPlayer) {
++          localPlayer.isToppedOut = true;
++          localPlayer.battleRoyalEliminated = this.battleRoyalMode;
++        }
++        this.renderFn();
++      }
++    };
++
++    net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => {
+       const myPlayer = this.players[myIndex];
+       if (myPlayer && !myPlayer.isToppedOut) {
+-        if (myPlayer.shieldActive) {
+-          myPlayer.shieldActive = false;
+-          return;
+-        }
+-        if (myPlayer.fortifyCharges > 0) {
++        const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
++        if (!isSolidSuddenDeath && myPlayer.fortifyCharges > 0) {
+           myPlayer.fortifyCharges--;
+           return;
+         }
+-        if (myPlayer.reflectGarbage && fromIndex !== undefined) {
++        if (!isSolidSuddenDeath && myPlayer.reflectGarbage && fromIndex !== undefined) {
+           myPlayer.reflectGarbage = false;
+           this.network?.sendReflectedGarbage(fromIndex, count);
+           return;
+         }
+-        myPlayer.grid.addGarbageLines(count, 'HUMAN');
+-        if (myPlayer.supportPassiveConversion) {
++        myPlayer.grid.addGarbageLines(count, 'HUMAN', { solid: isSolidSuddenDeath, unClearable: Boolean(options?.unClearable) });
++        if (!isSolidSuddenDeath && myPlayer.supportPassiveConversion) {
+           myPlayer.grid.convertGarbageToSpecialBlocks(count);
+           myPlayer.supportPassiveConversion = false;
+-        } else if (myPlayer.recycleGarbageLines > 0) {
++        } else if (!isSolidSuddenDeath && myPlayer.recycleGarbageLines > 0) {
+           const converted = myPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, myPlayer.recycleGarbageLines));
+           myPlayer.recycleGarbageLines = Math.max(0, myPlayer.recycleGarbageLines - converted);
+         }
+       }
+     };
+ 
++    net.onBattleRoyalPhase = data => {
++      this.battleRoyalMode = true;
++      this.battleRoyalPhase = data.label;
++      this.battleRoyalRemaining = data.remainingPlayers;
++      this.renderFn();
++    };
++    net.onBattleRoyalCull = data => {
++      this.battleRoyalMode = true;
++      this.battleRoyalRemaining = data.remainingPlayers;
++      this.renderFn();
++    };
++    net.onBattleRoyalSuddenDeath = data => {
++      this.battleRoyalMode = true;
++      this.battleRoyalRemaining = data.remainingPlayers;
++      this.renderFn();
++    };
++    net.onBattleRoyalPostGame = data => {
++      this.battleRoyalMode = true;
++      this.battleRoyalRankings = data.rankings.map(entry => ({ rank: entry.rank, name: entry.name, score: entry.score, lines: entry.lines, kills: entry.kills, eliminated: entry.eliminated }));
++      this.battleRoyalTargetScore = data.targetScore;
++      this.onlineWinnerName = data.winnerName;
++      this.state = GameState.GAME_OVER;
++      this.renderFn();
++    };
++
+     net.onClassEffect = effect => {
+       const myPlayer = this.players[myIndex];
+       if (!myPlayer || myPlayer.isToppedOut) return;
+-      if (effect.type === 'QUICKSILVER') {
+-        myPlayer.activeEffectType = 'QUICKSILVER';
++      if (effect.type === 'FREEZE') {
++        myPlayer.activeEffectType = 'FROZEN';
+         myPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
+         myPlayer.inputHandler.freezeFor(myPlayer.activeEffectTimer);
+       } else if (effect.type === 'CHAOS') {
+@@ -227,8 +278,6 @@ export class GameManager {
+         myPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
+       } else if (effect.type === 'GUARDIAN_ANGEL') {
+         myPlayer.grid.clearBottomLines(effect.amount ?? 4);
+-      } else if (effect.type === 'ABILITY_FREEZE') {
+-        myPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
+       }
+     };
+ 
+@@ -302,7 +351,6 @@ export class GameManager {
+       player.abilityCooldowns.Q = Math.max(0, player.abilityCooldowns.Q - dt);
+       player.abilityCooldowns.E = Math.max(0, player.abilityCooldowns.E - dt);
+       player.perfectClearWindow = Math.max(0, player.perfectClearWindow - dt);
+-      player.abilityFreezeTimer = Math.max(0, player.abilityFreezeTimer - dt);
+ 
+       if (player.activeEffectTimer > 0) {
+         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
+@@ -322,7 +370,7 @@ export class GameManager {
+         player.inputHandler.update(dt);
+       }
+ 
+-      if (player.activeEffectType === 'QUICKSILVER' && player.activeEffectTimer > 0) {
++      if (player.activeEffectType === 'FROZEN' && player.activeEffectTimer > 0) {
+         continue;
+       }
+ 
+@@ -392,6 +440,7 @@ export class GameManager {
+         lines: myPlayer.scoreManager.totalLinesCleared,
+         combo: myPlayer.scoreManager.combo,
+         multiplier: myPlayer.scoreManager.scoreMultiplier,
++        kills: myPlayer.kills,
+       });
+     }
+   }
+@@ -507,7 +556,6 @@ export class GameManager {
+   }
+ 
+   private tryUseClassAbility(player: Player, slot: 'Q' | 'E' | 'R') {
+-    if (player.abilityFreezeTimer > 0) return;
+     if (slot !== 'R' && player.abilityCooldowns[slot] > 0) return;
+     const level = Math.floor(player.scoreManager.totalLinesCleared / 10);
+ 
+@@ -552,7 +600,7 @@ export class GameManager {
+     if (player.classMeter < ultimateCost) return;
+     player.classMeter = 0;
+     if (player.playerClass === 'SPEEDSTER') {
+-      this.sendOrApplyClassEffect(player, { type: 'QUICKSILVER', durationMs: BULLET_TIME_DURATION_MS });
++      this.sendOrApplyClassEffect(player, { type: 'FREEZE', durationMs: BULLET_TIME_DURATION_MS });
+     } else if (player.playerClass === 'TANK') {
+       this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 10 });
+     } else if (player.playerClass === 'SABOTEUR') {
+@@ -575,20 +623,19 @@ export class GameManager {
+     player.selectedTargetIndex = candidates[(current + 1) % candidates.length];
+   }
+ 
+-  private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
++  private sendOrApplyClassEffect(player: Player, effect: { type: 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
+     if (this.isOnline) {
+       this.network?.sendClassAbility(effect);
+       return;
+     }
+     const opponents = this.players.filter(target => target.id !== player.id && !target.isToppedOut);
+     const selectedTarget = effect.targetIndex === undefined ? undefined : this.players[effect.targetIndex];
+-    if (effect.type === 'QUICKSILVER') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
++    if (effect.type === 'FREEZE') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
+     else if (effect.type === 'CHAOS') opponents.forEach(target => target.inputHandler.reverseFor(effect.durationMs ?? CHAOS_DURATION_MS));
+     else if (effect.type === 'SCRAMBLE') this.scramblePreview(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 5);
+     else if (effect.type === 'GRID_SHIFT') (selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0])?.grid.shiftHorizontally((effect.direction ?? 1) * 2);
+     else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 10, 'HUMAN'));
+     else if (effect.type === 'GUARDIAN_ANGEL') player.grid.clearBottomLines(effect.amount ?? 4);
+-    else if (effect.type === 'ABILITY_FREEZE') opponents.forEach(target => { target.abilityFreezeTimer = effect.durationMs ?? 3000; });
+   }
+ 
+   private scramblePreview(player: Player | undefined, count: number) {
+@@ -603,33 +650,16 @@ export class GameManager {
+     }
+   }
+ 
+-  /** Freezes all opponents' abilities (Q/E/R) for the specified duration. Triggered by the Freeze special block. */
+-  private applyAbilityFreeze(source: Player, durationMs: number) {
+-    if (this.isOnline) {
+-      this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs });
+-      return;
+-    }
+-    for (const target of this.players) {
+-      if (target.id !== source.id && !target.isToppedOut) {
+-        target.abilityFreezeTimer = durationMs;
+-      }
+-    }
+-  }
+-
+   private performHold(player: Player) {
+     if (player.hasHeld || !player.currentPiece) return;
+ 
+     if (player.holdPiece) {
+       const temp = player.holdPiece;
+-      // Store current piece WITH its specials into hold
+       player.holdPiece = new Tetromino(player.currentPiece.type);
+-      player.holdPiece.specialBlocks = new Map(player.currentPiece.specialBlocks);
+-      // Restore held piece WITH its preserved specials
+       player.currentPiece = new Tetromino(temp.type);
+-      player.currentPiece.specialBlocks = new Map(temp.specialBlocks);
++      player.itemManager.applyItemToTetromino(player.currentPiece); // re-apply special blocks if needed
+     } else {
+       player.holdPiece = new Tetromino(player.currentPiece.type);
+-      player.holdPiece.specialBlocks = new Map(player.currentPiece.specialBlocks);
+       this.handleSpawning(player);
+     }
+     
+@@ -721,9 +751,8 @@ export class GameManager {
+       }
+     }
+ 
+-    // Special blocks ΓÇö deduplicate so each type fires at most once (does not stack)
+-    const uniqueSpecials = new Set(specialBlocksToTrigger);
+-    for (const special of uniqueSpecials) {
++    // Special blocks
++    for (const special of specialBlocksToTrigger) {
+       if (special === SpecialBlockType.BOMB) {
+         player.grid.clearBombArea(clearedRows[0], Math.floor(player.grid.width / 2));
+       } else if (special === SpecialBlockType.HEAVY) {
+@@ -732,12 +761,6 @@ export class GameManager {
+         player.scoreManager.activateMultiplierBlock();
+       } else if (special === SpecialBlockType.SPEED) {
+         player.dropInterval = Math.max(100, player.dropInterval * 0.75);
+-      } else if (special === SpecialBlockType.SHIELD) {
+-        player.shieldActive = true;
+-      } else if (special === SpecialBlockType.FREEZE) {
+-        this.applyAbilityFreeze(player, 3000);
+-      } else if (special === SpecialBlockType.GARBAGE_EATER) {
+-        player.grid.clearGarbageLines(1);
+       }
+     }
+ 
+@@ -761,10 +784,6 @@ export class GameManager {
+ 
+     for (const target of this.players) {
+       if (target.id !== sender.id && !target.isToppedOut) {
+-        if (target.shieldActive) {
+-          target.shieldActive = false;
+-          continue;
+-        }
+         if (target.fortifyCharges > 0) {
+           target.fortifyCharges--;
+           continue;
+diff --git a/Prototype V1/src/Grid.ts b/Prototype V1/src/Grid.ts
+index 3ae0dac..689f2aa 100644
+--- a/Prototype V1/src/Grid.ts	
++++ b/Prototype V1/src/Grid.ts	
+@@ -3,6 +3,7 @@ import { Tetromino } from "./Tetromino";
+ export interface Cell {
+   type: string | null; // "I", "J", "L", etc., or null if empty
+   special?: string;    // "BOMB", "HEAVY", "MULTIPLIER"
++  unClearable?: boolean; // sudden-death garbage ΓÇö never counts toward a clearable full row
+ }
+ 
+ export class Grid {
+@@ -90,10 +91,11 @@ export class Grid {
+     let writeRow = this.height - 1;
+ 
+     for (let readRow = this.height - 1; readRow >= 0; readRow--) {
+-      // Check if readRow is full
++      // Check if readRow is full ΓÇö a row containing sudden-death (unClearable)
++      // garbage never counts as clearable, even if every cell is filled.
+       let isFull = true;
+       for (let c = 0; c < this.width; c++) {
+-        if (this.matrix[readRow][c].type === null) {
++        if (this.matrix[readRow][c].type === null || this.matrix[readRow][c].unClearable) {
+           isFull = false;
+           break;
+         }
+@@ -172,9 +174,11 @@ export class Grid {
+   public clearGarbageLines(count: number): number {
+     let cleared = 0;
+     for (let r = this.height - 1; r >= 0 && cleared < count; r--) {
+-      if (this.matrix[r].some(cell => cell.type === 'GARBAGE')) {
++      if (this.matrix[r].some(cell => cell.type === 'GARBAGE' && !cell.unClearable)) {
+         for (let c = 0; c < this.width; c++) {
+-          this.matrix[r][c] = { type: null };
++          if (!this.matrix[r][c].unClearable) {
++            this.matrix[r][c] = { type: null };
++          }
+         }
+         cleared++;
+       }
+@@ -197,7 +201,7 @@ export class Grid {
+     for (let r = this.height - 1; r >= 0 && converted < count; r--) {
+       for (let c = 0; c < this.width && converted < count; c++) {
+         const cell = this.matrix[r][c];
+-        if (cell.type !== 'GARBAGE') continue;
++        if (cell.type !== 'GARBAGE' || cell.unClearable) continue;
+         cell.type = 'I';
+         cell.special = specials[converted % specials.length];
+         converted++;
+@@ -223,9 +227,15 @@ export class Grid {
+   }
+ 
+   // Event-Driven Garbage Logic
+-  public addGarbageLines(count: number, senderType: 'EASY' | 'HARD' | 'HUMAN'): void {
++  public addGarbageLines(
++    count: number,
++    senderType: 'EASY' | 'HARD' | 'HUMAN',
++    options?: { solid?: boolean; unClearable?: boolean }
++  ): void {
+     if (count <= 0) return;
+ 
++    const isUnClearable = Boolean(options?.solid || options?.unClearable);
++
+     // Shift everything up by `count`
+     for (let r = 0; r < this.height - count; r++) {
+       for (let c = 0; c < this.width; c++) {
+@@ -241,16 +251,21 @@ export class Grid {
+ 
+     // Fill the bottom `count` rows with garbage
+     for (let r = this.height - count; r < this.height; r++) {
+-      const holeX = (senderType === 'HARD') ? alignedHoleX : Math.floor(Math.random() * this.width);
+-      
++      // Solid sudden-death garbage is truly inescapable ΓÇö no hole at all.
++      const holeX = options?.solid
++        ? -1
++        : (senderType === 'HARD') ? alignedHoleX : Math.floor(Math.random() * this.width);
++
+       for (let c = 0; c < this.width; c++) {
+         if (c === holeX) {
+           this.matrix[r][c] = { type: null };
+         } else {
+           // Use a special type or just a grey solid block for garbage
+-          this.matrix[r][c] = { type: 'GARBAGE' }; // We'll render GARBAGE as gray
++          this.matrix[r][c] = isUnClearable
++            ? { type: 'GARBAGE', unClearable: true }
++            : { type: 'GARBAGE' };
+         }
+       }
+     }
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/Prototype V1/src/ItemManager.ts b/Prototype V1/src/ItemManager.ts
+index df2ad6d..3d6fc58 100644
+--- a/Prototype V1/src/ItemManager.ts	
++++ b/Prototype V1/src/ItemManager.ts	
+@@ -5,9 +5,6 @@ export const SpecialBlockType = {
+   HEAVY: 'HEAVY',
+   MULTIPLIER: 'MULTIPLIER',
+   SPEED: 'SPEED',
+-  SHIELD: 'SHIELD',
+-  FREEZE: 'FREEZE',
+-  GARBAGE_EATER: 'GARBAGE_EATER',
+   NONE: 'NONE',
+ } as const;
+ export type SpecialBlockType = typeof SpecialBlockType[keyof typeof SpecialBlockType];
+@@ -20,12 +17,9 @@ interface ItemWeight {
+ export class ItemManager {
+   private itemPool: ItemWeight[] = [
+     { type: SpecialBlockType.NONE, weight: 80 },
++    { type: SpecialBlockType.BOMB, weight: 5 },
++    { type: SpecialBlockType.HEAVY, weight: 5 },
+     { type: SpecialBlockType.MULTIPLIER, weight: 10 },
+-    { type: SpecialBlockType.BOMB, weight: 2 },
+-    { type: SpecialBlockType.HEAVY, weight: 2 },
+-    { type: SpecialBlockType.SHIELD, weight: 2 },
+-    { type: SpecialBlockType.FREEZE, weight: 2 },
+-    { type: SpecialBlockType.GARBAGE_EATER, weight: 2 },
+   ];
+   private forcedNextItem: SpecialBlockType | null = null;
+ 
+diff --git a/Prototype V1/src/NetworkManager.ts b/Prototype V1/src/NetworkManager.ts
+index 5275f99..ade144a 100644
+--- a/Prototype V1/src/NetworkManager.ts	
++++ b/Prototype V1/src/NetworkManager.ts	
+@@ -10,6 +10,27 @@ export interface RoomMode {
+   teamSize: number;
+   isTeamMode: boolean;
+   winnerRule: string;
++  durationMs?: number | null;
++  targetScore?: number | null;
++}
++
++export interface BattleRoyalState {
++  startedAt: number | null;
++  phase: string | null;
++  targetScore: number;
++  remainingPlayers: number;
++  elapsedMs: number;
++}
++
++export interface BattleRoyalRanking {
++  rank: number;
++  id: string;
++  name: string;
++  score: number;
++  lines: number;
++  kills: number;
++  state: string;
++  eliminated: boolean;
+ }
+ 
+ export interface LobbyPlayer {
+@@ -21,25 +42,30 @@ export interface LobbyPlayer {
+   team: 'cyan' | 'magenta' | null;
+   score: number;
+   lines: number;
++  kills: number;
++  eliminatedAt?: number | null;
+ }
+ 
+ export interface RoomState {
+   roomId: string;
++  hostId: string | null;
+   phase: 'lobby' | 'countdown' | 'in-game' | 'post-game';
+   players: LobbyPlayer[];
+   capacity: number;
+   teamSize: number;
+   matchEndsAt: number | null;
+   teamScores: { cyan: number; magenta: number };
++  battleRoyal: BattleRoyalState | null;
+   mode: RoomMode;
+ }
+ 
+ export interface GameStartData {
+-  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null }[];
++  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number }[];
+   myIndex: number;
+   teamScores: { cyan: number; magenta: number };
+   modeId: OnlineModeId;
+   mode: RoomMode;
++  battleRoyal?: BattleRoyalState | null;
+ }
+ 
+ export interface PieceData {
+@@ -52,11 +78,12 @@ export interface PieceData {
+ export interface ScoreData {
+   score: number;
+   lines: number;
++  kills?: number;
+   combo: number;
+   multiplier: number;
+ }
+ 
+-export type ClassEffectType = 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE';
++export type ClassEffectType = 'FREEZE' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL';
+ export interface ClassEffectData {
+   type: ClassEffectType;
+   durationMs?: number;
+@@ -86,9 +113,13 @@ export class NetworkManager {
+   public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => void) | null = null;
+   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
+   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
++  public onRoomHostChanged: ((data: { hostId: string | null }) => void) | null = null;
+   public onTeamScoreUpdate: ((data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => void) | null = null;
+   public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
+   public onClassEffect: ((data: ClassEffectData) => void) | null = null;
++  public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number }) => void) | null = null;
++  public onBattleRoyalCull: ((data: { reason: string; eliminated: Array<{ id: string; name: string; score: number; lines: number; kills: number }>; remainingPlayers: number }) => void) | null = null;
++  public onBattleRoyalSuddenDeath: ((data: { targetId: string; targetIndex: number; remainingPlayers: number }) => void) | null = null;
+ 
+   // --- Game callbacks ---
+   public onGameStart: ((data: GameStartData) => void) | null = null;
+@@ -96,9 +127,10 @@ export class NetworkManager {
+   public onOpponentPieceUpdate: ((playerIndex: number, piece: PieceData | null) => void) | null = null;
+   public onOpponentScoreUpdate: (playerIndex: number, scoreData: ScoreData) => void = () => {};
+   public onOpponentToppedOut: (playerIndex: number) => void = () => {};
+-  public onReceiveGarbage: (count: number, fromIndex?: number) => void = () => {};
++  public onReceiveGarbage: (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => void = () => {};
+   public onShowRibbon: (message: string) => void = () => {};
+   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
++  public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
+ 
+   constructor() {
+     this.socket = io(SERVER_URL);
+@@ -160,6 +192,10 @@ export class NetworkManager {
+     this.socket.on("class-effect", (data: ClassEffectData) => {
+       this.onClassEffect?.(data);
+     });
++    this.socket.on('room-host-changed', (data: any) => this.onRoomHostChanged?.(data));
++    this.socket.on('battle-royale-phase', (data: any) => this.onBattleRoyalPhase?.(data));
++    this.socket.on('battle-royale-cull', (data: any) => this.onBattleRoyalCull?.(data));
++    this.socket.on('battle-royale-sudden-death', (data: any) => this.onBattleRoyalSuddenDeath?.(data));
+ 
+     // --- Game events ---
+ 
+@@ -183,8 +219,8 @@ export class NetworkManager {
+       this.onOpponentToppedOut?.(playerIndex);
+     });
+ 
+-    this.socket.on("receive-garbage", ({ count, fromIndex }: { count: number; fromIndex?: number }) => {
+-      this.onReceiveGarbage(count, fromIndex);
++    this.socket.on("receive-garbage", ({ count, fromIndex, solid, unClearable, source }: { count: number; fromIndex?: number; solid?: boolean; unClearable?: boolean; source?: string }) => {
++      this.onReceiveGarbage(count, fromIndex, { solid, unClearable, source });
+     });
+ 
+     this.socket.on("show-ribbon", ({ message }: { message: string }) => {
+@@ -194,14 +230,25 @@ export class NetworkManager {
+     this.socket.on("game-over", ({ winnerId, winnerName }: { winnerId: string; winnerName: string }) => {
+       this.onGameOver?.(winnerId, winnerName);
+     });
++    this.socket.on('post-game-start', (data: any) => {
++      if (data.battleRoyal) this.onBattleRoyalPostGame?.(data);
++    });
+   }
+ 
+   // --- Lobby emitters ---
+ 
++  public hostRoom(roomId: string, name: string, modeId: OnlineModeId) {
++    this.socket.emit('host-room', { roomId, name, modeId });
++  }
++
+   public joinRoom(roomId: string, name: string, modeId: OnlineModeId) {
+     this.socket.emit("join-room", { roomId, name, modeId });
+   }
+ 
++  public startLobbyNow() {
++    this.socket.emit('host-start-now');
++  }
++
+   public confirmJoin(newRoomId: string, name: string, modeId: OnlineModeId) {
+     this.socket.emit("confirm-join", { newRoomId, name, modeId });
+   }
+@@ -237,8 +284,8 @@ export class NetworkManager {
+     this.socket.emit("player-topped-out");
+   }
+ 
+-  public sendEliminated() {
+-    this.socket.emit("player-eliminated");
++  public sendEliminated(killerIndex?: number) {
++    this.socket.emit("player-eliminated", { killerIndex });
+   }
+ 
+   public sendGameOver(winnerName: string) {
+@@ -267,4 +314,4 @@ export class NetworkManager {
+     this.currentRoomId = null;
+     this.socket.disconnect();
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/Prototype V1/src/OnlineModeSelect.ts b/Prototype V1/src/OnlineModeSelect.ts
+index 5119bff..d674931 100644
+--- a/Prototype V1/src/OnlineModeSelect.ts	
++++ b/Prototype V1/src/OnlineModeSelect.ts	
+@@ -18,7 +18,7 @@
+  * layout to a single-column layout on narrow screens. It has no dependencies.
+  */
+ 
+-export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch';
++export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
+ 
+ export interface OnlineGameMode {
+   id: OnlineModeId;
+@@ -58,6 +58,15 @@ export const ONLINE_GAME_MODES: readonly OnlineGameMode[] = [
+     winCondition: 'Highest combined team score at the horn.',
+     accent: 'magenta',
+   },
++  {
++    id: 'battle-royale',
++    title: 'Battle Royale',
++    format: '40 players',
++    playerCount: 40,
++    description: 'A ten-minute solo survival race with scheduled culling phases and sudden death.',
++    winCondition: 'Closest surviving score to 2,000,000 wins. Rankings use score, lines, then kills.',
++    accent: 'yellow',
++  },
+ ] as const;
+ 
+ export interface ModeAvailability {
+@@ -137,7 +146,7 @@ function ensureStyles() {
+     .bq-mode-select__eyebrow { color: var(--bq-cyan); font-size: .72rem; font-weight: 800; letter-spacing: .18em; margin: 0 0 .65rem; text-transform: uppercase; }
+     .bq-mode-select__title { font-size: clamp(1.7rem, 5vw, 3.25rem); line-height: 1; margin: 0; letter-spacing: -.045em; }
+     .bq-mode-select__subtitle { color: var(--bq-muted); font-size: clamp(.95rem, 2vw, 1.08rem); line-height: 1.65; margin: .8rem 0 1.8rem; max-width: 44rem; }
+-    .bq-mode-select__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
++    .bq-mode-select__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+     .bq-mode-select__card {
+       --mode-color: var(--bq-cyan);
+       appearance: none;
+@@ -176,6 +185,7 @@ function ensureStyles() {
+     .bq-mode-select__button--confirm { background: var(--bq-cyan); border: 1px solid var(--bq-cyan); color: #061019; }
+     .bq-mode-select__button:hover:not(:disabled) { filter: brightness(1.1); }
+     .bq-mode-select__button:disabled { cursor: not-allowed; opacity: .5; }
++    @media (max-width: 1080px) { .bq-mode-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+     @media (max-width: 760px) {
+       .bq-mode-select { border-radius: 0; border-left: 0; border-right: 0; min-height: 100dvh; padding: 1.25rem; }
+       .bq-mode-select__grid { grid-template-columns: 1fr; }
+diff --git a/Prototype V1/src/Player.ts b/Prototype V1/src/Player.ts
+index fd4f910..49e3b75 100644
+--- a/Prototype V1/src/Player.ts	
++++ b/Prototype V1/src/Player.ts	
+@@ -6,7 +6,7 @@ import { ScoreManager } from './ScoreManager';
+ import { AIBot, type Difficulty } from './AIBot';
+ import { type PlayerClass } from './PlayerClass';
+ 
+-export type ActiveClassEffect = 'TIME_WARP' | 'QUICKSILVER' | 'CHAOS' | 'ABILITY_FREEZE' | null;
++export type ActiveClassEffect = 'TIME_WARP' | 'FROZEN' | 'CHAOS' | null;
+ 
+ export class Player {
+   public id: string;
+@@ -31,8 +31,6 @@ export class Player {
+   public gridShiftUsedLevel = -1;
+   public scramblePreviewCount = 0;
+   public selectedTargetIndex: number | null = null;
+-  public shieldActive = false;
+-  public abilityFreezeTimer = 0;
+ 
+   public inputHandler: InputHandler;
+   public itemManager: ItemManager;
+@@ -42,6 +40,8 @@ export class Player {
+   public dropInterval = 1000;
+   public timeSurvived = 0;
+   public isToppedOut = false;
++  public kills = 0;
++  public battleRoyalEliminated = false;
+ 
+   constructor(id: string, isBot = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard = true, playerClass: PlayerClass = 'TANK') {
+     this.id = id;
+@@ -67,6 +67,8 @@ export class Player {
+     this.dropTimer = 0;
+     this.dropInterval = 1000;
+     this.isToppedOut = false;
++    this.kills = 0;
++    this.battleRoyalEliminated = false;
+     this.classMeter = 0;
+     this.activeEffectType = null;
+     this.activeEffectTimer = 0;
+@@ -79,7 +81,5 @@ export class Player {
+     this.gridShiftUsedLevel = -1;
+     this.scramblePreviewCount = 0;
+     this.selectedTargetIndex = null;
+-    this.shieldActive = false;
+-    this.abilityFreezeTimer = 0;
+   }
+ }
+diff --git a/Prototype V1/src/main.ts b/Prototype V1/src/main.ts
+index ced3205..8fe5a71 100644
+--- a/Prototype V1/src/main.ts	
++++ b/Prototype V1/src/main.ts	
+@@ -1,5 +1,6 @@
+ import './style.css'
+ import { GameManager, GameState } from './GameManager'
++import { SpecialBlockType } from './ItemManager'
+ import { Player } from './Player'
+ import { Tetromino } from './Tetromino'
+ import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
+@@ -51,7 +52,11 @@ const btnClassBack = document.getElementById('btn-class-back')!;
+ const screenLobby = document.getElementById('screen-lobby')!;
+ const btnPlayOnline = document.getElementById('btn-play-online')!;
+ const lobbyRoomInput = document.getElementById('lobby-room-input') as HTMLInputElement;
++const btnHostLobby = document.getElementById('btn-host-lobby')!;
+ const btnJoinLobby = document.getElementById('btn-join-lobby')!;
++const btnLobbyStartNow = document.getElementById('btn-lobby-start-now')!;
++const lobbyActionHint = document.getElementById('lobby-action-hint');
++const lobbyStartHint = document.getElementById('lobby-start-hint');
+ const lobbyStatus = document.getElementById('lobby-status')!;
+ const lobbyPlayerList = document.getElementById('lobby-player-list')!;
+ const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
+@@ -277,11 +282,43 @@ let network: NetworkManager | null = null;
+ let myReady = false;
+ let inRoom = false;
+ let pendingJoinRoomId = '';
++let pendingLobbyAction: 'host' | 'join' = 'join';
++let currentLobbyHostId: string | null = null;
++let hostRequested = false;
+ let onlinePlayerTeams: Array<'cyan' | 'magenta' | null> = [];
+ let onlineTeamScores = { cyan: 0, magenta: 0 };
+ let teamMatchEndsAt: number | null = null;
+ let teamTimerInterval: number | null = null;
+ let activeOnlineMode: OnlineModeId = selectedOnlineMode;
++let battleRoyalRemainingPlayers = 0;
++let battleRoyalPhaseLabel = '';
++let battleRoyalStartedAt: number | null = null;
++let battleRoyalHud: HTMLElement | null = null;
++
++function ensureBattleRoyalHud() {
++  if (battleRoyalHud) return battleRoyalHud;
++  const hud = document.createElement('section');
++  hud.id = 'battle-royale-hud';
++  hud.className = 'hidden fixed top-3 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
++  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">40 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS ┬╖ TARGET 2,000,000</div>';
++  document.body.appendChild(hud);
++  battleRoyalHud = hud;
++  return hud;
++}
++
++function updateBattleRoyalHud() {
++  const hud = ensureBattleRoyalHud();
++  const remaining = hud.querySelector('#br-remaining');
++  const phase = hud.querySelector('#br-phase');
++  const progress = hud.querySelector('#br-progress') as HTMLElement | null;
++  const kills = hud.querySelector('#br-kills');
++  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers || 40} LEFT`;
++  if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
++  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (10 * 60 * 1000)) * 100))}%`;
++  const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
++  if (kills) kills.textContent = `${localKills} ELIMINATIONS ┬╖ TARGET 2,000,000`;
++  hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
++}
+ 
+ function formatTeamTimer() {
+   if (!teamMatchEndsAt) return '3:00';
+@@ -332,21 +369,32 @@ btnPostLeave.addEventListener('click', () => {
+   returnToMenu();
+ });
+ 
++btnHostLobby.addEventListener('click', () => {
++  hostRequested = true;
++  pendingLobbyAction = 'host';
++  btnJoinLobby.click();
++});
++
+ btnJoinLobby.addEventListener('click', () => {
++  if (!hostRequested) pendingLobbyAction = 'join';
++  hostRequested = false;
+   const roomId = lobbyRoomInput.value.trim() || 'test-room';
+ 
+   if (!network) {
+     network = new NetworkManager();
+ 
+     network.onConnected = () => {
+-      lobbyStatus.innerText = 'Connected. Joining room...';
++      lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Connected. Creating room...' : 'Connected. Joining room...';
+       const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+-      network!.joinRoom(roomId, nickname, selectedOnlineMode);
++      if (pendingLobbyAction === 'host') network!.hostRoom(roomId, nickname, selectedOnlineMode);
++      else network!.joinRoom(roomId, nickname, selectedOnlineMode);
+     };
+ 
+     network.onJoinError = (message: string) => {
+       lobbyStatus.innerText = `Error: ${message}`;
++      btnHostLobby.removeAttribute('disabled');
+       btnJoinLobby.removeAttribute('disabled');
++      hostRequested = false;
+     };
+ 
+     network.onRoomUpdate = (state: RoomState) => {
+@@ -354,6 +402,14 @@ btnJoinLobby.addEventListener('click', () => {
+       activeOnlineMode = state.mode.id;
+       selectedOnlineMode = state.mode.id;
+       onlineTeamScores = state.teamScores || onlineTeamScores;
++        currentLobbyHostId = state.hostId;
++      const isHost = currentLobbyHostId === network?.mySocketId;
++      btnLobbyStartNow.classList.toggle('hidden', !isHost || state.phase !== 'lobby');
++      btnHostLobby.classList.toggle('hidden', inRoom);
++      btnJoinLobby.classList.toggle('hidden', inRoom);
++      if (lobbyStartHint) lobbyStartHint.innerText = isHost
++        ? `You are hosting ${state.mode.title}. Start with the current roster or wait for the full ${state.capacity}-player room.`
++        : `Waiting for the host. This room currently has ${state.players.length}/${state.capacity} players.`;
+       if (onlineModeLabel) {
+         onlineModeLabel.innerText = `${state.mode.title} ┬╖ ${state.mode.format} ┬╖ ${state.mode.winnerRule}`;
+       }
+@@ -379,6 +435,12 @@ btnJoinLobby.addEventListener('click', () => {
+       renderLobbyPlayers(state);
+     };
+ 
++    network.onRoomHostChanged = ({ hostId }) => {
++      currentLobbyHostId = hostId;
++      const isHost = currentLobbyHostId === network?.mySocketId;
++      btnLobbyStartNow.classList.toggle('hidden', !isHost);
++    };
++
+     network.onConfirmJoin = (data) => {
+       pendingJoinRoomId = data.newRoom;
+       modalConfirmJoin.classList.remove('hidden');
+@@ -466,12 +528,40 @@ btnJoinLobby.addEventListener('click', () => {
+ 
+     network.onGameStart = (data: GameStartData) => {
+       activeOnlineMode = data.modeId;
++      battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
++      battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
++      battleRoyalStartedAt = null;
++      updateBattleRoyalHud();
+       selectedOnlineMode = data.modeId;
+       onlinePlayerTeams = data.players.map(player => player.team);
+       onlineTeamScores = data.teamScores;
+       startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
+     };
+ 
++    network.onBattleRoyalPhase = (data) => {
++      battleRoyalPhaseLabel = data.label;
++      battleRoyalRemainingPlayers = data.remainingPlayers;
++      if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
++      updateBattleRoyalHud();
++    };
++    network.onBattleRoyalCull = (data) => {
++      battleRoyalRemainingPlayers = data.remainingPlayers;
++      battleRoyalPhaseLabel = data.reason === 'score-cull'
++        ? 'Culling lowest score ┬╖ tie-break lines, kills'
++        : data.reason === 'line-cull'
++          ? 'Culling lowest line count ┬╖ tie-break score, kills'
++          : 'Culling lowest kills ┬╖ tie-break lines, score';
++      updateBattleRoyalHud();
++    };
++    network.onBattleRoyalSuddenDeath = (data) => {
++      battleRoyalRemainingPlayers = data.remainingPlayers;
++      battleRoyalPhaseLabel = 'Sudden death ┬╖ solid garbage incoming';
++      updateBattleRoyalHud();
++    };
++    network.onBattleRoyalPostGame = (data) => {
++      const rankingText = data.rankings.slice(0, 10).map(entry => `${entry.rank}. ${entry.name} ┬╖ ${Math.round(entry.score).toLocaleString()} pts ┬╖ ${entry.lines} lines ┬╖ ${entry.kills} kills`).join('<br>');
++      postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} ┬╖ ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
++    };
+     network.onTeamScoreUpdate = (data) => {
+       onlineTeamScores = data.teamScores;
+       updateTeamScoreHud();
+@@ -497,13 +587,21 @@ btnJoinLobby.addEventListener('click', () => {
+     };
+   } else {
+     const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+-    network.joinRoom(roomId, nickname, selectedOnlineMode);
++    if (pendingLobbyAction === 'host') network.hostRoom(roomId, nickname, selectedOnlineMode);
++    else network.joinRoom(roomId, nickname, selectedOnlineMode);
+   }
+ 
+-  lobbyStatus.innerText = 'Connecting...';
++  lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Creating lobby...' : 'Joining lobby...';
++  btnHostLobby.setAttribute('disabled', 'true');
+   btnJoinLobby.setAttribute('disabled', 'true');
+ });
+ 
++btnLobbyStartNow.addEventListener('click', () => {
++  network?.startLobbyNow();
++  btnLobbyStartNow.setAttribute('disabled', 'true');
++  lobbyStatus.innerText = 'Host started the match countdown...';
++});
++
+ btnLobbyReady.addEventListener('click', () => {
+   myReady = !myReady;
+   network?.setReady(myReady);
+@@ -512,6 +610,10 @@ btnLobbyReady.addEventListener('click', () => {
+ 
+ function renderLobbyPlayers(state: RoomState) {
+   lobbyStatus.innerText = `${state.mode.title} ┬╖ ${state.mode.format} ΓÇö ${state.players.length}/${state.capacity} players. ${state.mode.winnerRule}.`;
++  if (lobbyActionHint) lobbyActionHint.innerText = state.mode.id === 'battle-royale'
++    ? 'Host a 40-player Battle Royale room or join one with the same room code. The host can start before all seats are filled.'
++    : `Host a ${state.mode.title} room or join an existing ${state.mode.title} room. The host can start before the room reaches ${state.capacity} players.`;
++  btnHostLobby.removeAttribute('disabled');
+   btnJoinLobby.removeAttribute('disabled');
+ 
+   if (inRoom) {
+@@ -520,6 +622,29 @@ function renderLobbyPlayers(state: RoomState) {
+   }
+ 
+   lobbyPlayerList.innerHTML = '';
++  if (state.mode.id === 'battle-royale') {
++    teamLobbySummary.classList.add('hidden');
++    lobbyPlayerList.className = 'w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-8 max-h-[46vh] overflow-y-auto pr-1';
++    const title = document.createElement('div');
++    title.className = 'sm:col-span-2 lg:col-span-4 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
++    title.innerText = `BATTLE ROYALE ┬╖ ${state.players.length}/${state.capacity} PLAYERS ┬╖ HOST MAY START EARLY`;
++    lobbyPlayerList.appendChild(title);
++    for (let slot = 0; slot < state.capacity; slot++) {
++      const player = state.players[slot];
++      const row = document.createElement('div');
++      row.className = 'flex min-w-0 items-center justify-between gap-2 border border-card-border bg-card-bg/70 px-3 py-2 text-xs';
++      if (!player) {
++        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN ${String(slot + 1).padStart(2, '0')}</span><span class="text-gray-600 uppercase tracking-widest text-[9px]">Waiting</span>`;
++      } else {
++        const isMe = network && player.id === network.mySocketId;
++        const isHost = state.hostId === player.id;
++        row.innerHTML = `<span class="truncate font-bold ${isMe ? 'text-neon-cyan' : 'text-white'}">${slot + 1}. ${player.name}${isMe ? ' (you)' : ''}</span><span class="shrink-0 text-[9px] uppercase tracking-widest ${isHost ? 'text-neon-pink' : player.ready ? 'text-neon-cyan' : 'text-gray-500'}">${isHost ? 'Host' : player.ready ? 'Ready' : 'Waiting'}</span>`;
++      }
++      lobbyPlayerList.appendChild(row);
++    }
++    return;
++  }
++  lobbyPlayerList.className = 'w-full flex flex-col gap-2 mb-8';
+   if (!state.mode.isTeamMode) {
+     teamLobbySummary.classList.add('hidden');
+     const title = document.createElement('div');
+@@ -535,7 +660,8 @@ function renderLobbyPlayers(state: RoomState) {
+         row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
+       } else {
+         const isMe = network && player.id === network.mySocketId;
+-        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? 'Γ£ô Ready' : 'Not Ready'}</span>`;
++        const isHost = state.hostId === player.id;
++        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}${isHost ? ' ┬╖ HOST' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? 'Γ£ô Ready' : 'Not Ready'}</span>`;
+       }
+       lobbyPlayerList.appendChild(row);
+     }
+@@ -590,6 +716,14 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
+   } else {
+     teamMatchStrip.classList.add('hidden');
+   }
++  if (mode?.id === 'battle-royale') {
++    ensureBattleRoyalHud();
++    battleRoyalPhaseLabel = 'Opening battle';
++    battleRoyalRemainingPlayers = playerCount;
++    updateBattleRoyalHud();
++  } else if (battleRoyalHud) {
++    battleRoyalHud.classList.add('hidden');
++  }
+ 
+   // Size the canvas for the number of players; CSS constrains the visual width
+   // on smaller screens so the left skill HUD remains reachable in 4- and 6-board modes.
+@@ -631,19 +765,6 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+   }
+ }
+ 
+-function getSpecialBlockLetter(special: string): string {
+-  switch (special) {
+-    case 'BOMB': return 'B';
+-    case 'HEAVY': return 'W';
+-    case 'MULTIPLIER': return 'X';
+-    case 'SPEED': return 'V';
+-    case 'SHIELD': return 'S';
+-    case 'FREEZE': return 'F';
+-    case 'GARBAGE_EATER': return 'G';
+-    default: return '?';
+-  }
+-}
+-
+ function drawBlock(
+   targetCtx: CanvasRenderingContext2D,
+   x: number, 
+@@ -689,7 +810,11 @@ function drawBlock(
+     targetCtx.textAlign = 'center';
+     targetCtx.textBaseline = 'middle';
+     
+-    const icon = getSpecialBlockLetter(isSpecial);
++    let icon = '';
++    if (isSpecial === SpecialBlockType.BOMB) icon = 'B';
++    if (isSpecial === SpecialBlockType.HEAVY) icon = 'W';
++    if (isSpecial === SpecialBlockType.MULTIPLIER) icon = 'X';
++    if (isSpecial === SpecialBlockType.SPEED) icon = 'S';
+ 
+     targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
+   } else {
+@@ -717,26 +842,13 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
+         // Draw mini block
+         const fx = offsetX + c * MINI_BLOCK_SIZE;
+         const fy = offsetY + r * MINI_BLOCK_SIZE;
+-        const specialKey = `${r},${c}`;
+-        const specialType = piece.specialBlocks.get(specialKey);
+-
+         tCtx.fillStyle = '#000000';
+         tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+         tCtx.strokeStyle = color;
+         tCtx.lineWidth = 2;
+         tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
+-
+-        if (specialType) {
+-          // Draw the special block letter indicator
+-          tCtx.fillStyle = color;
+-          tCtx.font = 'bold 12px "Press Start 2P"';
+-          tCtx.textAlign = 'center';
+-          tCtx.textBaseline = 'middle';
+-          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+-        } else {
+-          tCtx.fillStyle = color;
+-          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+-        }
++        tCtx.fillStyle = color;
++        tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+       }
+     }
+   }
+@@ -930,17 +1042,28 @@ function render() {
+     scoreboard.classList.remove('hidden');
+     
+     entries.innerHTML = '';
+-    const playerData: {name: string, score: number, lines: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
++    const playerData: {name: string, score: number, lines: number, kills: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
+     for (let i = 0; i < gameManager.players.length; i++) {
+       const p = gameManager.players[i];
+       playerData.push({
+         name: onlinePlayerNames[i] || `Player ${i+1}`,
+         score: p.scoreManager.score,
+         lines: p.scoreManager.totalLinesCleared,
++        kills: p.kills,
+         alive: !p.isToppedOut,
+         team: onlinePlayerTeams[i] ?? null
+       });
+     }
++    if (activeOnlineMode === 'battle-royale') {
++      for (const player of playerData.sort((a, b) => b.score - a.score || b.lines - a.lines || b.kills - a.kills)) {
++        const row = document.createElement('div');
++        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
++        row.innerHTML = `<span class="font-bold truncate max-w-[160px]">${player.name} <small class="text-gray-400">${player.lines}L ┬╖ ${player.kills}K</small></span><span class="font-pixel text-xs">${Math.round(player.score).toLocaleString()}</span>`;
++        entries.appendChild(row);
++      }
++      updateBattleRoyalHud();
++      return;
++    }
+     if (activeOnlineMode !== 'team-deathmatch') {
+       for (const player of playerData.sort((a, b) => b.score - a.score)) {
+         const row = document.createElement('div');
+@@ -1035,6 +1158,12 @@ function returnToMenu() {
+   btnLobbyReady.classList.add('hidden');
+   btnLobbyReady.innerText = 'READY UP';
+   btnLobbyLeave.classList.add('hidden');
++  btnLobbyStartNow.classList.add('hidden');
++  btnLobbyStartNow.removeAttribute('disabled');
++  btnHostLobby.classList.remove('hidden');
++  btnJoinLobby.classList.remove('hidden');
++  btnHostLobby.removeAttribute('disabled');
++  btnJoinLobby.removeAttribute('disabled');
+   teamLobbySummary.classList.add('hidden');
+   teamMatchStrip.classList.add('hidden');
+   btnJoinLobby.removeAttribute('disabled');
+diff --git a/Prototype V1/tsconfig.json b/Prototype V1/tsconfig.json
+index 206b5e0..dd60a33 100644
+--- a/Prototype V1/tsconfig.json	
++++ b/Prototype V1/tsconfig.json	
+@@ -1,24 +1,12 @@
+ {
+   "compilerOptions": {
+-    "target": "es2023",
+-    "module": "esnext",
++    "target": "ES2023",
++    "module": "ESNext",
+     "lib": ["ES2023", "DOM"],
++    "moduleResolution": "Bundler",
+     "types": ["vite/client"],
+-    "allowArbitraryExtensions": true,
+-    "skipLibCheck": true,
+-
+-    /* Bundler mode */
+-    "moduleResolution": "bundler",
+-    "allowImportingTsExtensions": true,
+-    "verbatimModuleSyntax": true,
+-    "moduleDetection": "force",
+     "noEmit": true,
+-
+-    /* Linting */
+-    "noUnusedLocals": true,
+-    "noUnusedParameters": true,
+-    "erasableSyntaxOnly": true,
+-    "noFallthroughCasesInSwitch": true
++    "skipLibCheck": true
+   },
+   "include": ["src"]
+ }
