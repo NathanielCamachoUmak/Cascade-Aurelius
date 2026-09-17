@@ -130,7 +130,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   function renderLobbyPlayers(state: RoomState) {
     lobbyStatus.innerText = `${state.mode.title} · ${state.mode.format} — ${state.players.length}/${state.capacity} players. ${state.mode.winnerRule}.`;
     if (lobbyActionHint) lobbyActionHint.innerText = state.mode.id === 'battle-royale'
-      ? 'Host a 40-player Battle Royale room or join one with the same room code. The host can start before all seats are filled.'
+      ? 'Host a 30-player Battle Royale room or join one with the same room code. The host can start before all seats are filled.'
       : `Host a ${state.mode.title} room or join an existing ${state.mode.title} room. The host can start before the room reaches ${state.capacity} players.`;
     btnHostLobby.removeAttribute('disabled');
     btnJoinLobby.removeAttribute('disabled');

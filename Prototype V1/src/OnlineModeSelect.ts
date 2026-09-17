@@ -61,8 +61,8 @@ export const ONLINE_GAME_MODES: readonly OnlineGameMode[] = [
   {
     id: 'battle-royale',
     title: 'Battle Royale',
-    format: '40 players',
-    playerCount: 40,
+    format: '30 players',
+    playerCount: 30,
     description: 'A ten-minute solo survival race with scheduled culling phases and sudden death.',
     winCondition: 'Closest surviving score to 1,000,000 wins. Rankings use score, lines, then kills.',
     accent: 'yellow',
