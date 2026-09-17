@@ -5,6 +5,7 @@ import { Tetromino } from './Tetromino'
 import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
+import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -48,29 +49,10 @@ const btnClassContinue = document.getElementById('btn-class-continue')!;
 const btnClassBack = document.getElementById('btn-class-back')!;
 
 // Online Lobby elements
-const screenLobby = document.getElementById('screen-lobby')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
-const lobbyRoomInput = document.getElementById('lobby-room-input') as HTMLInputElement;
-const btnHostLobby = document.getElementById('btn-host-lobby')!;
-const btnJoinLobby = document.getElementById('btn-join-lobby')!;
-const btnLobbyStartNow = document.getElementById('btn-lobby-start-now')!;
-const lobbyActionHint = document.getElementById('lobby-action-hint');
-const lobbyStartHint = document.getElementById('lobby-start-hint');
-const lobbyStatus = document.getElementById('lobby-status')!;
-const lobbyPlayerList = document.getElementById('lobby-player-list')!;
-const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
-const btnLobbyBack = document.getElementById('btn-lobby-back')!;
-const lobbyNicknameInput = document.getElementById('lobby-nickname-input') as HTMLInputElement;
-const onlineModeLabel = document.getElementById('online-mode-label');
-const lobbyModeDescription = document.getElementById('lobby-mode-description');
 
 // NEW: Lobby & Post-Game Elements
 const navLobby = document.getElementById('nav-lobby')!;
-const btnLobbyLeave = document.getElementById('btn-lobby-leave')!;
-const lobbyCountdown = document.getElementById('lobby-countdown')!;
-const modalConfirmJoin = document.getElementById('modal-confirm-join')!;
-const btnConfirmJoinYes = document.getElementById('btn-confirm-join-yes')!;
-const btnConfirmJoinNo = document.getElementById('btn-confirm-join-no')!;
 const screenPostGame = document.getElementById('screen-post-game')!;
 const postGameWinner = document.getElementById('post-game-winner')!;
 const postGameVotes = document.getElementById('post-game-votes')!;
@@ -79,9 +61,6 @@ const btnPostLeave = document.getElementById('btn-post-leave')!;
 const preGameOverlay = document.getElementById('pre-game-overlay')!;
 const preGameText = document.getElementById('pre-game-text')!;
 const spectatorBanner = document.getElementById('spectator-banner')!;
-const teamLobbySummary = document.getElementById('team-lobby-summary')!;
-const teamLobbyCyan = document.getElementById('team-lobby-cyan')!;
-const teamLobbyMagenta = document.getElementById('team-lobby-magenta')!;
 const teamMatchStrip = document.getElementById('team-match-strip')!;
 const teamScoreCyan = document.getElementById('team-score-cyan')!;
 const teamScoreMagenta = document.getElementById('team-score-magenta')!;
@@ -143,13 +122,6 @@ function getSelectedOnlineMode() {
   return ONLINE_GAME_MODES.find(mode => mode.id === selectedOnlineMode) ?? ONLINE_GAME_MODES[0];
 }
 
-function updateOnlineModeLabel() {
-  const mode = getSelectedOnlineMode();
-  if (onlineModeLabel) {
-    onlineModeLabel.innerText = `Selected mode: ${mode.title} · ${mode.format} · ${mode.playerCount} players`;
-  }
-}
-
 function showOnlineModeSelect() {
   updateNavHighlight('nav-lobby');
   screenMain.classList.add('hidden');
@@ -157,8 +129,7 @@ function showOnlineModeSelect() {
   screenClassSelect.classList.add('hidden');
   screenDifficulty.classList.remove('flex');
   screenDifficulty.classList.add('hidden');
-  screenLobby.classList.remove('flex');
-  screenLobby.classList.add('hidden');
+  lobby.hide();
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
   screenOnlineModeSelect.classList.remove('hidden');
@@ -171,7 +142,6 @@ mountOnlineModeSelect({
     updateNavHighlight('nav-loadout');
     selectedOnlineMode = mode.id;
     pendingMode = 'ONLINE';
-    updateOnlineModeLabel();
     screenOnlineModeSelect.classList.add('hidden');
     screenClassSelect.classList.remove('hidden');
     screenClassSelect.classList.add('flex');
@@ -246,13 +216,7 @@ btnClassContinue.addEventListener('click', () => {
     screenDifficulty.classList.add('flex');
   } else if (pendingMode === 'ONLINE') {
     updateNavHighlight('nav-lobby');
-    if (network && network.currentRoomId) {
-      screenLobby.classList.remove('hidden');
-      screenLobby.classList.add('flex');
-    } else {
-      screenLobby.classList.remove('hidden');
-      screenLobby.classList.add('flex');
-    }
+    lobby.show();
   }
 });
 
@@ -285,7 +249,7 @@ btnToggleGhost.addEventListener('click', () => {
 
 navLobby.addEventListener('click', (e) => {
   e.preventDefault();
-  if (network && network.currentRoomId) {
+  if (lobby.network && lobby.network.currentRoomId) {
     updateNavHighlight('nav-lobby');
     screenMain.classList.add('hidden');
     screenClassSelect.classList.remove('flex');
@@ -295,20 +259,12 @@ navLobby.addEventListener('click', (e) => {
     screenPostGame.classList.remove('flex');
     screenPostGame.classList.add('hidden');
     
-    screenLobby.classList.remove('hidden');
-    screenLobby.classList.add('flex');
+    lobby.show();
     uiLayer.classList.remove('hidden');
   }
 });
 
 // --- Online Lobby ---
-let network: NetworkManager | null = null;
-let myReady = false;
-let inRoom = false;
-let pendingJoinRoomId = '';
-let pendingLobbyAction: 'host' | 'join' = 'join';
-let currentLobbyHostId: string | null = null;
-let hostRequested = false;
 let onlinePlayerTeams: Array<'cyan' | 'magenta' | null> = [];
 let onlineTeamScores = { cyan: 0, magenta: 0 };
 let teamMatchEndsAt: number | null = null;
@@ -356,400 +312,172 @@ function updateTeamScoreHud() {
   teamMatchTimer.innerText = formatTeamTimer();
 }
 
+const lobby = mountLobbyScreen({
+  onBack: () => showOnlineModeSelect(),
+  onLeaveToMenu: () => returnToMenu(),
+  getSelectedMode: () => selectedOnlineMode,
+  getGameState: () => gameManager.state,
+  externalScreens: {
+    screenPostGame,
+  },
+  onNetworkReady: (network) => wireGameCallbacks(network),
+});
+
+function wireGameCallbacks(network: NetworkManager) {
+  network.onPreGameCountdown = (seconds: number) => {
+    preGameOverlay.classList.remove('hidden');
+    gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
+    let s = seconds;
+    preGameText.innerText = s.toString();
+    const interval = setInterval(() => {
+      s--;
+      if (s > 0) {
+        preGameText.innerText = s.toString();
+      } else if (s === 0) {
+        preGameText.innerText = "GO!";
+      } else {
+        clearInterval(interval);
+        preGameOverlay.classList.add('hidden');
+        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
+      }
+    }, 1000);
+  };
+
+  network.onPlayerStateUpdate = (data) => {
+    if (data.playerId === network?.mySocketId && data.state === 'spectating') {
+      spectatorBanner.classList.remove('hidden');
+    }
+  };
+
+  network.onPostGameStart = (data) => {
+    updateNavHighlight('nav-lobby');
+    uiLayer.classList.remove('hidden');
+    lobby.hide();
+    screenPostGame.classList.remove('hidden');
+    screenPostGame.classList.add('flex');
+    gameHud.classList.add('hidden');
+    
+    if (data.winnerTeam) {
+      postGameWinner.innerText = `${data.winnerName} WINS`;
+      postGameTeamScores.innerHTML = `<span class="text-neon-cyan">CYAN ${Math.round(data.teamScores.cyan)}</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">MAGENTA ${Math.round(data.teamScores.magenta)}</span>`;
+    } else {
+      const isDraw = data.winnerName.startsWith('Draw');
+      postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
+      postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
+    }
+    postGameVotes.innerText = `0 voted for rematch`;
+    btnPostRematch.classList.remove('hidden');
+  };
+
+  network.onRematchUpdate = (data) => {
+    postGameVotes.innerText = `${data.votes}/${data.required} voted for rematch`;
+  };
+
+  network.onPlayerDisconnected = () => {
+    gameManager.network?.sendRibbon('A PLAYER DISCONNECTED');
+  };
+
+  network.onGameStart = (data: GameStartData) => {
+    activeOnlineMode = data.modeId;
+    battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
+    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
+    battleRoyalStartedAt = null;
+    updateBattleRoyalHud();
+    selectedOnlineMode = data.modeId;
+    lobby.selectedMode = data.modeId;
+    onlinePlayerTeams = data.players.map(player => player.team);
+    onlineTeamScores = data.teamScores;
+    startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
+  };
+
+  network.onBattleRoyalPhase = (data) => {
+    battleRoyalPhaseLabel = data.label;
+    battleRoyalRemainingPlayers = data.remainingPlayers;
+    if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
+    updateBattleRoyalHud();
+  };
+  network.onBattleRoyalCull = (data) => {
+    battleRoyalRemainingPlayers = data.remainingPlayers;
+    battleRoyalPhaseLabel = data.reason === 'score-cull'
+      ? 'Culling lowest score · tie-break lines, kills'
+      : data.reason === 'line-cull'
+        ? 'Culling lowest line count · tie-break score, kills'
+        : 'Culling lowest kills · tie-break lines, score';
+    updateBattleRoyalHud();
+  };
+  network.onBattleRoyalSuddenDeath = (data) => {
+    battleRoyalRemainingPlayers = data.remainingPlayers;
+    battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
+    updateBattleRoyalHud();
+  };
+  const showGlobalRibbon = (message: string) => {
+    const ribbon = document.getElementById('global-ribbon');
+    if (!ribbon) return;
+    ribbon.innerText = message;
+    ribbon.classList.remove('hidden');
+    ribbon.classList.add('opacity-100');
+    setTimeout(() => ribbon.classList.add('hidden'), 2000);
+  };
+
+  network.onKoRecover = (data) => {
+    gameManager.applyKoRecovery(data.koCount, data.score);
+    battleRoyalPhaseLabel = `K.O. #${data.koCount} · garbage cleared, -20% score`;
+    updateBattleRoyalHud();
+  };
+  network.onPlayerKnockedOut = (data) => {
+    if (data.playerId !== network?.mySocketId) {
+      showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
+    }
+  };
+  network.onBattleRoyalEvent = (data) => {
+    const label = data.label || data.rule;
+    battleRoyalPhaseLabel = data.densityLabel ? `${label} · ${data.densityLabel}` : label;
+    showGlobalRibbon(String(label).toUpperCase());
+    updateBattleRoyalHud();
+  };
+  network.onBattleRoyalPostGame = (data) => {
+    const rankingText = data.rankings.slice(0, 10).map((entry: any) => `${entry.rank}. ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`).join('<br>');
+    postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
+  };
+  network.onTeamScoreUpdate = (data) => {
+    onlineTeamScores = data.teamScores;
+    updateTeamScoreHud();
+  };
+
+  network.onMatchTimerStart = (data) => {
+    teamMatchEndsAt = data.endsAt;
+    if (teamTimerInterval) clearInterval(teamTimerInterval);
+    teamTimerInterval = window.setInterval(updateTeamScoreHud, 250);
+    updateTeamScoreHud();
+  };
+
+  network.onShowRibbon = (message: string) => {
+    const ribbon = document.getElementById('global-ribbon');
+    if (ribbon) {
+      ribbon.innerText = message;
+      ribbon.classList.remove('hidden');
+      ribbon.classList.add('opacity-100');
+      setTimeout(() => {
+        ribbon.classList.add('hidden');
+      }, 2000);
+    }
+  };
+}
+
 btnPlayOnline.addEventListener('click', () => {
   pendingMode = 'ONLINE';
   showOnlineModeSelect();
 });
 
-btnLobbyBack.addEventListener('click', () => {
-  // If we are connected, keep the lobby session active! Don't disconnect.
-  showOnlineModeSelect();
-});
-
-btnLobbyLeave.addEventListener('click', () => {
-  network?.leaveLobby();
-  returnToMenu();
-});
-
-btnConfirmJoinYes.addEventListener('click', () => {
-  modalConfirmJoin.classList.add('hidden');
-  const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-  network?.confirmJoin(pendingJoinRoomId, nickname, selectedOnlineMode);
-});
-
-btnConfirmJoinNo.addEventListener('click', () => {
-  modalConfirmJoin.classList.add('hidden');
-  lobbyStatus.innerText = 'Join cancelled.';
-  btnJoinLobby.removeAttribute('disabled');
-});
-
 btnPostRematch.addEventListener('click', () => {
-  network?.voteRematch();
+  lobby.network?.voteRematch();
   btnPostRematch.classList.add('hidden');
 });
 
 btnPostLeave.addEventListener('click', () => {
-  network?.leaveLobby();
+  lobby.network?.leaveLobby();
   returnToMenu();
 });
-
-btnHostLobby.addEventListener('click', () => {
-  hostRequested = true;
-  pendingLobbyAction = 'host';
-  btnJoinLobby.click();
-});
-
-btnJoinLobby.addEventListener('click', () => {
-  if (!hostRequested) pendingLobbyAction = 'join';
-  hostRequested = false;
-  const roomId = lobbyRoomInput.value.trim() || 'test-room';
-
-  if (!network) {
-    network = new NetworkManager();
-
-    network.onConnected = () => {
-      lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Connected. Creating room...' : 'Connected. Joining room...';
-      const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-      if (pendingLobbyAction === 'host') network!.hostRoom(roomId, nickname, selectedOnlineMode);
-      else network!.joinRoom(roomId, nickname, selectedOnlineMode);
-    };
-
-    network.onJoinError = (message: string) => {
-      lobbyStatus.innerText = `Error: ${message}`;
-      btnHostLobby.removeAttribute('disabled');
-      btnJoinLobby.removeAttribute('disabled');
-      hostRequested = false;
-    };
-
-    network.onRoomUpdate = (state: RoomState) => {
-      inRoom = true;
-      activeOnlineMode = state.mode.id;
-      selectedOnlineMode = state.mode.id;
-      onlineTeamScores = state.teamScores || onlineTeamScores;
-      currentLobbyHostId = state.hostId;
-      const isHost = currentLobbyHostId === network?.mySocketId;
-      btnLobbyStartNow.classList.toggle('hidden', !isHost || state.phase !== 'lobby');
-      if (isHost && state.phase === 'lobby') btnLobbyStartNow.removeAttribute('disabled');
-      btnHostLobby.classList.toggle('hidden', inRoom);
-      if (lobbyStartHint) lobbyStartHint.innerText = isHost
-        ? `You are hosting ${state.mode.title}. Start with the current roster or wait for the full ${state.capacity}-player room.`
-        : `Waiting for the host. This room currently has ${state.players.length}/${state.capacity} players.`;
-      if (onlineModeLabel) {
-        onlineModeLabel.innerText = `${state.mode.title} · ${state.mode.format} · ${state.mode.winnerRule}`;
-      }
-      if (lobbyModeDescription) {
-        lobbyModeDescription.innerText = state.mode.isTeamMode
-          ? 'Cyan Circuit versus Magenta Voltage. Highest combined score wins at the horn.'
-          : state.mode.winnerRule;
-      }
-      
-      // Auto-ready resets
-      const me = state.players.find(p => p.id === network?.mySocketId);
-      if (me) myReady = me.ready;
-      btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
-      
-      // If we came from post-game, make sure we go back to lobby UI
-      if (gameManager.state === GameState.POST_GAME) {
-        screenPostGame.classList.remove('flex');
-        screenPostGame.classList.add('hidden');
-        screenLobby.classList.remove('hidden');
-        screenLobby.classList.add('flex');
-      }
-
-      renderLobbyPlayers(state);
-    };
-
-    network.onRoomHostChanged = ({ hostId }) => {
-      currentLobbyHostId = hostId;
-      const isHost = currentLobbyHostId === network?.mySocketId;
-      btnLobbyStartNow.classList.toggle('hidden', !isHost);
-      if (isHost) btnLobbyStartNow.removeAttribute('disabled');
-    };
-
-    network.onConfirmJoin = (data) => {
-      pendingJoinRoomId = data.newRoom;
-      modalConfirmJoin.classList.remove('hidden');
-    };
-
-    network.onCountdownStart = (seconds: number) => {
-      lobbyCountdown.classList.remove('hidden');
-      lobbyCountdown.innerText = `Starting in ${seconds}...`;
-      let s = seconds;
-      const interval = setInterval(() => {
-        s--;
-        if (s > 0) lobbyCountdown.innerText = `Starting in ${s}...`;
-        else clearInterval(interval);
-      }, 1000);
-      lobbyCountdown.dataset.interval = interval.toString();
-    };
-
-      network.onCountdownCancel = () => {
-      lobbyCountdown.classList.add('hidden');
-      const interval = lobbyCountdown.dataset.interval;
-      if (interval) clearInterval(parseInt(interval));
-      lobbyStatus.innerText = 'Countdown cancelled.';
-      if (currentLobbyHostId === network?.mySocketId) btnLobbyStartNow.removeAttribute('disabled');
-    };
-
-    network.onPreGameCountdown = (seconds: number) => {
-      preGameOverlay.classList.remove('hidden');
-      // Freeze inputs for pre-game
-      gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
-      
-      let s = seconds;
-      preGameText.innerText = s.toString();
-      const interval = setInterval(() => {
-        s--;
-        if (s > 0) {
-          preGameText.innerText = s.toString();
-        } else if (s === 0) {
-          preGameText.innerText = "GO!";
-        } else {
-          clearInterval(interval);
-          preGameOverlay.classList.add('hidden');
-          gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
-        }
-      }, 1000);
-    };
-
-    network.onPlayerStateUpdate = (data) => {
-      if (data.playerId === network?.mySocketId && data.state === 'spectating') {
-        spectatorBanner.classList.remove('hidden');
-      }
-    };
-
-    network.onPostGameStart = (data) => {
-      updateNavHighlight('nav-lobby');
-      uiLayer.classList.remove('hidden');
-      screenLobby.classList.add('hidden');
-      screenLobby.classList.remove('flex');
-      screenPostGame.classList.remove('hidden');
-      screenPostGame.classList.add('flex');
-      gameHud.classList.add('hidden');
-      
-      if (data.winnerTeam) {
-        postGameWinner.innerText = `${data.winnerName} WINS`;
-        postGameTeamScores.innerHTML = `<span class="text-neon-cyan">CYAN ${Math.round(data.teamScores.cyan)}</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">MAGENTA ${Math.round(data.teamScores.magenta)}</span>`;
-      } else {
-        const isDraw = data.winnerName.startsWith('Draw');
-        postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
-        postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
-      }
-      postGameVotes.innerText = `0 voted for rematch`;
-      btnPostRematch.classList.remove('hidden');
-      
-      // Cleanup lobby countdown just in case
-      lobbyCountdown.classList.add('hidden');
-      const interval = lobbyCountdown.dataset.interval;
-      if (interval) clearInterval(parseInt(interval));
-    };
-
-    network.onRematchUpdate = (data) => {
-      postGameVotes.innerText = `${data.votes}/${data.required} voted for rematch`;
-    };
-
-    network.onPlayerDisconnected = () => {
-       // A player left during game
-       gameManager.network?.sendRibbon('A PLAYER DISCONNECTED');
-    };
-
-    network.onGameStart = (data: GameStartData) => {
-      activeOnlineMode = data.modeId;
-      battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
-      battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
-      battleRoyalStartedAt = null;
-      updateBattleRoyalHud();
-      selectedOnlineMode = data.modeId;
-      onlinePlayerTeams = data.players.map(player => player.team);
-      onlineTeamScores = data.teamScores;
-      startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
-    };
-
-    network.onBattleRoyalPhase = (data) => {
-      battleRoyalPhaseLabel = data.label;
-      battleRoyalRemainingPlayers = data.remainingPlayers;
-      if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
-      updateBattleRoyalHud();
-    };
-    network.onBattleRoyalCull = (data) => {
-      battleRoyalRemainingPlayers = data.remainingPlayers;
-      battleRoyalPhaseLabel = data.reason === 'score-cull'
-        ? 'Culling lowest score · tie-break lines, kills'
-        : data.reason === 'line-cull'
-          ? 'Culling lowest line count · tie-break score, kills'
-          : 'Culling lowest kills · tie-break lines, score';
-      updateBattleRoyalHud();
-    };
-    network.onBattleRoyalSuddenDeath = (data) => {
-      battleRoyalRemainingPlayers = data.remainingPlayers;
-      battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
-      updateBattleRoyalHud();
-    };
-    const showGlobalRibbon = (message: string) => {
-      const ribbon = document.getElementById('global-ribbon');
-      if (!ribbon) return;
-      ribbon.innerText = message;
-      ribbon.classList.remove('hidden');
-      ribbon.classList.add('opacity-100');
-      setTimeout(() => ribbon.classList.add('hidden'), 2000);
-    };
-
-    network.onKoRecover = (data) => {
-      // Survivable top-out: keep only user-placed blocks, wipe the garbage.
-      gameManager.applyKoRecovery(data.koCount, data.score);
-      battleRoyalPhaseLabel = `K.O. #${data.koCount} · garbage cleared, -20% score`;
-      updateBattleRoyalHud();
-    };
-    network.onPlayerKnockedOut = (data) => {
-      if (data.playerId !== network?.mySocketId) {
-        showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
-      }
-    };
-    network.onBattleRoyalEvent = (data) => {
-      const label = data.label || data.rule;
-      battleRoyalPhaseLabel = data.densityLabel ? `${label} · ${data.densityLabel}` : label;
-      showGlobalRibbon(String(label).toUpperCase());
-      updateBattleRoyalHud();
-    };
-    network.onBattleRoyalPostGame = (data) => {
-      const rankingText = data.rankings.slice(0, 10).map((entry: any) => `${entry.rank}. ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`).join('<br>');
-      postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
-    };
-    network.onTeamScoreUpdate = (data) => {
-      onlineTeamScores = data.teamScores;
-      updateTeamScoreHud();
-    };
-
-    network.onMatchTimerStart = (data) => {
-      teamMatchEndsAt = data.endsAt;
-      if (teamTimerInterval) clearInterval(teamTimerInterval);
-      teamTimerInterval = window.setInterval(updateTeamScoreHud, 250);
-      updateTeamScoreHud();
-    };
-
-    network.onShowRibbon = (message: string) => {
-      const ribbon = document.getElementById('global-ribbon');
-      if (ribbon) {
-        ribbon.innerText = message;
-        ribbon.classList.remove('hidden');
-        ribbon.classList.add('opacity-100');
-        setTimeout(() => {
-          ribbon.classList.add('hidden');
-        }, 2000); // hide after 2 seconds
-      }
-    };
-  } else {
-    const nickname = lobbyNicknameInput.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
-    if (pendingLobbyAction === 'host') network.hostRoom(roomId, nickname, selectedOnlineMode);
-    else network.joinRoom(roomId, nickname, selectedOnlineMode);
-  }
-
-  lobbyStatus.innerText = pendingLobbyAction === 'host' ? 'Creating lobby...' : 'Joining lobby...';
-  btnHostLobby.setAttribute('disabled', 'true');
-  btnJoinLobby.setAttribute('disabled', 'true');
-});
-
-btnLobbyStartNow.addEventListener('click', () => {
-  network?.startLobbyNow();
-  btnLobbyStartNow.setAttribute('disabled', 'true');
-  lobbyStatus.innerText = 'Host started the match countdown...';
-});
-
-btnLobbyReady.addEventListener('click', () => {
-  myReady = !myReady;
-  network?.setReady(myReady);
-  btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
-});
-
-function renderLobbyPlayers(state: RoomState) {
-  lobbyStatus.innerText = `${state.mode.title} · ${state.mode.format} — ${state.players.length}/${state.capacity} players. ${state.mode.winnerRule}.`;
-  if (lobbyActionHint) lobbyActionHint.innerText = state.mode.id === 'battle-royale'
-    ? 'Host a 40-player Battle Royale room or join one with the same room code. The host can start before all seats are filled.'
-    : `Host a ${state.mode.title} room or join an existing ${state.mode.title} room. The host can start before the room reaches ${state.capacity} players.`;
-  btnHostLobby.removeAttribute('disabled');
-  btnJoinLobby.removeAttribute('disabled');
-
-  if (inRoom) {
-    btnLobbyReady.classList.remove('hidden');
-    btnLobbyLeave.classList.remove('hidden');
-  }
-
-  lobbyPlayerList.innerHTML = '';
-  if (state.mode.id === 'battle-royale') {
-    teamLobbySummary.classList.add('hidden');
-    lobbyPlayerList.className = 'w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 mb-4 max-h-[40vh] overflow-y-auto pr-1';
-    const title = document.createElement('div');
-    title.className = 'sm:col-span-3 lg:col-span-5 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
-    title.innerText = `BATTLE ROYALE · ${state.players.length}/${state.capacity} PLAYERS · HOST MAY START EARLY`;
-    lobbyPlayerList.appendChild(title);
-    // Show everyone present plus a few open slots for context — rendering
-    // all 40 made a 2-3 player test lobby look like a wall of empty rows.
-    const slotsToShow = Math.min(state.capacity, Math.max(state.players.length + 2, 8));
-    for (let slot = 0; slot < slotsToShow; slot++) {
-      const player = state.players[slot];
-      const row = document.createElement('div');
-      row.className = 'flex min-w-0 items-center justify-between gap-1 border border-card-border bg-card-bg/70 px-2 py-1 text-[10px]';
-      if (!player) {
-        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN ${String(slot + 1).padStart(2, '0')}</span><span class="text-gray-600 uppercase tracking-widest text-[9px]">Waiting</span>`;
-      } else {
-        const isMe = network && player.id === network.mySocketId;
-        const isHost = state.hostId === player.id;
-        row.innerHTML = `<span class="truncate font-bold ${isMe ? 'text-neon-cyan' : 'text-white'}">${slot + 1}. ${player.name}${isMe ? ' (you)' : ''}</span><span class="shrink-0 text-[9px] uppercase tracking-widest ${isHost ? 'text-neon-pink' : player.ready ? 'text-neon-cyan' : 'text-gray-500'}">${isHost ? 'Host' : player.ready ? 'Ready' : 'Waiting'}</span>`;
-      }
-      lobbyPlayerList.appendChild(row);
-    }
-    return;
-  }
-  lobbyPlayerList.className = 'w-full flex flex-col gap-2 mb-8';
-  if (!state.mode.isTeamMode) {
-    teamLobbySummary.classList.add('hidden');
-    const title = document.createElement('div');
-    title.className = 'text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 text-neon-cyan bg-neon-cyan/5';
-    title.innerText = `${state.mode.title} · ${state.capacity} seats`;
-    lobbyPlayerList.appendChild(title);
-
-    for (let slot = 0; slot < state.capacity; slot++) {
-      const player = state.players[slot];
-      const row = document.createElement('div');
-      row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
-      if (!player) {
-        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
-      } else {
-        const isMe = network && player.id === network.mySocketId;
-        const isHost = state.hostId === player.id;
-        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}${isHost ? ' · HOST' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
-      }
-      lobbyPlayerList.appendChild(row);
-    }
-    return;
-  }
-
-  teamLobbySummary.classList.remove('hidden');
-  const cyanPlayers = state.players.filter(player => player.team === 'cyan');
-  const magentaPlayers = state.players.filter(player => player.team === 'magenta');
-  teamLobbyCyan.innerText = `${cyanPlayers.length}/${state.teamSize}`;
-  teamLobbyMagenta.innerText = `${magentaPlayers.length}/${state.teamSize}`;
-  for (const team of ['cyan', 'magenta'] as const) {
-    const title = document.createElement('div');
-    title.className = `text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 ${team === 'cyan' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neon-pink bg-neon-pink/5'}`;
-    title.innerText = team === 'cyan' ? 'Cyan Circuit · 3 seats' : 'Magenta Voltage · 3 seats';
-    lobbyPlayerList.appendChild(title);
-
-    const teamPlayers = state.players.filter(player => player.team === team);
-    for (let slot = 0; slot < (state.teamSize || 3); slot++) {
-      const player = teamPlayers[slot];
-      const row = document.createElement('div');
-      row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
-      if (!player) {
-        row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
-      } else {
-        const isMe = network && player.id === network.mySocketId;
-        row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? (team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink') : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
-      }
-      lobbyPlayerList.appendChild(row);
-    }
-  }
-}
 
 /**
  * Start an online multiplayer game.
@@ -798,7 +526,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, network!, onlinePlayerNames, selectedClass);
+  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerNames, selectedClass);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
@@ -1238,13 +966,9 @@ function returnToMenu() {
   gameHud.classList.add('hidden');
   gameHud.classList.remove('flex');
 
-  // Disconnect from server if in online mode
-  if (network) {
-    network.disconnect();
-    network = null;
-  }
-  myReady = false;
-  inRoom = false;
+  // Disconnect from server and reset lobby component
+  lobby.reset();
+
   onlinePlayerTeams = [];
   activeOnlineMode = selectedOnlineMode;
   onlineTeamScores = { cyan: 0, magenta: 0 };
@@ -1255,31 +979,14 @@ function returnToMenu() {
   // Reset menus
   screenDifficulty.classList.add('hidden');
   screenDifficulty.classList.remove('flex');
-  screenLobby.classList.remove('flex');
-  screenLobby.classList.add('hidden');
+  lobby.hide();
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
   screenOnlineModeSelect.classList.add('hidden');
   spectatorBanner.classList.add('hidden');
   preGameOverlay.classList.add('hidden');
-  modalConfirmJoin.classList.add('hidden');
   
-  lobbyStatus.innerText = '';
-  if (onlineModeLabel) onlineModeLabel.innerText = '';
-  if (lobbyModeDescription) lobbyModeDescription.innerText = 'Choose a mode to create a room';
-  lobbyPlayerList.innerHTML = '';
-  btnLobbyReady.classList.add('hidden');
-  btnLobbyReady.innerText = 'READY UP';
-  btnLobbyLeave.classList.add('hidden');
-  btnLobbyStartNow.classList.add('hidden');
-  btnLobbyStartNow.removeAttribute('disabled');
-  btnHostLobby.classList.remove('hidden');
-  btnJoinLobby.classList.remove('hidden');
-  btnHostLobby.removeAttribute('disabled');
-  btnJoinLobby.removeAttribute('disabled');
-  teamLobbySummary.classList.add('hidden');
   teamMatchStrip.classList.add('hidden');
-  btnJoinLobby.removeAttribute('disabled');
 
   document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
   updateNavHighlight('nav-lobby');
