@@ -40,6 +40,8 @@ export class Player {
   public dropInterval = 1000;
   public timeSurvived = 0;
   public isToppedOut = false;
+  public koCount = 0; // Battle Royale K.O. recoveries taken this match
+  public koStampTimer = 0; // ms remaining on the visual K.O. stamp overlay
   public kills = 0;
   public battleRoyalEliminated = false;
 

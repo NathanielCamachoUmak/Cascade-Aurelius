@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { BATTLE_ROYALE_RULES, getBattleRoyalPhase, selectBattleRoyalCullTargets, rankBattleRoyalPlayers, closestToTarget, hasReachedTarget } from './battleRoyal.js';
+import { BATTLE_ROYALE_RULES, getBattleRoyalPhase, selectBattleRoyalCullTargets, rankBattleRoyalPlayers, closestToTarget, hasReachedTarget, getDensityBracket, isCullingFrozen, isKoFloorReached, applyKoPenalty, finalScoreWithDecay, DYNAMIC_RULES } from './battleRoyal.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +96,8 @@ function clearTimers(room) {
   if (room.pregameTimer) clearTimeout(room.pregameTimer);
   for (const timer of room.battleRoyalCullTimers || []) clearTimeout(timer);
   if (room.battleRoyalSuddenDeathTimer) clearInterval(room.battleRoyalSuddenDeathTimer);
+  if (room.dynamicRuleTimer) clearTimeout(room.dynamicRuleTimer);
+  if (room.idleSweepTimer) clearInterval(room.idleSweepTimer);
   room.countdownTimer = null;
   room.matchTimer = null;
   room.pregameTimer = null;
@@ -105,6 +107,10 @@ function clearTimers(room) {
   room.battleRoyalCullTimers = [];
   room.battleRoyalSuddenDeathTimer = null;
   room.battleRoyalSuddenDeathCursor = 0;
+  room.dynamicRuleTimer = null;
+  room.idleSweepTimer = null;
+  room.activeDynamicRule = null;
+  room.dynamicRuleIndex = 0;
 }
 
 function teamForOpenSlot(room) {
@@ -155,6 +161,8 @@ function getRoomState(roomId) {
       score: player.score || 0,
       lines: player.lines || 0,
       kills: player.kills || 0,
+      koCount: player.koCount || 0,
+      finalScore: finalScoreWithDecay(player.score || 0, player.koCount || 0),
       eliminatedAt: player.eliminatedAt || null,
     })),
   };
@@ -222,6 +230,79 @@ function checkEliminationGameOver(roomId) {
   if (alive <= 1) finishEliminationMatch(roomId);
 }
 
+const LINE_SCORES = [0, 100, 300, 500, 800];
+const TSPIN_SCORES = { 0: 400, 1: 800, 2: 1200, 3: 1600 };
+
+// The multiplier currently in force = phase multiplier x any active dynamic rule.
+function activeScoreMultiplier(room) {
+  if (room.mode.id !== 'battle-royale' || !room.battleRoyalStartedAt) return 1;
+  const phase = getBattleRoyalPhase(Date.now() - room.battleRoyalStartedAt);
+  let mult = phase.scoreMultiplier || 1;
+  if (room.activeDynamicRule?.scoreMultiplier) mult *= room.activeDynamicRule.scoreMultiplier;
+  return mult;
+}
+
+function activeGarbageRate(room) {
+  if (room.mode.id !== 'battle-royale' || !room.battleRoyalStartedAt) return 1;
+  const phase = getBattleRoyalPhase(Date.now() - room.battleRoyalStartedAt);
+  let rate = phase.garbageRate || 1;
+  if (room.activeDynamicRule?.garbageRate) rate *= room.activeDynamicRule.garbageRate;
+  const bracket = getDensityBracket(activePlayerCount(room));
+  rate *= 1 + (bracket.garbageSpeedBonus || 0);
+  return rate;
+}
+
+// Server-side point computation. The client tells us what happened; the
+// numbers themselves are decided here and nowhere else.
+function computeScoreEvent(room, player, { type, lines, combo }) {
+  const comboStep = Math.max(0, Math.min(20, Math.floor(Number(combo) || 0)));
+  const cleared = Math.max(0, Math.min(4, Math.floor(Number(lines) || 0)));
+  let base = 0;
+
+  if (type === 'lines') base = LINE_SCORES[cleared] || 0;
+  else if (type === 'tspin') base = TSPIN_SCORES[cleared] ?? 400;
+  else if (type === 'softdrop') base = Math.min(20, Math.max(0, Math.floor(Number(lines) || 0)));
+  else if (type === 'harddrop') base = Math.min(40, Math.max(0, Math.floor(Number(lines) || 0)));
+  else return 0;
+
+  if (type === 'lines' || type === 'tspin') base += 50 * comboStep;
+  return Math.floor(base * activeScoreMultiplier(room));
+}
+
+function activePlayerCount(room) {
+  return Array.from(room.players.values()).filter(p => p.state === 'playing').length;
+}
+
+// --- K.O. system ---------------------------------------------------------
+// At or below the K.O. floor, a top-out no longer eliminates. The player is
+// revived with a penalty instead, so a thin lobby doesn't collapse instantly.
+function handleKnockout(roomId, socketId) {
+  const room = rooms.get(roomId);
+  const player = room?.players.get(socketId);
+  if (!room || !player) return false;
+
+  player.koCount = (player.koCount || 0) + 1;
+  player.score = applyKoPenalty(player.score || 0);
+  player.lastClearAt = Date.now();
+
+  // Selective board clear is executed client-side (it owns the grid);
+  // the server just authorizes it and broadcasts the K.O. for HUD/stamps.
+  io.to(socketId).emit('ko-recover', {
+    koCount: player.koCount,
+    score: player.score,
+    clearGarbageOnly: true,
+  });
+  io.to(roomId).emit('player-knocked-out', {
+    playerId: socketId,
+    playerIndex: player.index,
+    koCount: player.koCount,
+    score: player.score,
+  });
+  emitRoomState(roomId);
+  return true;
+}
+
+
 function emitBattleRoyalPhase(roomId, phase, extra = {}) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale') return;
@@ -277,21 +358,96 @@ function startBattleRoyalSchedule(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
   room.battleRoyalStartedAt = Date.now();
+  room.activeDynamicRule = null;
+  room.dynamicRuleIndex = 0;
   emitBattleRoyalPhase(roomId, getBattleRoyalPhase(0));
-  room.battleRoyalCullTimers = [
-    setTimeout(() => { emitBattleRoyalPhase(roomId, getBattleRoyalPhase(3 * 60 * 1000)); eliminateBattleRoyalPlayers(roomId, 10, 'score', ['lines', 'kills'], 'score-cull'); }, 3 * 60 * 1000),
-    setTimeout(() => { emitBattleRoyalPhase(roomId, getBattleRoyalPhase(6 * 60 * 1000)); eliminateBattleRoyalPlayers(roomId, 12, 'lines', ['score', 'kills'], 'line-cull'); }, 6 * 60 * 1000),
-    setTimeout(() => {
-      emitBattleRoyalPhase(roomId, getBattleRoyalPhase(8 * 60 * 1000));
-      eliminateBattleRoyalPlayers(roomId, 10, 'kills', ['lines', 'score'], 'kill-cull');
-      emitBattleRoyalPhase(roomId, BATTLE_ROYALE_RULES.phaseBreaks[4]);
-    }, 8 * 60 * 1000),
-    setTimeout(() => {
-      emitBattleRoyalPhase(roomId, getBattleRoyalPhase(9 * 60 * 1000));
-      room.battleRoyalSuddenDeathTimer = setInterval(() => runBattleRoyalSuddenDeath(roomId), 8 * 1000);
-      runBattleRoyalSuddenDeath(roomId);
-    }, 9 * 60 * 1000),
-  ];
+
+  const startingPlayers = activePlayerCount(room);
+  const timers = [];
+
+  // Phase transitions straight off the rules timeline.
+  for (const phase of BATTLE_ROYALE_RULES.phaseBreaks) {
+    if (phase.atMs === 0) continue;
+    timers.push(setTimeout(() => {
+      emitBattleRoyalPhase(roomId, phase, {
+        gravityScale: phase.gravityScale,
+        scoreMultiplier: phase.scoreMultiplier,
+        garbageRate: phase.garbageRate,
+        idlePenaltyMs: phase.idlePenaltyMs,
+        solidGarbage: Boolean(phase.solidGarbage),
+      });
+      if (phase.solidGarbage && !room.battleRoyalSuddenDeathTimer) {
+        room.battleRoyalSuddenDeathTimer = setInterval(() => runBattleRoyalSuddenDeath(roomId), 8 * 1000);
+        runBattleRoyalSuddenDeath(roomId);
+      }
+    }, phase.atMs));
+  }
+
+  // Dynamic rule rotation — cadence comes from the current density bracket.
+  const rotate = () => {
+    const current = rooms.get(roomId);
+    if (!current || current.phase !== 'in-game') return;
+    const elapsed = Date.now() - current.battleRoyalStartedAt;
+    const phase = getBattleRoyalPhase(elapsed);
+    if (phase.dynamicRules || elapsed >= BATTLE_ROYALE_RULES.phaseBreaks[1].atMs) {
+      const rule = DYNAMIC_RULES[current.dynamicRuleIndex % DYNAMIC_RULES.length];
+      current.dynamicRuleIndex++;
+      current.activeDynamicRule = rule;
+      const bracket = getDensityBracket(activePlayerCount(current));
+      io.to(roomId).emit('battle-royale-event', {
+        rule: rule.id,
+        label: rule.label,
+        density: bracket.id,
+        densityLabel: bracket.label,
+        randomizedTargeting: Boolean(bracket.randomizedTargeting),
+        boardHeightLimit: bracket.boardHeightLimit ?? null,
+        forcedRivalDuels: Boolean(bracket.forcedRivalDuels),
+        rotationMs: bracket.eventRotationMs,
+      });
+    }
+    const nextBracket = getDensityBracket(activePlayerCount(current));
+    current.dynamicRuleTimer = setTimeout(rotate, nextBracket.eventRotationMs);
+  };
+  room.dynamicRuleTimer = setTimeout(rotate, getDensityBracket(startingPlayers).eventRotationMs);
+
+  // Idle penalty sweep: from Culling Escalation on, players who haven't
+  // cleared a line recently take garbage.
+  room.idleSweepTimer = setInterval(() => {
+    const current = rooms.get(roomId);
+    if (!current || current.phase !== 'in-game' || !current.battleRoyalStartedAt) return;
+    const phase = getBattleRoyalPhase(Date.now() - current.battleRoyalStartedAt);
+    if (!phase.idlePenaltyMs) return;
+    const now = Date.now();
+    for (const [id, player] of current.players) {
+      if (player.state !== 'playing') continue;
+      const last = player.lastClearAt || current.battleRoyalStartedAt;
+      if (now - last >= phase.idlePenaltyMs) {
+        player.lastClearAt = now;
+        io.to(id).emit('receive-garbage', { count: 1, fromIndex: -1, reason: 'idle-penalty' });
+      }
+    }
+  }, 5 * 1000);
+
+  // Culling passes. Frozen entirely while the lobby is under the player floor.
+  for (const phase of BATTLE_ROYALE_RULES.phaseBreaks) {
+    if (!phase.eliminate) continue;
+    const scaled = Math.max(1, Math.round(startingPlayers * (phase.eliminate / BATTLE_ROYALE_RULES.capacity)));
+    timers.push(setTimeout(() => {
+      const alive = activePlayerCount(room);
+      if (isCullingFrozen(alive)) {
+        io.to(roomId).emit('battle-royale-event', {
+          rule: 'culling-frozen',
+          label: `Culling frozen — needs ${BATTLE_ROYALE_RULES.minPlayers}+ players`,
+          density: getDensityBracket(alive).id,
+        });
+        return;
+      }
+      if (alive <= 1) return;
+      eliminateBattleRoyalPlayers(roomId, Math.min(scaled, alive - 1), phase.primary, phase.tieBreakers, `${phase.primary}-cull`);
+    }, phase.atMs));
+  }
+
+  room.battleRoyalCullTimers = timers;
 }
 
 function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) {
@@ -347,6 +503,9 @@ function startMatch(roomId) {
     player.score = 0;
     player.lines = 0;
     player.kills = 0;
+    player.koCount = 0;
+    player.lastClearAt = Date.now();
+    player.lastScoreEventAt = 0;
     player.eliminatedAt = null;
     playerList.push({ id, name: player.name, index, team: player.team, kills: 0 });
     index += 1;
@@ -393,7 +552,11 @@ function beginRoomCountdown(roomId, initiatedBy = null) {
 function checkAllReady(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'lobby') return;
-  if (room.players.size !== room.mode.capacity) return;
+  // Start once everyone currently in the room is ready (min 2 players).
+  // Requiring the mode's full capacity meant a 40-player Battle Royale
+  // could never start from ready-up alone.
+  if (room.players.size < 2) return;
+  if (room.players.size > room.mode.capacity) return;
   if (!Array.from(room.players.values()).every(player => player.ready)) return;
 
   beginRoomCountdown(roomId);
@@ -414,7 +577,7 @@ function updateRematchVotes(roomId) {
   if (!room || room.phase !== 'post-game') return;
   const required = room.players.size;
   io.to(roomId).emit('rematch-update', { votes: room.rematchVotes.size, required });
-  if (required === room.mode.capacity && room.rematchVotes.size >= required) {
+  if (room.rematchVotes.size >= required && required >= 1) {
     room.phase = 'lobby';
     room.rematchVotes.clear();
     for (const player of room.players.values()) player.ready = true;
@@ -573,20 +736,52 @@ io.on('connection', socket => {
     socket.to(roomId).emit('opponent-piece-update', { playerIndex: player.index, piece });
   });
 
-  socket.on('score-update', data => {
+  // --- Server-authoritative scoring ---------------------------------------
+  // Clients no longer send a raw score. They report WHAT happened (a line
+  // clear, T-spin, combo step) and the server computes the points itself,
+  // so a tampered client can't just claim an arbitrary score.
+  socket.on('score-event', payload => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
     const player = room?.players.get(socket.id);
     if (!room || !player || room.phase !== 'in-game') return;
 
-    const scoreCap = room.mode.id === 'battle-royale' ? 5_000_000 : 999999;
-    player.score = Math.max(0, Math.min(scoreCap, Math.floor(Number(data.score) || 0)));
-    player.lines = Math.max(0, Math.min(9999, Math.floor(Number(data.lines) || 0)));
+    const now = Date.now();
+    const { type, lines, combo, clientTs } = payload || {};
+
+    // Timestamp validation: reject events dated in the future or far in the
+    // past (replayed/stale), and rate-limit to a humanly-possible cadence.
+    if (typeof clientTs === 'number') {
+      const drift = now - clientTs;
+      if (drift < -2000 || drift > 30_000) return;
+    }
+    if (player.lastScoreEventAt && now - player.lastScoreEventAt < 40) return;
+    player.lastScoreEventAt = now;
+
+    const points = computeScoreEvent(room, player, { type, lines, combo });
+    if (points <= 0 && type !== 'lines') return;
+
+    const scoreCap = room.mode.id === 'battle-royale' ? 5_000_000 : 999_999;
+    player.score = Math.max(0, Math.min(scoreCap, Math.floor((player.score || 0) + points)));
+    if (type === 'lines') {
+      const cleared = Math.max(0, Math.min(4, Math.floor(Number(lines) || 0)));
+      player.lines = Math.max(0, Math.min(9999, (player.lines || 0) + cleared));
+      player.lastClearAt = now;
+    }
+
     if (room.mode.id === 'battle-royale' && hasReachedTarget(player.score)) {
       finishBattleRoyalMatch(roomId, 'target-score', player);
       return;
     }
-    socket.to(roomId).emit('opponent-score-update', { playerIndex: player.index, ...data });
+
+    // Authoritative echo — clients render from this, not their local guess.
+    io.to(roomId).emit('opponent-score-update', {
+      playerIndex: player.index,
+      score: player.score,
+      lines: player.lines,
+      combo: Math.max(0, Math.floor(Number(combo) || 0)),
+    });
+
     if (room.mode.isTeamMode) {
       io.to(roomId).emit('team-score-update', {
         playerIndex: player.index,
@@ -604,6 +799,13 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     const player = room?.players.get(socket.id);
     if (!room || !player || room.phase !== 'in-game') return;
+
+    // At or below the K.O. floor, a top-out is survivable: the player is
+    // revived with a score penalty instead of being eliminated outright.
+    if (room.mode.id === 'battle-royale' && isKoFloorReached(activePlayerCount(room))) {
+      if (handleKnockout(roomId, socket.id)) return;
+    }
+
     player.state = 'spectating';
     player.eliminatedAt = Date.now();
     if (room.mode.id === 'battle-royale' && Number.isInteger(killerIndex)) {
@@ -629,10 +831,16 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     const sender = room?.players.get(socket.id);
     if (!room || !sender || room.phase !== 'in-game') return;
+
+    // Clamp what the client claims, then apply the phase + density rate.
+    const requested = Math.max(0, Math.min(20, Math.floor(Number(count) || 0)));
+    if (requested === 0) return;
+    const scaled = Math.max(1, Math.round(requested * activeGarbageRate(room)));
+
     for (const [id, player] of room.players) {
       const isOpponent = room.mode.isTeamMode ? player.team !== sender.team : id !== socket.id;
       if (id !== socket.id && isOpponent && player.state === 'playing') {
-        io.to(id).emit('receive-garbage', { count, fromIndex: sender.index });
+        io.to(id).emit('receive-garbage', { count: scaled, fromIndex: sender.index });
       }
     }
   });

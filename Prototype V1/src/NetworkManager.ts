@@ -120,6 +120,9 @@ export class NetworkManager {
   public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number }) => void) | null = null;
   public onBattleRoyalCull: ((data: { reason: string; eliminated: Array<{ id: string; name: string; score: number; lines: number; kills: number }>; remainingPlayers: number }) => void) | null = null;
   public onBattleRoyalSuddenDeath: ((data: { targetId: string; targetIndex: number; remainingPlayers: number }) => void) | null = null;
+  public onKoRecover: ((data: { koCount: number; score: number; clearGarbageOnly: boolean }) => void) | null = null;
+  public onPlayerKnockedOut: ((data: { playerId: string; playerIndex: number; koCount: number; score: number }) => void) | null = null;
+  public onBattleRoyalEvent: ((data: any) => void) | null = null;
 
   // --- Game callbacks ---
   public onGameStart: ((data: GameStartData) => void) | null = null;
@@ -196,6 +199,9 @@ export class NetworkManager {
     this.socket.on('battle-royale-phase', (data: any) => this.onBattleRoyalPhase?.(data));
     this.socket.on('battle-royale-cull', (data: any) => this.onBattleRoyalCull?.(data));
     this.socket.on('battle-royale-sudden-death', (data: any) => this.onBattleRoyalSuddenDeath?.(data));
+    this.socket.on('ko-recover', (data: any) => this.onKoRecover?.(data));
+    this.socket.on('player-knocked-out', (data: any) => this.onPlayerKnockedOut?.(data));
+    this.socket.on('battle-royale-event', (data: any) => this.onBattleRoyalEvent?.(data));
 
     // --- Game events ---
 
@@ -278,6 +284,14 @@ export class NetworkManager {
 
   public sendScoreUpdate(data: ScoreData) {
     this.socket.emit("score-update", data);
+  }
+
+  /**
+   * Report WHAT happened and let the server compute the points. The raw score
+   * is never sent from here — see Server/index.js's 'score-event' handler.
+   */
+  public sendScoreEvent(type: 'lines' | 'tspin' | 'softdrop' | 'harddrop', lines: number, combo: number) {
+    this.socket.emit("score-event", { type, lines, combo, clientTs: Date.now() });
   }
 
   public sendToppedOut() {

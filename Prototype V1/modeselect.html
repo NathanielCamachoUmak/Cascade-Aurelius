@@ -417,6 +417,12 @@
       <!--            IN-GAME HUD OVERLAY              -->
       <!-- ═══════════════════════════════════════════ -->
       <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
+        <div id="ko-stamp-overlay" class="hidden absolute inset-0 z-30 items-center justify-center pointer-events-none">
+          <div class="border-4 border-neon-pink px-10 py-5 -rotate-12 bg-deep-purple/70 shadow-[0_0_40px_rgba(255,20,147,0.6)]">
+            <div class="font-pixel text-4xl text-neon-pink tracking-widest">K.O.</div>
+            <div id="ko-stamp-sub" class="mt-2 text-center text-[10px] uppercase tracking-widest text-gray-300">Garbage cleared &middot; -20% score</div>
+          </div>
+        </div>
         <!-- Pre-Game Countdown Overlay -->
         <div id="pre-game-overlay" class="absolute inset-0 flex items-center justify-center z-[70] hidden pointer-events-none">
           <div id="pre-game-text" class="text-7xl font-pixel text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)] animate-pulse"></div>
@@ -436,7 +442,7 @@
 
         <!-- The HUD wraps around the Canvas -->
         <div class="relative flex justify-center items-start gap-12 w-full max-w-7xl px-8 h-[600px]">
-          <div id="team-match-strip" class="hidden absolute -top-14 left-1/2 -translate-x-1/2 grid grid-cols-[1fr_auto_1fr] items-center min-w-[520px] bg-deep-purple/95 border border-card-border rounded-lg overflow-hidden shadow-[0_0_20px_rgba(0,255,255,0.12)]">
+          <div id="team-match-strip" class="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 bg-card-bg/90 backdrop-blur-md px-6 py-2 rounded-full border border-card-border shadow-lg mt-2">
             <div class="px-5 py-3 text-neon-cyan font-pixel text-xs text-right">CYAN <span id="team-score-cyan" class="text-lg ml-2">0</span></div>
             <div id="team-match-timer" class="px-4 py-3 font-pixel text-[10px] text-neon-yellow border-x border-card-border">3:00</div>
             <div class="px-5 py-3 text-neon-pink font-pixel text-xs"><span id="team-score-magenta" class="text-lg mr-2">0</span> MAGENTA</div>
@@ -463,6 +469,13 @@
               <div class="mb-4">
                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Score</div>
                 <div id="score-p1" class="text-xl font-bold font-pixel text-neon-cyan">0</div>
+              </div>
+              <div id="ko-count-badge-p1" class="mb-4 hidden">
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider">K.O. Count</div>
+                <div class="flex items-baseline gap-2">
+                  <span id="ko-count-p1" class="text-xl font-bold font-pixel text-neon-pink">0</span>
+                  <span id="ko-decay-p1" class="text-[10px] text-gray-500 uppercase tracking-wider"></span>
+                </div>
               </div>
               <div class="mb-4">
                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Multiplier</div>
@@ -505,8 +518,11 @@
           </div>
 
           <!-- Canvas Container -->
-          <div id="canvas-spacer" class="relative shrink-0 flex justify-center max-w-[58vw] overflow-hidden">
-             <canvas id="gameCanvas" class="max-w-full h-auto bg-black/80 backdrop-blur-sm pointer-events-none rounded-lg"></canvas>
+          <div class="w-full flex-1 flex items-center justify-center overflow-auto p-4 max-h-[82vh]">
+            <canvas 
+              id="gameCanvas" 
+              class="max-w-full h-auto object-contain rounded-lg border border-card-border shadow-2xl">
+            </canvas>
           </div>
 
           <!-- Multiplayer Scoreboard -->

@@ -69,7 +69,7 @@ export class GameManager {
   public battleRoyalPhase = '';
   public battleRoyalRemaining = 0;
   public battleRoyalKills = 0;
-  public battleRoyalTargetScore = 2_000_000;
+  public battleRoyalTargetScore = 1_000_000;
   public battleRoyalRankings: Array<{ rank: number; name: string; score: number; lines: number; kills: number; eliminated: boolean }> = [];
 
   // Visual effects state
@@ -351,6 +351,7 @@ export class GameManager {
       player.abilityCooldowns.Q = Math.max(0, player.abilityCooldowns.Q - dt);
       player.abilityCooldowns.E = Math.max(0, player.abilityCooldowns.E - dt);
       player.perfectClearWindow = Math.max(0, player.perfectClearWindow - dt);
+      player.koStampTimer = Math.max(0, player.koStampTimer - dt);
 
       if (player.activeEffectTimer > 0) {
         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
@@ -443,6 +444,27 @@ export class GameManager {
         kills: myPlayer.kills,
       });
     }
+  }
+
+  /**
+   * K.O. recovery (Battle Royale, at/below the player floor): instead of
+   * being eliminated, the board keeps only user-placed blocks, garbage is
+   * destroyed, survivors collapse down, and play resumes.
+   */
+  public applyKoRecovery(koCount: number, authoritativeScore: number) {
+    const me = this.players[this.myPlayerIndex];
+    if (!me) return;
+
+    me.grid.clearGarbageOnlyAndCollapse();
+    me.isToppedOut = false;
+    me.koCount = koCount;
+    me.koStampTimer = 2500;
+    me.scoreManager.score = authoritativeScore;
+    me.scoreManager.combo = 0;
+    me.currentPiece = null;
+    me.dropTimer = 0;
+    me.inputHandler.clear();
+    if (this.state === GameState.GAME_OVER) this.state = GameState.PLAYING;
   }
 
   private handleSpawning(player: Player) {
@@ -713,6 +735,13 @@ export class GameManager {
 
     if (linesCleared > 0) {
       player.scoreManager.addScoreForLines(linesCleared);
+
+      // Server-authoritative scoring: report the EVENT, not a raw score.
+      // The local score above stays as an immediate prediction for the HUD;
+      // the server's authoritative value overwrites it when it echoes back.
+      if (this.isOnline && player === this.players[this.myPlayerIndex]) {
+        this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo);
+      }
       player.classMeter += linesCleared;
 
       // Trigger visual effects for the local player's clears

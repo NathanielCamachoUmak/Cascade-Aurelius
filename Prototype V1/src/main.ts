@@ -300,7 +300,7 @@ function ensureBattleRoyalHud() {
   const hud = document.createElement('section');
   hud.id = 'battle-royale-hud';
   hud.className = 'hidden fixed top-3 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
-  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">40 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 2,000,000</div>';
+  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
   document.body.appendChild(hud);
   battleRoyalHud = hud;
   return hud;
@@ -312,11 +312,11 @@ function updateBattleRoyalHud() {
   const phase = hud.querySelector('#br-phase');
   const progress = hud.querySelector('#br-progress') as HTMLElement | null;
   const kills = hud.querySelector('#br-kills');
-  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers || 40} LEFT`;
+  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers} LEFT`;
   if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
-  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (10 * 60 * 1000)) * 100))}%`;
+  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (5 * 60 * 1000)) * 100))}%`;
   const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
-  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 2,000,000`;
+  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 1,000,000`;
   hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
 }
 
@@ -402,11 +402,11 @@ btnJoinLobby.addEventListener('click', () => {
       activeOnlineMode = state.mode.id;
       selectedOnlineMode = state.mode.id;
       onlineTeamScores = state.teamScores || onlineTeamScores;
-        currentLobbyHostId = state.hostId;
+      currentLobbyHostId = state.hostId;
       const isHost = currentLobbyHostId === network?.mySocketId;
       btnLobbyStartNow.classList.toggle('hidden', !isHost || state.phase !== 'lobby');
+      if (isHost && state.phase === 'lobby') btnLobbyStartNow.removeAttribute('disabled');
       btnHostLobby.classList.toggle('hidden', inRoom);
-      btnJoinLobby.classList.toggle('hidden', inRoom);
       if (lobbyStartHint) lobbyStartHint.innerText = isHost
         ? `You are hosting ${state.mode.title}. Start with the current roster or wait for the full ${state.capacity}-player room.`
         : `Waiting for the host. This room currently has ${state.players.length}/${state.capacity} players.`;
@@ -439,6 +439,7 @@ btnJoinLobby.addEventListener('click', () => {
       currentLobbyHostId = hostId;
       const isHost = currentLobbyHostId === network?.mySocketId;
       btnLobbyStartNow.classList.toggle('hidden', !isHost);
+      if (isHost) btnLobbyStartNow.removeAttribute('disabled');
     };
 
     network.onConfirmJoin = (data) => {
@@ -458,11 +459,12 @@ btnJoinLobby.addEventListener('click', () => {
       lobbyCountdown.dataset.interval = interval.toString();
     };
 
-    network.onCountdownCancel = () => {
+      network.onCountdownCancel = () => {
       lobbyCountdown.classList.add('hidden');
       const interval = lobbyCountdown.dataset.interval;
       if (interval) clearInterval(parseInt(interval));
       lobbyStatus.innerText = 'Countdown cancelled.';
+      if (currentLobbyHostId === network?.mySocketId) btnLobbyStartNow.removeAttribute('disabled');
     };
 
     network.onPreGameCountdown = (seconds: number) => {
@@ -558,8 +560,34 @@ btnJoinLobby.addEventListener('click', () => {
       battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
       updateBattleRoyalHud();
     };
+    const showGlobalRibbon = (message: string) => {
+      const ribbon = document.getElementById('global-ribbon');
+      if (!ribbon) return;
+      ribbon.innerText = message;
+      ribbon.classList.remove('hidden');
+      ribbon.classList.add('opacity-100');
+      setTimeout(() => ribbon.classList.add('hidden'), 2000);
+    };
+
+    network.onKoRecover = (data) => {
+      // Survivable top-out: keep only user-placed blocks, wipe the garbage.
+      gameManager.applyKoRecovery(data.koCount, data.score);
+      battleRoyalPhaseLabel = `K.O. #${data.koCount} · garbage cleared, -20% score`;
+      updateBattleRoyalHud();
+    };
+    network.onPlayerKnockedOut = (data) => {
+      if (data.playerId !== network?.mySocketId) {
+        showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
+      }
+    };
+    network.onBattleRoyalEvent = (data) => {
+      const label = data.label || data.rule;
+      battleRoyalPhaseLabel = data.densityLabel ? `${label} · ${data.densityLabel}` : label;
+      showGlobalRibbon(String(label).toUpperCase());
+      updateBattleRoyalHud();
+    };
     network.onBattleRoyalPostGame = (data) => {
-      const rankingText = data.rankings.slice(0, 10).map(entry => `${entry.rank}. ${entry.name} · ${Math.round(entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills`).join('<br>');
+      const rankingText = data.rankings.slice(0, 10).map((entry: any) => `${entry.rank}. ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`).join('<br>');
       postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
     };
     network.onTeamScoreUpdate = (data) => {
@@ -629,7 +657,10 @@ function renderLobbyPlayers(state: RoomState) {
     title.className = 'sm:col-span-2 lg:col-span-4 text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-3 text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20';
     title.innerText = `BATTLE ROYALE · ${state.players.length}/${state.capacity} PLAYERS · HOST MAY START EARLY`;
     lobbyPlayerList.appendChild(title);
-    for (let slot = 0; slot < state.capacity; slot++) {
+    // Show everyone present plus a few open slots for context — rendering
+    // all 40 made a 2-3 player test lobby look like a wall of empty rows.
+    const slotsToShow = Math.min(state.capacity, Math.max(state.players.length + 2, 8));
+    for (let slot = 0; slot < slotsToShow; slot++) {
       const player = state.players[slot];
       const row = document.createElement('div');
       row.className = 'flex min-w-0 items-center justify-between gap-2 border border-card-border bg-card-bg/70 px-3 py-2 text-xs';
@@ -941,7 +972,19 @@ function render() {
 
   // Render visual effects
   const effects = gameManager.getEffects();
-  
+  // Add a minimum scale limit so individual player grids stay legible
+  const MIN_BOARD_SCALE = 0.65;
+  // Fit the full multi-board canvas into a comfortable on-screen width instead
+  // of relying on CSS alone to squash it — CSS max-width still shrinks the
+  // *whole* canvas uniformly, but ctx.scale keeps our own draw calls (grid
+  // lines, block borders, text) crisp instead of blurring on downscale.
+  const TARGET_VISIBLE_WIDTH = 900; // px, comfortable width for a single board row
+  const calculatedScale = canvas.width > TARGET_VISIBLE_WIDTH
+    ? TARGET_VISIBLE_WIDTH / canvas.width
+    : 1;
+  const renderScale = Math.max(calculatedScale, MIN_BOARD_SCALE);
+  ctx.scale(renderScale, renderScale);
+  // Draw line clear flashes
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
     const BLOCK_SIZE_LOCAL = 30;
@@ -989,6 +1032,27 @@ function render() {
   const p1 = gameManager.players[myIdx];
   if (p1) {
     scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
+
+    // K.O. badge + transient stamp overlay (Battle Royale only)
+    const koBadge = document.getElementById('ko-count-badge-p1');
+    const koCountEl = document.getElementById('ko-count-p1');
+    const koDecayEl = document.getElementById('ko-decay-p1');
+    const koStamp = document.getElementById('ko-stamp-overlay');
+    if (koBadge && koCountEl && koDecayEl) {
+      const hasKos = (p1.koCount || 0) > 0;
+      koBadge.classList.toggle('hidden', !hasKos);
+      if (hasKos) {
+        koCountEl.innerText = `${p1.koCount}`;
+        // Mirrors the server's decay formula: raw x 0.85^KOCount
+        const retained = Math.round(Math.pow(0.85, p1.koCount) * 100);
+        koDecayEl.innerText = `final x${(retained / 100).toFixed(2)}`;
+      }
+    }
+    if (koStamp) {
+      const stampVisible = (p1.koStampTimer || 0) > 0;
+      koStamp.classList.toggle('hidden', !stampVisible);
+      koStamp.classList.toggle('flex', stampVisible);
+    }
     levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
     comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
     multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
