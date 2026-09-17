@@ -279,7 +279,7 @@ function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
   const hud = document.createElement('section');
   hud.id = 'battle-royale-hud';
-  hud.className = 'hidden fixed top-3 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
+  hud.className = 'hidden fixed top-20 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
   hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
   document.body.appendChild(hud);
   battleRoyalHud = hud;
@@ -880,8 +880,15 @@ function render() {
   if (gameManager.isOnline && onlinePlayerNames.length > 0) {
     const scoreboard = document.getElementById('multiplayer-scoreboard')!;
     const entries = document.getElementById('scoreboard-entries')!;
+
+    // Battle Royale uses its own HUD — keep the sidebar hidden and update BR HUD instead
+    if (activeOnlineMode === 'battle-royale') {
+      scoreboard.classList.add('hidden');
+      updateBattleRoyalHud();
+      return;
+    }
+
     scoreboard.classList.remove('hidden');
-    
     entries.innerHTML = '';
     const playerData: {name: string, score: number, lines: number, kills: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
     for (let i = 0; i < gameManager.players.length; i++) {
@@ -894,16 +901,6 @@ function render() {
         alive: !p.isToppedOut,
         team: onlinePlayerTeams[i] ?? null
       });
-    }
-    if (activeOnlineMode === 'battle-royale') {
-      for (const player of playerData.sort((a, b) => b.score - a.score || b.lines - a.lines || b.kills - a.kills)) {
-        const row = document.createElement('div');
-        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
-        row.innerHTML = `<span class="font-bold truncate max-w-[160px]">${player.name} <small class="text-gray-400">${player.lines}L · ${player.kills}K</small></span><span class="font-pixel text-xs">${Math.round(player.score).toLocaleString()}</span>`;
-        entries.appendChild(row);
-      }
-      updateBattleRoyalHud();
-      return;
     }
     if (activeOnlineMode !== 'team-deathmatch') {
       for (const player of playerData.sort((a, b) => b.score - a.score)) {
