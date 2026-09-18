@@ -251,6 +251,9 @@ export class NetworkManager {
     this.socket.emit("join-room", { roomId, name, modeId });
   }
 
+  public switchTeam() {
+  this.socket.emit('switch-team');
+  }
   public startLobbyNow() {
     this.socket.emit('host-start-now');
   }

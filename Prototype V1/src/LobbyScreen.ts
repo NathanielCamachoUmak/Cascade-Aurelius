@@ -87,6 +87,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   const lobbyStatus = document.getElementById('lobby-status')!;
   const lobbyPlayerList = document.getElementById('lobby-player-list')!;
   const btnLobbyReady = document.getElementById('btn-lobby-ready')!;
+  const btnLobbySwitchTeam = document.getElementById('btn-lobby-switch-team')!;
   const btnLobbyBack = document.getElementById('btn-lobby-back')!;
   const lobbyNicknameInput = document.getElementById('lobby-nickname-input') as HTMLInputElement;
   const onlineModeLabel = document.getElementById('online-mode-label');
@@ -138,7 +139,9 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     if (inRoom) {
       btnLobbyReady.classList.remove('hidden');
       btnLobbyLeave.classList.remove('hidden');
+      btnLobbySwitchTeam.classList.remove('hidden');
     }
+    
 
     lobbyPlayerList.innerHTML = '';
 
@@ -271,7 +274,14 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       const me = state.players.find(p => p.id === network?.mySocketId);
       if (me) myReady = me.ready;
       btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
-
+      btnLobbySwitchTeam.addEventListener('click', () => {
+      network?.switchTeam();
+      myReady = false;
+      btnLobbyReady.innerText = 'READY UP';
+      });        
+      if (me?.team) {
+      btnLobbySwitchTeam.innerText = me.team === 'cyan' ? 'SWITCH TO MAGENTA' : 'SWITCH TO CYAN';
+      }
       // If we came from post-game, make sure we go back to lobby UI
       if (options.getGameState?.() === GameState.POST_GAME) {
         const screenPostGame = options.externalScreens?.screenPostGame;
@@ -428,7 +438,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     btnHostLobby.removeAttribute('disabled');
     btnJoinLobby.removeAttribute('disabled');
     teamLobbySummary.classList.add('hidden');
-
+    btnLobbySwitchTeam.classList.add('hidden');
     // Clear countdown interval
     lobbyCountdown.classList.add('hidden');
     const interval = lobbyCountdown.dataset.interval;

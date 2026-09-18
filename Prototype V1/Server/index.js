@@ -700,7 +700,24 @@ io.on('connection', socket => {
     for (const player of room.players.values()) player.ready = true;
     beginRoomCountdown(roomId, socket.id);
   });
+  socket.on('switch-team', () => {
+  const roomId = socket.data.roomId;
+  const room = roomId && rooms.get(roomId);
+  const player = room?.players.get(socket.id);
+  if (!room || !player || !room.mode.isTeamMode) return;
+  if (room.phase !== 'lobby') return;
 
+  const targetTeam = player.team === 'cyan' ? 'magenta' : 'cyan';
+  const targetTeamCount = Array.from(room.players.values()).filter(p => p.team === targetTeam).length;
+  if (targetTeamCount >= room.mode.teamSize) {
+    socket.emit('join-error', { message: `${teams[targetTeam].label} is full (${room.mode.teamSize} players).` });
+    return;
+  }
+
+  player.team = targetTeam;
+  player.ready = false;
+  emitRoomState(roomId);
+  });
   socket.on('player-ready', ({ ready }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
