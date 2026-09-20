@@ -6,6 +6,7 @@ import { type Difficulty } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
+import { AudioManager } from "./AudioManager";
 
 // Visual Effects System
 interface Particle {
@@ -773,9 +774,10 @@ export class GameManager {
       }
       player.classMeter += linesCleared;
 
-      // Trigger visual effects for the local player's clears
+      // Trigger visual + audio effects for the local player's clears
       if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
         this.triggerLineClearEffects(linesCleared, clearedRows);
+        AudioManager.playSfx('lineClear');
       }
 
       if (linesCleared >= 4) {

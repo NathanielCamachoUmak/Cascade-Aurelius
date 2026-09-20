@@ -6,6 +6,7 @@ import { NetworkManager, type RoomState, type GameStartData, type RoomMode } fro
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
+import { AudioManager } from './AudioManager'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -112,6 +113,25 @@ function updateNavHighlight(activeId: string) {
 }
 
 let showGhostPiece = true;
+
+// --- Audio ---
+// Unlock audio context on first user interaction (browser autoplay policy)
+function unlockAudio() {
+  AudioManager.resumeContext();
+  AudioManager.playMusic('menu');
+  document.removeEventListener('click', unlockAudio);
+  document.removeEventListener('keydown', unlockAudio);
+}
+document.addEventListener('click', unlockAudio);
+document.addEventListener('keydown', unlockAudio);
+
+// Play menu-select SFX on any button click in the UI layer (delegated)
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  if (target.closest('button, a, [role="button"]')) {
+    AudioManager.playSfx('menuSelect');
+  }
+});
 
 // --- Class Select ---
 let selectedClass: PlayerClass = 'TANK';
@@ -490,6 +510,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
     onlinePlayerNames = playerNames;
   }
   // Hide lobby, show game
+  AudioManager.playMusic('game');
   updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
@@ -530,6 +551,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+  AudioManager.playMusic('game');
   updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
@@ -959,6 +981,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 function returnToMenu() {
+  AudioManager.playMusic('menu');
   gameManager.state = GameState.MAIN_MENU;
   gameHud.classList.add('hidden');
   gameHud.classList.remove('flex');
