@@ -169,6 +169,8 @@ function getRoomState(roomId) {
       koCount: player.koCount || 0,
       finalScore: finalScoreWithDecay(player.score || 0, player.koCount || 0),
       eliminatedAt: player.eliminatedAt || null,
+      isBot: !!player.isBot,
+      ownerId: player.ownerId || null,
     })),
   };
 }
@@ -512,7 +514,7 @@ function startMatch(roomId) {
     player.lastClearAt = Date.now();
     player.lastScoreEventAt = 0;
     player.eliminatedAt = null;
-    playerList.push({ id, name: player.name, index, team: player.team, kills: 0 });
+    playerList.push({ id, name: player.name, index, team: player.team, kills: 0, isBot: !!player.isBot, ownerId: player.ownerId || null });
     index += 1;
   }
 
@@ -599,6 +601,14 @@ function removePlayer(socket, { announceDisconnect = false } = {}) {
   if (room.phase === 'in-game' && room.mode.isTeamMode) finishTeamMatch(roomId, 'disconnect');
 
   room.players.delete(socket.id);
+  
+  // Also delete any bots owned by this socket
+  for (const [id, player] of room.players.entries()) {
+    if (player.isBot && player.ownerId === socket.id) {
+      room.players.delete(id);
+    }
+  }
+
   room.rematchVotes.delete(socket.id);
   socket.leave(roomId);
   socket.data.roomId = null;
@@ -610,7 +620,15 @@ function removePlayer(socket, { announceDisconnect = false } = {}) {
   }
 
   if (room.hostId === socket.id) {
-    room.hostId = room.players.keys().next().value || null;
+    // Find the first human player to become the new host
+    let nextHost = null;
+    for (const [id, player] of room.players.entries()) {
+      if (!player.isBot) {
+        nextHost = id;
+        break;
+      }
+    }
+    room.hostId = nextHost;
     io.to(roomId).emit('room-host-changed', { hostId: room.hostId });
   }
 
@@ -700,6 +718,46 @@ io.on('connection', socket => {
     for (const player of room.players.values()) player.ready = true;
     beginRoomCountdown(roomId, socket.id);
   });
+
+  socket.on('add-bot', () => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.phase !== 'lobby') return;
+    if (room.players.size >= room.mode.capacity) return;
+
+    const botId = 'bot-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    const team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
+    
+    room.players.set(botId, {
+      name: 'AI Bot',
+      ready: true,
+      index: -1,
+      state: 'lobby',
+      team,
+      score: 0,
+      lines: 0,
+      kills: 0,
+      eliminatedAt: null,
+      isBot: true,
+      ownerId: socket.id,
+    });
+    emitRoomState(roomId);
+  });
+
+  socket.on('remove-bot', ({ botId }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.phase !== 'lobby') return;
+    
+    const bot = room.players.get(botId);
+    if (bot && bot.isBot) {
+      room.players.delete(botId);
+      emitRoomState(roomId);
+    }
+  });
+
   socket.on('switch-team', () => {
   const roomId = socket.data.roomId;
   const room = roomId && rooms.get(roomId);
@@ -742,19 +800,21 @@ io.on('connection', socket => {
     updateRematchVotes(roomId);
   });
 
-  socket.on('grid-update', ({ grid }) => {
+  socket.on('grid-update', ({ grid, botId }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    const player = room?.players.get(socket.id);
-    if (!room || !player || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game') return;
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
     socket.to(roomId).emit('opponent-grid-update', { playerIndex: player.index, grid });
   });
 
-  socket.on('piece-update', ({ piece }) => {
+  socket.on('piece-update', ({ piece, botId }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    const player = room?.players.get(socket.id);
-    if (!room || !player || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game') return;
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
     socket.to(roomId).emit('opponent-piece-update', { playerIndex: player.index, piece });
   });
 
@@ -765,15 +825,16 @@ io.on('connection', socket => {
   socket.on('score-event', payload => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    const player = room?.players.get(socket.id);
-    if (!room || !player || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game') return;
+
+    const { botId, type, lines, combo, clientTs } = payload || {};
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
 
     const now = Date.now();
-    const { type, lines, combo, clientTs } = payload || {};
-
     // Timestamp validation: reject events dated in the future or far in the
     // past (replayed/stale), and rate-limit to a humanly-possible cadence.
-    if (typeof clientTs === 'number') {
+    if (!botId && typeof clientTs === 'number') {
       const drift = now - clientTs;
       if (drift < -2000 || drift > 30_000) return;
     }
@@ -807,7 +868,7 @@ io.on('connection', socket => {
     if (room.mode.isTeamMode) {
       io.to(roomId).emit('team-score-update', {
         playerIndex: player.index,
-        playerId: socket.id,
+        playerId: botId || socket.id,
         team: player.team,
         score: player.score,
         lines: player.lines,
@@ -816,16 +877,17 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('player-eliminated', ({ killerIndex } = {}) => {
+  socket.on('player-eliminated', ({ killerIndex, botId } = {}) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    const player = room?.players.get(socket.id);
-    if (!room || !player || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game') return;
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
 
     // At or below the K.O. floor, a top-out is survivable: the player is
     // revived with a score penalty instead of being eliminated outright.
     if (room.mode.id === 'battle-royale' && isKoFloorReached(activePlayerCount(room))) {
-      if (handleKnockout(roomId, socket.id)) return;
+      if (handleKnockout(roomId, botId || socket.id)) return;
     }
 
     player.state = 'spectating';
@@ -835,7 +897,7 @@ io.on('connection', socket => {
       if (killer) killer.kills = (killer.kills || 0) + 1;
     }
     socket.to(roomId).emit('opponent-topped-out', { playerIndex: player.index });
-    io.to(roomId).emit('player-state-update', { playerId: socket.id, state: 'spectating' });
+    io.to(roomId).emit('player-state-update', { playerId: botId || socket.id, state: 'spectating' });
     if (room.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
     else if (!room.mode.isTeamMode) checkEliminationGameOver(roomId);
     emitRoomState(roomId);

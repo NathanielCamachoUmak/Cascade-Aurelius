@@ -118,7 +118,7 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerNames: string[] = [], humanClass: PlayerClass = 'TANK') {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerSpecs: any[] = [], humanClass: PlayerClass = 'TANK') {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
@@ -132,14 +132,20 @@ export class GameManager {
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
     for (let i = 0; i < playerCount; i++) {
-      const pName = playerNames[i] || `P${i + 1}`;
+      const spec = playerSpecs[i] || {};
+      const pName = spec.name || `P${i + 1}`;
+      
       if (i === myIndex) {
         // Our local player — listens to keyboard, uses our chosen class.
         this.players.push(new Player(pName, false, 'HARD', true, humanClass));
+      } else if (spec.isBot && spec.ownerId === net.mySocketId) {
+        // A bot owned by us! We need to simulate it locally and broadcast its state.
+        const botPlayer = new Player(pName, true, 'HARD', false);
+        // We'll attach the botId to the player object so we know how to broadcast for it
+        (botPlayer as any).botId = spec.id;
+        this.players.push(botPlayer);
       } else {
-        // Remote player — no keyboard, no bot. Grid/piece will be synced from server.
-        // Their class doesn't affect anything rendered/simulated on THIS machine, so
-        // it's left at the default; only your own class needs to be known locally.
+        // Remote player (or remote bot) — no keyboard, no bot. Grid/piece will be synced from server.
         this.players.push(new Player(pName, false, 'HARD', false));
       }
     }
@@ -348,8 +354,8 @@ export class GameManager {
       const player = this.players[i];
       if (player.isToppedOut) continue;
 
-      // In online mode, only update our own player's game logic
-      if (this.isOnline && i !== this.myPlayerIndex) {
+      // In online mode, only update our own player's game logic and our own bots
+      if (this.isOnline && i !== this.myPlayerIndex && !(player as any).botId) {
         continue; // Remote players are synced via network events
       }
 
@@ -391,8 +397,12 @@ export class GameManager {
         this.handleSpawning(player);
         if (player.isToppedOut) {
           if (this.isOnline) {
-            // Tell server we topped out
-            this.network?.sendToppedOut();
+            // Tell server we (or our bot) topped out
+            if ((player as any).botId) {
+              this.network?.sendEliminated(undefined, (player as any).botId);
+            } else {
+              this.network?.sendToppedOut();
+            }
           }
           this.checkGameOver();
           continue;
@@ -417,43 +427,56 @@ export class GameManager {
    */
   private handleNetworkSync(dt: number) {
     if (!this.network) return;
-    const myPlayer = this.players[this.myPlayerIndex];
-    if (!myPlayer) return;
+
+    // Get all players we need to sync (our local player + our bots)
+    const playersToSync = this.players.filter((p, i) => i === this.myPlayerIndex || (p as any).botId);
 
     // Grid sync
     this.gridSyncTimer += dt;
-    if (this.gridSyncTimer >= this.GRID_SYNC_INTERVAL) {
-      this.gridSyncTimer = 0;
-      this.network.sendGridUpdate(myPlayer.grid.matrix);
-    }
+    const doGridSync = this.gridSyncTimer >= this.GRID_SYNC_INTERVAL;
+    if (doGridSync) this.gridSyncTimer = 0;
 
     // Piece sync
     this.pieceSyncTimer += dt;
-    if (this.pieceSyncTimer >= this.PIECE_SYNC_INTERVAL) {
-      this.pieceSyncTimer = 0;
-      if (myPlayer.currentPiece) {
-        this.network.sendPieceUpdate({
-          type: myPlayer.currentPiece.type,
-          x: myPlayer.currentPiece.x,
-          y: myPlayer.currentPiece.y,
-          rotationIndex: myPlayer.currentPiece.rotationIndex,
-        });
-      } else {
-        this.network.sendPieceUpdate(null);
-      }
-    }
+    const doPieceSync = this.pieceSyncTimer >= this.PIECE_SYNC_INTERVAL;
+    if (doPieceSync) this.pieceSyncTimer = 0;
 
     // Score sync
     this.scoreSyncTimer += dt;
-    if (this.scoreSyncTimer >= this.SCORE_SYNC_INTERVAL) {
-      this.scoreSyncTimer = 0;
-      this.network.sendScoreUpdate({
-        score: myPlayer.scoreManager.score,
-        lines: myPlayer.scoreManager.totalLinesCleared,
-        combo: myPlayer.scoreManager.combo,
-        multiplier: myPlayer.scoreManager.scoreMultiplier,
-        kills: myPlayer.kills,
-      });
+    const doScoreSync = this.scoreSyncTimer >= this.SCORE_SYNC_INTERVAL;
+    if (doScoreSync) this.scoreSyncTimer = 0;
+
+    for (const p of playersToSync) {
+      if (p.isToppedOut) continue;
+      const botId = (p as any).botId;
+
+      if (doGridSync) {
+        this.network.sendGridUpdate(p.grid.matrix, botId);
+      }
+      
+      if (doPieceSync) {
+        if (p.currentPiece) {
+          this.network.sendPieceUpdate({
+            type: p.currentPiece.type,
+            x: p.currentPiece.x,
+            y: p.currentPiece.y,
+            rotationIndex: p.currentPiece.rotationIndex,
+          }, botId);
+        } else {
+          this.network.sendPieceUpdate(null, botId);
+        }
+      }
+
+      // No need to send generic score update for bots, they just emit score-event
+      if (doScoreSync && !botId) {
+        this.network.sendScoreUpdate({
+          score: p.scoreManager.score,
+          lines: p.scoreManager.totalLinesCleared,
+          combo: p.scoreManager.combo,
+          multiplier: p.scoreManager.scoreMultiplier,
+          kills: p.kills,
+        });
+      }
     }
   }
 
@@ -769,8 +792,12 @@ export class GameManager {
       // Server-authoritative scoring: report the EVENT, not a raw score.
       // The local score above stays as an immediate prediction for the HUD;
       // the server's authoritative value overwrites it when it echoes back.
-      if (this.isOnline && player === this.players[this.myPlayerIndex]) {
-        this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo);
+      if (this.isOnline) {
+        if (player === this.players[this.myPlayerIndex]) {
+          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo);
+        } else if ((player as any).botId) {
+          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo, (player as any).botId);
+        }
       }
       player.classMeter += linesCleared;
 

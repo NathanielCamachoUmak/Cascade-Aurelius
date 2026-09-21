@@ -44,6 +44,8 @@ export interface LobbyPlayer {
   lines: number;
   kills: number;
   eliminatedAt?: number | null;
+  isBot?: boolean;
+  ownerId?: string | null;
 }
 
 export interface RoomState {
@@ -60,7 +62,7 @@ export interface RoomState {
 }
 
 export interface GameStartData {
-  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number }[];
+  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number; isBot?: boolean; ownerId?: string | null }[];
   myIndex: number;
   teamScores: { cyan: number; magenta: number };
   modeId: OnlineModeId;
@@ -275,14 +277,22 @@ export class NetworkManager {
     this.socket.emit("vote-rematch");
   }
 
-  // --- Game emitters ---
-
-  public sendGridUpdate(grid: any[][]) {
-    this.socket.emit("grid-update", { grid });
+  public addBot() {
+    this.socket.emit("add-bot");
   }
 
-  public sendPieceUpdate(piece: PieceData | null) {
-    this.socket.emit("piece-update", { piece });
+  public removeBot(botId: string) {
+    this.socket.emit("remove-bot", { botId });
+  }
+
+  // --- Game emitters ---
+
+  public sendGridUpdate(grid: any[][], botId?: string) {
+    this.socket.emit("grid-update", { grid, botId });
+  }
+
+  public sendPieceUpdate(piece: PieceData | null, botId?: string) {
+    this.socket.emit("piece-update", { piece, botId });
   }
 
   public sendScoreUpdate(data: ScoreData) {
@@ -293,16 +303,16 @@ export class NetworkManager {
    * Report WHAT happened and let the server compute the points. The raw score
    * is never sent from here — see Server/index.js's 'score-event' handler.
    */
-  public sendScoreEvent(type: 'lines' | 'tspin' | 'softdrop' | 'harddrop', lines: number, combo: number) {
-    this.socket.emit("score-event", { type, lines, combo, clientTs: Date.now() });
+  public sendScoreEvent(type: 'lines' | 'tspin' | 'softdrop' | 'harddrop', lines: number, combo: number, botId?: string) {
+    this.socket.emit("score-event", { type, lines, combo, clientTs: Date.now(), botId });
   }
 
   public sendToppedOut() {
     this.socket.emit("player-topped-out");
   }
 
-  public sendEliminated(killerIndex?: number) {
-    this.socket.emit("player-eliminated", { killerIndex });
+  public sendEliminated(killerIndex?: number, botId?: string) {
+    this.socket.emit("player-eliminated", { killerIndex, botId });
   }
 
   public sendGameOver(winnerName: string) {

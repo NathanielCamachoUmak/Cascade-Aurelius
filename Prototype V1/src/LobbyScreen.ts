@@ -189,39 +189,64 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         } else {
           const isMe = network && player.id === network.mySocketId;
           const isHost = state.hostId === player.id;
-          row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}${isHost ? ' · HOST' : ''}</span><span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+          const isBot = player.isBot;
+          const isHostViewing = state.hostId === network?.mySocketId;
+          
+          let nameHtml = `<span class="font-bold">${player.name}${isBot ? ' [BOT]' : ''}${isMe ? ' (you)' : ''}${isHost ? ' · HOST' : ''}</span>`;
+          let statusHtml = `<span class="${player.ready ? 'text-neonCyan' : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+          
+          if (isBot && isHostViewing) {
+            statusHtml += `<button data-bot-id="${player.id}" class="btn-kick-bot ml-4 text-neon-pink hover:text-white transition-colors uppercase text-[10px]">Kick</button>`;
+          }
+          row.innerHTML = `${nameHtml}<div class="flex items-center">${statusHtml}</div>`;
         }
         lobbyPlayerList.appendChild(row);
       }
-      return;
-    }
+    } else {
+      // --- Team Deathmatch (3v3) ---
+      teamLobbySummary.classList.remove('hidden');
+      const cyanPlayers = state.players.filter(player => player.team === 'cyan');
+      const magentaPlayers = state.players.filter(player => player.team === 'magenta');
+      teamLobbyCyan.innerText = `${cyanPlayers.length}/${state.teamSize}`;
+      teamLobbyMagenta.innerText = `${magentaPlayers.length}/${state.teamSize}`;
+      for (const team of ['cyan', 'magenta'] as const) {
+        const title = document.createElement('div');
+        title.className = `text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 ${team === 'cyan' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neon-pink bg-neon-pink/5'}`;
+        title.innerText = team === 'cyan' ? 'Cyan Circuit · 3 seats' : 'Magenta Voltage · 3 seats';
+        lobbyPlayerList.appendChild(title);
 
-    // --- Team Deathmatch (3v3) ---
-    teamLobbySummary.classList.remove('hidden');
-    const cyanPlayers = state.players.filter(player => player.team === 'cyan');
-    const magentaPlayers = state.players.filter(player => player.team === 'magenta');
-    teamLobbyCyan.innerText = `${cyanPlayers.length}/${state.teamSize}`;
-    teamLobbyMagenta.innerText = `${magentaPlayers.length}/${state.teamSize}`;
-    for (const team of ['cyan', 'magenta'] as const) {
-      const title = document.createElement('div');
-      title.className = `text-[10px] font-bold tracking-[0.22em] uppercase px-3 py-2 ${team === 'cyan' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neon-pink bg-neon-pink/5'}`;
-      title.innerText = team === 'cyan' ? 'Cyan Circuit · 3 seats' : 'Magenta Voltage · 3 seats';
-      lobbyPlayerList.appendChild(title);
-
-      const teamPlayers = state.players.filter(player => player.team === team);
-      for (let slot = 0; slot < (state.teamSize || 3); slot++) {
-        const player = teamPlayers[slot];
-        const row = document.createElement('div');
-        row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
-        if (!player) {
-          row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
-        } else {
-          const isMe = network && player.id === network.mySocketId;
-          row.innerHTML = `<span class="font-bold">${player.name}${isMe ? ' (you)' : ''}</span><span class="${player.ready ? (team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink') : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+        const teamPlayers = state.players.filter(player => player.team === team);
+        for (let slot = 0; slot < (state.teamSize || 3); slot++) {
+          const player = teamPlayers[slot];
+          const row = document.createElement('div');
+          row.className = 'flex justify-between items-center bg-bgPanel border border-bgPanelBorder px-4 py-3';
+          if (!player) {
+            row.innerHTML = `<span class="text-gray-600 font-bold">OPEN SLOT ${slot + 1}</span><span class="text-gray-600 text-xs uppercase tracking-widest">Waiting</span>`;
+          } else {
+            const isMe = network && player.id === network.mySocketId;
+            const isBot = player.isBot;
+            const isHostViewing = state.hostId === network?.mySocketId;
+            
+            let nameHtml = `<span class="font-bold">${player.name}${isBot ? ' [BOT]' : ''}${isMe ? ' (you)' : ''}</span>`;
+            let statusHtml = `<span class="${player.ready ? (team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink') : 'text-gray-500'} text-xs font-bold uppercase tracking-widest">${player.ready ? '✓ Ready' : 'Not Ready'}</span>`;
+            
+            if (isBot && isHostViewing) {
+              statusHtml += `<button data-bot-id="${player.id}" class="btn-kick-bot ml-4 text-neon-pink hover:text-white transition-colors uppercase text-[10px]">Kick</button>`;
+            }
+            row.innerHTML = `${nameHtml}<div class="flex items-center">${statusHtml}</div>`;
+          }
+          lobbyPlayerList.appendChild(row);
         }
-        lobbyPlayerList.appendChild(row);
       }
     }
+    
+    // Wire kick bot buttons
+    document.querySelectorAll('.btn-kick-bot').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const botId = (e.target as HTMLElement).getAttribute('data-bot-id');
+        if (botId && network) network.removeBot(botId);
+      });
+    });
   }
 
   // --- Network setup (called lazily on first host/join) ---
@@ -256,6 +281,11 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       currentLobbyHostId = state.hostId;
       const isHost = currentLobbyHostId === network?.mySocketId;
       btnLobbyStartNow.classList.toggle('hidden', !isHost || state.phase !== 'lobby');
+      const btnLobbyAddBot = document.getElementById('btn-lobby-add-bot');
+      if (btnLobbyAddBot) {
+        const canAddBot = isHost && state.phase === 'lobby' && state.players.length < state.capacity;
+        btnLobbyAddBot.classList.toggle('hidden', !canAddBot);
+      }
       if (isHost && state.phase === 'lobby') btnLobbyStartNow.removeAttribute('disabled');
       btnHostLobby.classList.toggle('hidden', inRoom);
       if (lobbyStartHint) lobbyStartHint.innerText = isHost
@@ -365,6 +395,11 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     network?.startLobbyNow();
     btnLobbyStartNow.setAttribute('disabled', 'true');
     lobbyStatus.innerText = 'Host started the match countdown...';
+  });
+
+  const btnLobbyAddBot = document.getElementById('btn-lobby-add-bot')!;
+  btnLobbyAddBot.addEventListener('click', () => {
+    network?.addBot();
   });
 
   btnLobbyReady.addEventListener('click', () => {

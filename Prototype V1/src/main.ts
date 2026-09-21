@@ -299,7 +299,7 @@ function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
   const hud = document.createElement('section');
   hud.id = 'battle-royale-hud';
-  hud.className = 'hidden fixed top-20 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
+  hud.className = 'hidden fixed top-28 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
   hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
   document.body.appendChild(hud);
   battleRoyalHud = hud;
@@ -407,7 +407,7 @@ function wireGameCallbacks(network: NetworkManager) {
     lobby.selectedMode = data.modeId;
     onlinePlayerTeams = data.players.map(player => player.team);
     onlineTeamScores = data.teamScores;
-    startOnlineGame(data.players.length, data.myIndex, data.players.map(p => p.name), data.mode);
+    startOnlineGame(data.players.length, data.myIndex, data.players, data.mode);
   };
 
   network.onBattleRoyalPhase = (data) => {
@@ -479,23 +479,29 @@ function wireGameCallbacks(network: NetworkManager) {
       ribbon.classList.add('opacity-100');
       setTimeout(() => {
         ribbon.classList.add('hidden');
+        ribbon.classList.remove('opacity-100');
       }, 2000);
     }
   };
 }
 
+// --- Button Listeners ---
+
 btnPlayOnline.addEventListener('click', () => {
+  if (selectedClass !== 'TANK' && selectedClass !== 'SPEEDSTER' && selectedClass !== 'SABOTEUR' && selectedClass !== 'SUPPORT') {
+    alert("Please select a class first!");
+    return;
+  }
   pendingMode = 'ONLINE';
   showOnlineModeSelect();
 });
 
 btnPostRematch.addEventListener('click', () => {
-  lobby.network?.voteRematch();
   btnPostRematch.classList.add('hidden');
+  lobby.network?.voteRematch();
 });
 
 btnPostLeave.addEventListener('click', () => {
-  lobby.network?.leaveLobby();
   returnToMenu();
 });
 
@@ -503,11 +509,11 @@ btnPostLeave.addEventListener('click', () => {
  * Start an online multiplayer game.
  * Called when the server emits 'game-start'.
  */
-let onlinePlayerNames: string[] = [];
+let onlinePlayerSpecs: any[] = [];
 
-function startOnlineGame(playerCount: number, myIndex: number, playerNames?: string[], mode?: RoomMode) {
-  if (playerNames) {
-    onlinePlayerNames = playerNames;
+function startOnlineGame(playerCount: number, myIndex: number, players?: any[], mode?: RoomMode) {
+  if (players) {
+    onlinePlayerSpecs = players;
   }
   // Hide lobby, show game
   AudioManager.playMusic('game');
@@ -547,7 +553,7 @@ function startOnlineGame(playerCount: number, myIndex: number, playerNames?: str
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerNames, selectedClass);
+  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass);
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
@@ -867,7 +873,7 @@ function render() {
       const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
       const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
       const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
-      const targetName = p1.selectedTargetIndex === null ? 'default target' : (onlinePlayerNames[p1.selectedTargetIndex] ?? `P${p1.selectedTargetIndex + 1}`);
+      const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
       abilityQLabelP1.innerText = classInfo1.abilityQName.toUpperCase();
       abilityQStatusP1.innerText = qStatus;
       abilityQStatusP1.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
@@ -899,7 +905,7 @@ function render() {
   }
 
   // Update multiplayer scoreboard
-  if (gameManager.isOnline && onlinePlayerNames.length > 0) {
+  if (gameManager.isOnline && onlinePlayerSpecs.length > 0) {
     const scoreboard = document.getElementById('multiplayer-scoreboard')!;
     const entries = document.getElementById('scoreboard-entries')!;
 
@@ -916,7 +922,7 @@ function render() {
     for (let i = 0; i < gameManager.players.length; i++) {
       const p = gameManager.players[i];
       playerData.push({
-        name: onlinePlayerNames[i] || `Player ${i+1}`,
+        name: onlinePlayerSpecs[i]?.name || `Player ${i+1}`,
         score: p.scoreManager.score,
         lines: p.scoreManager.totalLinesCleared,
         kills: p.kills,
