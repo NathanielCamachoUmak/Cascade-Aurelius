@@ -537,11 +537,10 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
     battleRoyalHud.classList.add('hidden');
   }
 
-  // Size the canvas for the number of players; CSS constrains the visual width
-  // on smaller screens so the left skill HUD remains reachable in 4- and 6-board modes.
+  // Size the canvas for the number of players
   canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
   canvas.height = ROWS * BLOCK_SIZE;
-  canvas.style.maxWidth = playerCount >= 4 ? '58vw' : 'min(58vw, 600px)';
+  canvas.style.maxWidth = '100%';
 
   // Show P2 HUD if there are 2+ players
   if (playerCount >= 2) {
@@ -772,17 +771,6 @@ function render() {
   ctx.resetTransform();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.save();
-  // Fit the full multi-board canvas into a comfortable on-screen width instead
-  // of relying on CSS alone to squash it
-  const MIN_BOARD_SCALE = 0.65;
-  const TARGET_VISIBLE_WIDTH = 900;
-  const calculatedScale = canvas.width > TARGET_VISIBLE_WIDTH
-    ? TARGET_VISIBLE_WIDTH / canvas.width
-    : 1;
-  const renderScale = Math.max(calculatedScale, MIN_BOARD_SCALE);
-  ctx.scale(renderScale, renderScale);
-
   for (let i = 0; i < gameManager.players.length; i++) {
     renderPlayer(gameManager.players[i], i);
   }
@@ -826,8 +814,6 @@ function render() {
     ctx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
-
-  ctx.restore();
 
   // In online mode, figure out which player index is "ours" for the left HUD
   const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;

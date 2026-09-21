@@ -192,7 +192,7 @@ export class GameManager {
         player.scoreManager.totalLinesCleared = data.lines;
         player.kills = data.kills ?? player.kills;
         player.scoreManager.combo = data.combo;
-        player.scoreManager.scoreMultiplier = data.multiplier;
+        player.scoreManager.scoreMultiplier = data.multiplier ?? 1;
       }
     };
 
