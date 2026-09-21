@@ -769,7 +769,19 @@ function render() {
   if (gameManager.state === GameState.MAIN_MENU) return;
 
   // Clear main canvas
+  ctx.resetTransform();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  // Fit the full multi-board canvas into a comfortable on-screen width instead
+  // of relying on CSS alone to squash it
+  const MIN_BOARD_SCALE = 0.65;
+  const TARGET_VISIBLE_WIDTH = 900;
+  const calculatedScale = canvas.width > TARGET_VISIBLE_WIDTH
+    ? TARGET_VISIBLE_WIDTH / canvas.width
+    : 1;
+  const renderScale = Math.max(calculatedScale, MIN_BOARD_SCALE);
+  ctx.scale(renderScale, renderScale);
 
   for (let i = 0; i < gameManager.players.length; i++) {
     renderPlayer(gameManager.players[i], i);
@@ -777,19 +789,7 @@ function render() {
 
   // Render visual effects
   const effects = gameManager.getEffects();
-  // Add a minimum scale limit so individual player grids stay legible
-  const MIN_BOARD_SCALE = 0.65;
-  // Fit the full multi-board canvas into a comfortable on-screen width instead
-  // of relying on CSS alone to squash it — CSS max-width still shrinks the
-  // *whole* canvas uniformly, but ctx.scale keeps our own draw calls (grid
-  // lines, block borders, text) crisp instead of blurring on downscale.
-  const TARGET_VISIBLE_WIDTH = 900; // px, comfortable width for a single board row
-  const calculatedScale = canvas.width > TARGET_VISIBLE_WIDTH
-    ? TARGET_VISIBLE_WIDTH / canvas.width
-    : 1;
-  const renderScale = Math.max(calculatedScale, MIN_BOARD_SCALE);
-  ctx.scale(renderScale, renderScale);
-  // Draw line clear flashes
+
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
     const BLOCK_SIZE_LOCAL = 30;
@@ -826,6 +826,8 @@ function render() {
     ctx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
+
+  ctx.restore();
 
   // In online mode, figure out which player index is "ours" for the left HUD
   const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
