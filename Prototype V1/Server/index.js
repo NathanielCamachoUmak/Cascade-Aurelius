@@ -719,7 +719,7 @@ io.on('connection', socket => {
     beginRoomCountdown(roomId, socket.id);
   });
 
-  socket.on('add-bot', () => {
+  socket.on('add-bot', (payload) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
     if (!room || room.hostId !== socket.id) return;
@@ -728,9 +728,10 @@ io.on('connection', socket => {
 
     const botId = 'bot-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
+    const requestedName = payload?.name || 'AI Bot';
     
     room.players.set(botId, {
-      name: 'AI Bot',
+      name: requestedName,
       ready: true,
       index: -1,
       state: 'lobby',

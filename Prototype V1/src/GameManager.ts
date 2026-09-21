@@ -104,11 +104,13 @@ export class GameManager {
     this.network = null;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
-    this.players = [
-      new Player("P1", false, 'HARD', true, humanClass),
-      new Player("P2", true, difficulty, true, botClass)
-    ];
-    this.start();
+    import('./BotNames').then(({ getUniqueBotName }) => {
+      this.players = [
+        new Player("P1", false, 'HARD', true, humanClass),
+        new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass)
+      ];
+      this.start();
+    });
   }
 
   /**

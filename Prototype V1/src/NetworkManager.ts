@@ -277,8 +277,8 @@ export class NetworkManager {
     this.socket.emit("vote-rematch");
   }
 
-  public addBot() {
-    this.socket.emit("add-bot");
+  public addBot(name?: string) {
+    this.socket.emit("add-bot", { name });
   }
 
   public removeBot(botId: string) {

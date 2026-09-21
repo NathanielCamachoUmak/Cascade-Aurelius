@@ -399,7 +399,12 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
 
   const btnLobbyAddBot = document.getElementById('btn-lobby-add-bot')!;
   btnLobbyAddBot.addEventListener('click', () => {
-    network?.addBot();
+    const existingNames = Array.from(lobbyPlayerList.querySelectorAll('span.font-bold')).map(el => el.textContent || '');
+    // Clean up the "[BOT]" and "(you)" tags
+    const cleanedNames = existingNames.map(n => n.replace(' [BOT]', '').replace(' (you)', '').replace(' · HOST', '').replace(/^\d+\.\s*/, '').trim());
+    import('./BotNames').then(({ getUniqueBotName }) => {
+      network?.addBot(getUniqueBotName(cleanedNames));
+    });
   });
 
   btnLobbyReady.addEventListener('click', () => {
