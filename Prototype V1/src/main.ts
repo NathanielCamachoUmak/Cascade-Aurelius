@@ -355,10 +355,10 @@ function wireGameCallbacks(network: NetworkManager) {
         preGameText.innerText = s.toString();
       } else if (s === 0) {
         preGameText.innerText = "GO!";
+        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
       } else {
         clearInterval(interval);
         preGameOverlay.classList.add('hidden');
-        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
       }
     }, 1000);
   };
@@ -570,12 +570,32 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   if (mode === 'SOLO') {
     hudP2.classList.add('hidden');
     hudP2.classList.remove('flex');
-    gameManager.initSolo(selectedClass);
+    gameManager.initSolo(selectedClass, 5000);
   } else {
     hudP2.classList.remove('hidden');
     hudP2.classList.add('flex');
-    gameManager.init1v1(mode, selectedClass);
+    gameManager.init1v1(mode, selectedClass, 5000);
   }
+
+  // Show the 5 second countdown offline
+  preGameOverlay.classList.remove('hidden');
+  preGameOverlay.classList.add('flex');
+  gameManager.players[0].inputHandler.freeze();
+  let seconds = 5;
+  preGameText.innerText = seconds.toString();
+  
+  const interval = setInterval(() => {
+    seconds--;
+    if (seconds > 0) {
+      preGameText.innerText = seconds.toString();
+    } else if (seconds === 0) {
+      preGameText.innerText = "GO!";
+      gameManager.players[0].inputHandler.unfreeze();
+    } else {
+      clearInterval(interval);
+      preGameOverlay.classList.add('hidden');
+    }
+  }, 1000);
 }
 
 function getSpecialBlockLetter(special: string): string {

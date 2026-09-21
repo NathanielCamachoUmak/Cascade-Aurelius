@@ -1,6 +1,5 @@
 /**
  * A repository of names for AI Bots.
- * Add your 50+ names to this list!
  */
 export const BOT_NAMES: string[] = [
   "Gorr", "HAL 9000", "Skynet", "GLaDOS", "Deep Blue",

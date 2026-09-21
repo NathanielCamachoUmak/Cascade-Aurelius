@@ -528,7 +528,7 @@ function startMatch(roomId) {
       mode: publicMode(room.mode),
     });
   }
-  io.to(roomId).emit('pre-game-countdown', 3);
+  io.to(roomId).emit('pre-game-countdown', 5);
   if (room.mode.isTeamMode) io.to(roomId).emit('team-score-update', { teamScores: calculateTeamScores(room) });
   emitRoomState(roomId);
 
@@ -542,7 +542,7 @@ function startMatch(roomId) {
     } else {
       startTeamMatchTimer(roomId);
     }
-  }, 3000);
+  }, 5000);
 }
 
 function beginRoomCountdown(roomId, initiatedBy = null) {

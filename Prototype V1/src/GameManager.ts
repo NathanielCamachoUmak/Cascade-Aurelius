@@ -39,6 +39,7 @@ interface ComboText {
 export const GameState = {
   MAIN_MENU: "MAIN_MENU",
   READY: "READY",
+  PREGAME: "PREGAME",
   PLAYING: "PLAYING",
   GAME_OVER: "GAME_OVER",
   POST_GAME: "POST_GAME"
@@ -92,14 +93,14 @@ export class GameManager {
     this.renderFn = renderFn;
   }
 
-  public initSolo(humanClass: PlayerClass = 'TANK') {
+  public initSolo(humanClass: PlayerClass = 'TANK', preGameDelayMs: number = 5000) {
     this.isOnline = false;
     this.network = null;
     this.players = [new Player("P1", false, 'HARD', true, humanClass)];
-    this.start();
+    this.start(preGameDelayMs);
   }
 
-  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK') {
+  public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK', preGameDelayMs: number = 5000) {
     this.isOnline = false;
     this.network = null;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
@@ -109,7 +110,7 @@ export class GameManager {
         new Player("P1", false, 'HARD', true, humanClass),
         new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass)
       ];
-      this.start();
+      this.start(preGameDelayMs);
     });
   }
 
@@ -142,7 +143,7 @@ export class GameManager {
         this.players.push(new Player(pName, false, 'HARD', true, humanClass));
       } else if (spec.isBot && spec.ownerId === net.mySocketId) {
         // A bot owned by us! We need to simulate it locally and broadcast its state.
-        const botPlayer = new Player(pName, true, 'HARD', false);
+        const botPlayer = new Player(pName, true, 'EASY', false);
         // We'll attach the botId to the player object so we know how to broadcast for it
         (botPlayer as any).botId = spec.id;
         this.players.push(botPlayer);
@@ -307,11 +308,18 @@ export class GameManager {
     this.pieceSyncTimer = 0;
     this.scoreSyncTimer = 0;
 
-    this.start();
+    this.start(5000);
   }
 
-  public start() {
-    this.state = GameState.PLAYING;
+  private preGameTimerMs: number = 0;
+
+  public start(preGameMs: number = 0) {
+    if (preGameMs > 0) {
+      this.state = GameState.PREGAME;
+      this.preGameTimerMs = preGameMs;
+    } else {
+      this.state = GameState.PLAYING;
+    }
     this.canvasElement = document.getElementById('gameCanvas') as HTMLCanvasElement;
     this.lastTime = performance.now();
     this.gameTime = 0;
@@ -328,7 +336,7 @@ export class GameManager {
     this.update(dt);
     this.renderFn();
 
-    if (this.state === GameState.PLAYING) {
+    if (this.state === GameState.PLAYING || this.state === GameState.PREGAME) {
       this.animationFrameId = requestAnimationFrame(this.loop.bind(this));
     } else if (this.state === GameState.GAME_OVER) {
       this.renderFn(); // one last render
@@ -336,6 +344,13 @@ export class GameManager {
   }
 
   private update(dt: number) {
+    if (this.state === GameState.PREGAME) {
+      this.preGameTimerMs -= dt;
+      if (this.preGameTimerMs <= 0) {
+        this.state = GameState.PLAYING;
+      }
+      return;
+    }
     if (this.state !== GameState.PLAYING) return;
 
     this.gameTime += dt;
