@@ -4,14 +4,16 @@
  */
 export const BOT_NAMES: string[] = [
   "Gorr", "HAL 9000", "Skynet", "GLaDOS", "Deep Blue",
-  "Gorr", "R2-D2", "C-3PO", "T-800", "WALL-E", "Optimus Prime",
-  "Data", "Bender", "Marvin", "KITT", "Johnny 5", "Ava",
+  "Corin", "Belial", "Blocks Verstrappen", "Neru", "Miku", "Teto",
+  "Data", "Bender", "Marvin", "KITT", "Djikstra", "ArawAraw",
   "Jarvis", "Ultron", "Cortana", "Samantha", "TARS",
-  "EVE", "Bishop", "Ash", "Roy Batty", "David",
-  "Sonny", "Chappie", "RoboCop", "Megatron", "Starscream",
-  "Soundwave", "Shockwave", "Iron Giant", "Baymax", "BB-8",
-  "D-O", "IG-88", "HK-47", "ED-209", "T-1000",
-  "T-3000", "T-X", "BoB", "Lars", "Bigdong",
+  "EVE", "Bishop", "Ash", "Shockwave", "David",
+  "Sonny", "Grammatra", "Senyatta", "Megatron", "Starscream",
+  "Soundwave", "Alexa", "Aela", "Elisha", "Ken",
+  "Tricia", "MattPat", "Gab", "EDP445", "T-Hex",
+  "Red", "Rico", "BoB", "Lars", "Bigdong",
+  "Jelly", "Migol", "Kcelvs", "Simoun", "Patrick",
+  "SpoggleDod", "SpungGog", "Phoneas", "Frob"
   // Add more names here as needed
 ];
 
