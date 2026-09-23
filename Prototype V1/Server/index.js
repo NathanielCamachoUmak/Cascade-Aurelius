@@ -798,6 +798,13 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     if (!room || room.phase !== 'post-game') return;
     room.rematchVotes.add(socket.id);
+    
+    for (const [id, player] of room.players) {
+      if (player.isBot) {
+        room.rematchVotes.add(id);
+      }
+    }
+
     updateRematchVotes(roomId);
   });
 
