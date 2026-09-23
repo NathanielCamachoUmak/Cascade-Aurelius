@@ -537,10 +537,21 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
     battleRoyalHud.classList.add('hidden');
   }
 
-  // Size the canvas for the number of players
-  canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
-  canvas.height = ROWS * BLOCK_SIZE;
-  canvas.style.maxWidth = '100%';
+  // Size the canvas for the number of players — in 3v3/Battle Royale this
+  // puts our own board at full size top-left and tiles everyone else into a
+  // mosaic grid beside it, so canvas.width/height must span every board's
+  // actual bounding box rather than assuming one straight line of boards.
+  const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
+  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize));
+  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize));
+
+  // Our own board is always pinned at (0,0) when emphasized, so make sure the
+  // container starts scrolled there instead of wherever it was left before.
+  const canvasContainer = document.getElementById('canvas-container');
+  if (canvasContainer) {
+    canvasContainer.scrollLeft = 0;
+    canvasContainer.scrollTop = 0;
+  }
 
   // Show P2 HUD if there are 2+ players
   if (playerCount >= 2) {
@@ -619,50 +630,47 @@ function drawBlock(
   offsetX: number, 
   offsetY: number = 0,
   isSpecial: string | undefined = undefined, 
-  isGhost: boolean = false
+  isGhost: boolean = false,
+  blockSize: number = BLOCK_SIZE
 ) {
-  const finalX = offsetX + x * BLOCK_SIZE;
-  const finalY = offsetY + y * BLOCK_SIZE;
+  const finalX = offsetX + x * blockSize;
+  const finalY = offsetY + y * blockSize;
 
   if (isGhost) {
     targetCtx.fillStyle = 'transparent';
-    targetCtx.fillRect(finalX, finalY, BLOCK_SIZE, BLOCK_SIZE);
-    
-    targetCtx.strokeStyle = 'rgba(0, 229, 255, 0.4)'; // Cyan dashed for ghost
+    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
+    targetCtx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
     targetCtx.setLineDash([4, 2]);
     targetCtx.lineWidth = 2;
-    targetCtx.strokeRect(finalX + 1, finalY + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-    targetCtx.setLineDash([]); // Reset
+    targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
+    targetCtx.setLineDash([]);
     return;
   }
 
-  targetCtx.fillStyle = '#000000'; // black bg
-  targetCtx.fillRect(finalX, finalY, BLOCK_SIZE, BLOCK_SIZE);
+  targetCtx.fillStyle = '#000000';
+  targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
   
   if (isSpecial === 'GARBAGE') {
     targetCtx.strokeStyle = '#555555';
     targetCtx.fillStyle = '#333333';
-    targetCtx.fillRect(finalX + 2, finalY + 2, BLOCK_SIZE - 4, BLOCK_SIZE - 4);
+    targetCtx.fillRect(finalX + 2, finalY + 2, blockSize - 4, blockSize - 4);
     return;
   }
 
-  targetCtx.strokeStyle = color; // Neon border
+  targetCtx.strokeStyle = color;
   targetCtx.lineWidth = 2;
-  targetCtx.strokeRect(finalX + 1, finalY + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+  targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
 
   if (isSpecial) {
     targetCtx.fillStyle = color;
-    targetCtx.font = '20px "Press Start 2P"';
+    targetCtx.font = `${Math.round(blockSize * 0.67)}px "Press Start 2P"`;
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
-    
     const icon = getSpecialBlockLetter(isSpecial);
-
-    targetCtx.fillText(icon, finalX + BLOCK_SIZE / 2, finalY + BLOCK_SIZE / 2 + 2);
+    targetCtx.fillText(icon, finalX + blockSize / 2, finalY + blockSize / 2 + 2);
   } else {
-    // Fill interior
     targetCtx.fillStyle = color;
-    targetCtx.fillRect(finalX + 6, finalY + 6, BLOCK_SIZE - 12, BLOCK_SIZE - 12);
+    targetCtx.fillRect(finalX + 6, finalY + 6, blockSize - 12, blockSize - 12);
   }
 }
 
@@ -712,9 +720,69 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
 // Assign colors per player index for multiplayer
 const PLAYER_COLORS = ['#00E5FF', '#40C4FF', '#80DEEA', '#FF007F', '#FF4081', '#FF80AB'];
 
+// In 3v3 Deathmatch and Battle Royale, your own board renders large and fixed
+// at top-left, and everyone else is tiled into a compact mosaic grid beside
+// you (Tetris 99 style) instead of one long horizontal strip.
+const OWN_BOARD_SCALE = 1.3;
+const OTHER_BOARD_SCALE_TEAM = 0.6;  // 3v3: only 5 opponents, keep them legible
+const OTHER_BOARD_SCALE_BR = 0.22;   // Battle Royale: up to 29 opponents, go small
+const MOSAIC_GAP = 6;
+
+interface BoardLayoutEntry { blockSize: number; offsetX: number; offsetY: number; }
+
+function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
+  const emphasizeOwnBoard = modeId === 'team-deathmatch' || modeId === 'battle-royale';
+  const layout: BoardLayoutEntry[] = new Array(playerCount);
+
+  if (!emphasizeOwnBoard || myIndex < 0) {
+    // Classic side-by-side layout for 1v1 / FFA / local play
+    let cursorX = 0;
+    for (let i = 0; i < playerCount; i++) {
+      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: 0 };
+      cursorX += COLS * BLOCK_SIZE + PADDING;
+    }
+    return layout;
+  }
+
+  const ownBlockSize = BLOCK_SIZE * OWN_BOARD_SCALE;
+  const ownWidth = COLS * ownBlockSize;
+  const ownHeight = ROWS * ownBlockSize;
+  layout[myIndex] = { blockSize: ownBlockSize, offsetX: 0, offsetY: 0 };
+
+  const otherIndices: number[] = [];
+  for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
+
+  const otherScale = modeId === 'battle-royale' ? OTHER_BOARD_SCALE_BR : OTHER_BOARD_SCALE_TEAM;
+  const otherBlockSize = BLOCK_SIZE * otherScale;
+  const otherWidth = COLS * otherBlockSize;
+  const otherHeight = ROWS * otherBlockSize;
+
+  // Tile opponents into a grid matching our board's height, wrapping into a
+  // new column once a column fills up rather than stretching sideways forever.
+  const rowsPerColumn = Math.max(1, Math.floor((ownHeight + MOSAIC_GAP) / (otherHeight + MOSAIC_GAP)));
+  const mosaicStartX = ownWidth + PADDING;
+
+  otherIndices.forEach((playerIdx, i) => {
+    const col = Math.floor(i / rowsPerColumn);
+    const row = i % rowsPerColumn;
+    layout[playerIdx] = {
+      blockSize: otherBlockSize,
+      offsetX: mosaicStartX + col * (otherWidth + MOSAIC_GAP),
+      offsetY: row * (otherHeight + MOSAIC_GAP),
+    };
+  });
+
+  return layout;
+}
+
+// Recomputed once per render() call; renderPlayer() and the effects layer
+// both read from this instead of assuming a uniform board size.
+let boardLayout: BoardLayoutEntry[] = [];
+
 function renderPlayer(player: Player, index: number) {
-  const offsetX = index * (COLS * BLOCK_SIZE + PADDING);
+  const { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
   const playerColor = PLAYER_COLORS[index] || '#00E5FF';
+
 
   // Draw Grid background (optional faint lines)
   for (let r = 0; r < ROWS; r++) {
@@ -728,7 +796,7 @@ function renderPlayer(player: Player, index: number) {
   // Draw Player Grid Border
   ctx.strokeStyle = playerColor;
   ctx.lineWidth = 2;
-  ctx.strokeRect(offsetX, 0, COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+  ctx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
   // Draw Block Matrix
   for (let r = 0; r < ROWS; r++) {
@@ -736,7 +804,7 @@ function renderPlayer(player: Player, index: number) {
       const cell = player.grid.matrix[r][c];
       if (cell.type !== null) {
         const color = cell.type === 'GARBAGE' ? '#555555' : playerColor;
-        drawBlock(ctx, c, r, color, offsetX, 0, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special);
+        drawBlock(ctx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize);
       }
     }
   }
@@ -755,7 +823,7 @@ function renderPlayer(player: Player, index: number) {
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {
-          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, 0, undefined, true);
+          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize);
         }
       }
     }
@@ -771,7 +839,7 @@ function renderPlayer(player: Player, index: number) {
         if (shape[r][c] !== 0) {
           const specialKey = `${r},${c}`;
           const isSpecial = player.currentPiece.specialBlocks.get(specialKey);
-          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, 0, isSpecial);
+          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize);
         }
       }
     }
@@ -780,7 +848,7 @@ function renderPlayer(player: Player, index: number) {
   // Draw topping out overlay for this player
   if (player.isToppedOut) {
     ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-    ctx.fillRect(offsetX, 0, COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+    ctx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
   }
 }
 
@@ -791,6 +859,9 @@ function render() {
   ctx.resetTransform();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const myIdxForLayout = gameManager.isOnline ? gameManager.myPlayerIndex : -1;
+  boardLayout = computeBoardLayout(gameManager.players.length, myIdxForLayout, gameManager.isOnline ? activeOnlineMode : null);
+
   for (let i = 0; i < gameManager.players.length; i++) {
     renderPlayer(gameManager.players[i], i);
   }
@@ -800,12 +871,12 @@ function render() {
 
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
-    const BLOCK_SIZE_LOCAL = 30;
     const myIdx2 = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
-    const offsetX = myIdx2 * (COLS * BLOCK_SIZE + PADDING);
+    const { blockSize, offsetX, offsetY } = boardLayout[myIdx2] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
     ctx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
-    ctx.fillRect(offsetX, flash.row * BLOCK_SIZE_LOCAL, COLS * BLOCK_SIZE_LOCAL, BLOCK_SIZE_LOCAL);
+    ctx.fillRect(offsetX, offsetY + flash.row * blockSize, COLS * blockSize, blockSize);
   }
+
   
   // Draw particles
   for (const p of effects.particles) {

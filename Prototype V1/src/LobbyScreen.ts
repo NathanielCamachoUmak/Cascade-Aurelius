@@ -303,12 +303,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       // Auto-ready resets
       const me = state.players.find(p => p.id === network?.mySocketId);
       if (me) myReady = me.ready;
-      btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
-      btnLobbySwitchTeam.addEventListener('click', () => {
-      network?.switchTeam();
-      myReady = false;
-      btnLobbyReady.innerText = 'READY UP';
-      });        
+      btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';        
       if (me?.team) {
       btnLobbySwitchTeam.innerText = me.team === 'cyan' ? 'SWITCH TO MAGENTA' : 'SWITCH TO CYAN';
       }
@@ -410,8 +405,13 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   btnLobbyReady.addEventListener('click', () => {
     myReady = !myReady;
     network?.setReady(myReady);
-    btnLobbyReady.innerText = myReady ? 'READY! (click to cancel)' : 'READY UP';
   });
+  
+  btnLobbySwitchTeam.addEventListener('click', () => {
+      network?.switchTeam();
+      myReady = false;
+      btnLobbyReady.innerText = 'READY UP';
+      });
 
   btnLobbyBack.addEventListener('click', () => {
     options.onBack();

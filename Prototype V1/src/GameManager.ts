@@ -860,8 +860,10 @@ export class GameManager {
     for (const special of uniqueSpecials) {
       if (special === SpecialBlockType.BOMB) {
         player.grid.clearBombArea(clearedRows[0], Math.floor(player.grid.width / 2));
-      } else if (special === SpecialBlockType.HEAVY) {
-        player.grid.clearLineDirectlyBeneath(clearedRows[0]);
+      } 
+      else if (special === SpecialBlockType.HEAVY) {
+      // Handled inside Grid.clearLines() itself now — destroying the row
+      // beneath a HEAVY block has to happen before compaction, not after.
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
       } else if (special === SpecialBlockType.SPEED) {
