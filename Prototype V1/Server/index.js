@@ -929,12 +929,17 @@ io.on('connection', socket => {
     if (requested === 0) return;
     const scaled = Math.max(1, Math.round(requested * activeGarbageRate(room)));
 
-    for (const [id, player] of room.players) {
+    // Find valid opponents
+    const validOpponents = Array.from(room.players.entries()).filter(([id, player]) => {
       const isOpponent = room.mode.isTeamMode ? player.team !== sender.team : id !== socket.id;
-      if (id !== socket.id && isOpponent && player.state === 'playing') {
-        io.to(id).emit('receive-garbage', { count: scaled, fromIndex: sender.index });
-      }
-    }
+      return id !== socket.id && isOpponent && player.state === 'playing';
+    });
+
+    if (validOpponents.length === 0) return;
+
+    // Pick a random opponent to receive the garbage
+    const [targetId] = validOpponents[Math.floor(Math.random() * validOpponents.length)];
+    io.to(targetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index });
   });
 
   socket.on('reflect-garbage', ({ targetIndex, count }) => {
