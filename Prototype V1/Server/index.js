@@ -918,7 +918,7 @@ io.on('connection', socket => {
     else if (room && !room.mode.isTeamMode) checkEliminationGameOver(roomId);
   });
 
-  socket.on('send-garbage', ({ count }) => {
+  socket.on('send-garbage', ({ count, targetIndex }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
     const sender = room?.players.get(socket.id);
@@ -937,9 +937,19 @@ io.on('connection', socket => {
 
     if (validOpponents.length === 0) return;
 
-    // Pick a random opponent to receive the garbage
-    const [targetId] = validOpponents[Math.floor(Math.random() * validOpponents.length)];
-    io.to(targetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index });
+    // Pick a random opponent to receive the garbage by default
+    let targetEntry = validOpponents[Math.floor(Math.random() * validOpponents.length)];
+    
+    // If the sender specified a valid target index, use that instead
+    if (targetIndex !== undefined && targetIndex !== null) {
+      const explicitTarget = validOpponents.find(([, player]) => player.index === targetIndex);
+      if (explicitTarget) {
+        targetEntry = explicitTarget;
+      }
+    }
+    
+    const [targetId, targetPlayer] = targetEntry;
+    io.to(targetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index, targetIndex: targetPlayer.index });
   });
 
   socket.on('reflect-garbage', ({ targetIndex, count }) => {
@@ -952,7 +962,7 @@ io.on('connection', socket => {
     const [targetId, target] = targetEntry;
     const isOpponent = room.mode.isTeamMode ? target.team !== sender.team : targetId !== socket.id;
     if (!isOpponent) return;
-    io.to(targetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index });
+    io.to(targetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index, targetIndex: target.index });
   });
 
   socket.on('class-ability', ({ type, durationMs, amount, direction, targetIndex }) => {
@@ -980,7 +990,7 @@ io.on('connection', socket => {
     } else if (type === 'GRID_SHIFT' && selectedOpponent) {
       io.to(selectedOpponent[0]).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1 });
     } else if (type === 'EARTHQUAKE') {
-      opponents.forEach(([id]) => io.to(id).emit('receive-garbage', { count: safeAmount || 10, fromIndex: sender.index }));
+      opponents.forEach(([id, player]) => io.to(id).emit('receive-garbage', { count: safeAmount || 10, fromIndex: sender.index, targetIndex: player.index }));
     } else if (type === 'GUARDIAN_ANGEL') {
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')

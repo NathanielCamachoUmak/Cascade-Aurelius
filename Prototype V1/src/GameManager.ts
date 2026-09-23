@@ -222,30 +222,37 @@ export class GameManager {
       }
     };
 
-    net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => {
-      const myPlayer = this.players[myIndex];
-      if (myPlayer && !myPlayer.isToppedOut) {
+    net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }, targetIndex?: number) => {
+      // Find the specific player this is meant for (either us or a bot we own)
+      const targetPlayer = (targetIndex !== undefined && targetIndex !== null)
+        ? this.players[targetIndex]
+        : this.players[myIndex];
+
+      if (targetPlayer && !targetPlayer.isToppedOut) {
+        // If it's a remote player we don't own, ignore it (we only process our own state and our bots' state)
+        if (targetPlayer !== this.players[myIndex] && !(targetPlayer as any).botId) return;
+
         const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
-        if (!isSolidSuddenDeath && myPlayer.shieldActive) {
-          myPlayer.shieldActive = false;
+        if (!isSolidSuddenDeath && targetPlayer.shieldActive) {
+          targetPlayer.shieldActive = false;
           return;
         }
-        if (!isSolidSuddenDeath && myPlayer.fortifyCharges > 0) {
-          myPlayer.fortifyCharges--;
+        if (!isSolidSuddenDeath && targetPlayer.fortifyCharges > 0) {
+          targetPlayer.fortifyCharges--;
           return;
         }
-        if (!isSolidSuddenDeath && myPlayer.reflectGarbage && fromIndex !== undefined) {
-          myPlayer.reflectGarbage = false;
+        if (!isSolidSuddenDeath && targetPlayer.reflectGarbage && fromIndex !== undefined) {
+          targetPlayer.reflectGarbage = false;
           this.network?.sendReflectedGarbage(fromIndex, count);
           return;
         }
-        myPlayer.grid.addGarbageLines(count, 'HUMAN', { solid: isSolidSuddenDeath, unClearable: Boolean(options?.unClearable) });
-        if (!isSolidSuddenDeath && myPlayer.supportPassiveConversion) {
-          myPlayer.grid.convertGarbageToSpecialBlocks(count);
-          myPlayer.supportPassiveConversion = false;
-        } else if (!isSolidSuddenDeath && myPlayer.recycleGarbageLines > 0) {
-          const converted = myPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, myPlayer.recycleGarbageLines));
-          myPlayer.recycleGarbageLines = Math.max(0, myPlayer.recycleGarbageLines - converted);
+        targetPlayer.grid.addGarbageLines(count, 'HUMAN', { solid: isSolidSuddenDeath, unClearable: Boolean(options?.unClearable) });
+        if (!isSolidSuddenDeath && targetPlayer.supportPassiveConversion) {
+          targetPlayer.grid.convertGarbageToSpecialBlocks(count);
+          targetPlayer.supportPassiveConversion = false;
+        } else if (!isSolidSuddenDeath && targetPlayer.recycleGarbageLines > 0) {
+          const converted = targetPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, targetPlayer.recycleGarbageLines));
+          targetPlayer.recycleGarbageLines = Math.max(0, targetPlayer.recycleGarbageLines - converted);
         }
       }
     };
@@ -848,7 +855,7 @@ export class GameManager {
         const garbageCount = linesCleared - 1;
         if (this.isOnline) {
           // In online mode, send garbage through the server
-          this.network?.sendGarbage(garbageCount);
+          this.network?.sendGarbage(garbageCount, player.selectedTargetIndex ?? undefined);
         } else {
           this.distributeGarbage(player, garbageCount);
         }
@@ -895,32 +902,41 @@ export class GameManager {
       senderType = sender.bot.difficulty;
     }
 
-    for (const target of this.players) {
-      if (target.id !== sender.id && !target.isToppedOut) {
-        if (target.shieldActive) {
-          target.shieldActive = false;
-          continue;
-        }
-        if (target.fortifyCharges > 0) {
-          target.fortifyCharges--;
-          continue;
-        }
-        if (target.reflectGarbage) {
-          target.reflectGarbage = false;
-          sender.grid.addGarbageLines(count, senderType);
-          continue;
-        }
-        target.grid.addGarbageLines(count, senderType);
-        if (target.supportPassiveConversion) {
-          target.grid.convertGarbageToSpecialBlocks(count);
-          target.supportPassiveConversion = false;
-        } else if (target.recycleGarbageLines > 0) {
-          const converted = target.grid.convertGarbageToSpecialBlocks(Math.min(count, target.recycleGarbageLines));
-          target.recycleGarbageLines = Math.max(0, target.recycleGarbageLines - converted);
-        }
+    const validOpponents = this.players.filter(p => p.id !== sender.id && !p.isToppedOut);
+    if (validOpponents.length === 0) return;
+
+    let target = validOpponents[Math.floor(Math.random() * validOpponents.length)];
+    if (sender.selectedTargetIndex !== null && sender.selectedTargetIndex !== undefined) {
+      const explicitTarget = this.players[sender.selectedTargetIndex];
+      if (explicitTarget && validOpponents.includes(explicitTarget)) {
+        target = explicitTarget;
       }
     }
+
+    // Apply to target
+    if (target.shieldActive) {
+      target.shieldActive = false;
+      return;
+    }
+    if (target.fortifyCharges > 0) {
+      target.fortifyCharges--;
+      return;
+    }
+    if (target.reflectGarbage) {
+      target.reflectGarbage = false;
+      sender.grid.addGarbageLines(count, senderType);
+      return;
+    }
+    target.grid.addGarbageLines(count, senderType);
+    if (target.supportPassiveConversion) {
+      target.grid.convertGarbageToSpecialBlocks(count);
+      target.supportPassiveConversion = false;
+    } else if (target.recycleGarbageLines > 0) {
+      const converted = target.grid.convertGarbageToSpecialBlocks(Math.min(count, target.recycleGarbageLines));
+      target.recycleGarbageLines = Math.max(0, target.recycleGarbageLines - converted);
+    }
   }
+
 
   // ==============================
   // Visual Effects

@@ -132,7 +132,7 @@ export class NetworkManager {
   public onOpponentPieceUpdate: ((playerIndex: number, piece: PieceData | null) => void) | null = null;
   public onOpponentScoreUpdate: (playerIndex: number, scoreData: ScoreData) => void = () => {};
   public onOpponentToppedOut: (playerIndex: number) => void = () => {};
-  public onReceiveGarbage: (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }) => void = () => {};
+  public onReceiveGarbage: (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }, targetIndex?: number) => void = () => {};
   public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
   public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
@@ -227,8 +227,8 @@ export class NetworkManager {
       this.onOpponentToppedOut?.(playerIndex);
     });
 
-    this.socket.on("receive-garbage", ({ count, fromIndex, solid, unClearable, source }: { count: number; fromIndex?: number; solid?: boolean; unClearable?: boolean; source?: string }) => {
-      this.onReceiveGarbage(count, fromIndex, { solid, unClearable, source });
+    this.socket.on("receive-garbage", ({ count, fromIndex, solid, unClearable, source, targetIndex }: { count: number; fromIndex?: number; solid?: boolean; unClearable?: boolean; source?: string; targetIndex?: number }) => {
+      this.onReceiveGarbage(count, fromIndex, { solid, unClearable, source }, targetIndex);
     });
 
     this.socket.on("show-ribbon", ({ message }: { message: string }) => {
@@ -319,8 +319,8 @@ export class NetworkManager {
     this.socket.emit("game-over", { winnerName });
   }
 
-  public sendGarbage(count: number) {
-    this.socket.emit("send-garbage", { count });
+  public sendGarbage(count: number, targetIndex?: number) {
+    this.socket.emit("send-garbage", { count, targetIndex });
   }
 
   public sendClassAbility(effect: ClassEffectData) {

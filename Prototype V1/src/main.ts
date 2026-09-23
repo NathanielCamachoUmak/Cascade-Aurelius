@@ -850,6 +850,24 @@ function renderPlayer(player: Player, index: number) {
     ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
     ctx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
   }
+
+  // Target Indicator
+  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
+  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && index !== (gameManager.myPlayerIndex ?? 0)) {
+    ctx.fillStyle = '#FF007F';
+    ctx.beginPath();
+    const centerX = offsetX + (COLS * blockSize) / 2;
+    const arrowY = offsetY - 10;
+    ctx.moveTo(centerX - 10, arrowY - 15);
+    ctx.lineTo(centerX + 10, arrowY - 15);
+    ctx.lineTo(centerX, arrowY);
+    ctx.fill();
+    
+    // Glowing border for targeted player
+    ctx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(offsetX - 2, offsetY - 2, (COLS * blockSize) + 4, (ROWS * blockSize) + 4);
+  }
 }
 
 function render() {
