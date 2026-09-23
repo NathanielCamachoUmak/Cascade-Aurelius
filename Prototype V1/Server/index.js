@@ -949,7 +949,8 @@ io.on('connection', socket => {
     }
     
     const [targetId, targetPlayer] = targetEntry;
-    io.to(targetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index, targetIndex: targetPlayer.index });
+    const socketTargetId = targetPlayer.isBot ? targetPlayer.ownerId : targetId;
+    io.to(socketTargetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index, targetIndex: targetPlayer.index });
   });
 
   socket.on('reflect-garbage', ({ targetIndex, count }) => {
@@ -962,7 +963,8 @@ io.on('connection', socket => {
     const [targetId, target] = targetEntry;
     const isOpponent = room.mode.isTeamMode ? target.team !== sender.team : targetId !== socket.id;
     if (!isOpponent) return;
-    io.to(targetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index, targetIndex: target.index });
+    const socketTargetId = target.isBot ? target.ownerId : targetId;
+    io.to(socketTargetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index, targetIndex: target.index });
   });
 
   socket.on('class-ability', ({ type, durationMs, amount, direction, targetIndex }) => {
@@ -979,24 +981,34 @@ io.on('connection', socket => {
     const safeDuration = Math.max(0, Math.min(10_000, Number(durationMs) || 0));
     const safeAmount = Math.max(0, Math.min(20, Number(amount) || 0));
 
+    const emitToOpponents = (eventName, dataFactory) => {
+      opponents.forEach(([id, player]) => {
+        const socketId = player.isBot ? player.ownerId : id;
+        const payload = dataFactory(player);
+        if (typeof payload === 'object' && payload !== null) payload.targetIndex = player.index;
+        io.to(socketId).emit(eventName, payload);
+      });
+    };
+
     if (type === 'QUICKSILVER' || type === 'CHAOS') {
-      const effect = { type, durationMs: safeDuration };
-      opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+      emitToOpponents('class-effect', () => ({ type, durationMs: safeDuration }));
     } else if (type === 'ABILITY_FREEZE') {
-      const effect = { type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 };
-      opponents.forEach(([id]) => io.to(id).emit('class-effect', effect));
+      emitToOpponents('class-effect', () => ({ type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 }));
     } else if (type === 'SCRAMBLE' && selectedOpponent) {
-      io.to(selectedOpponent[0]).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)) });
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)), targetIndex: selectedOpponent[1].index });
     } else if (type === 'GRID_SHIFT' && selectedOpponent) {
-      io.to(selectedOpponent[0]).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1 });
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1, targetIndex: selectedOpponent[1].index });
     } else if (type === 'EARTHQUAKE') {
-      opponents.forEach(([id, player]) => io.to(id).emit('receive-garbage', { count: safeAmount || 10, fromIndex: sender.index, targetIndex: player.index }));
+      emitToOpponents('receive-garbage', (player) => ({ count: safeAmount || 10, fromIndex: sender.index, targetIndex: player.index }));
     } else if (type === 'GUARDIAN_ANGEL') {
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
         : null;
       const selectedAlly = allies?.find(([, player]) => player.index === targetIndex) ?? allies?.[0];
-      io.to(selectedAlly?.[0] ?? socket.id).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4 });
+      const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
+      io.to(targetSockId).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
     }
   });
 

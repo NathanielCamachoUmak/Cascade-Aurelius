@@ -283,24 +283,29 @@ export class GameManager {
     };
 
     net.onClassEffect = effect => {
-      const myPlayer = this.players[myIndex];
-      if (!myPlayer || myPlayer.isToppedOut) return;
+      const targetPlayer = (effect.targetIndex !== undefined && effect.targetIndex !== null)
+        ? this.players[effect.targetIndex]
+        : this.players[myIndex];
+
+      if (!targetPlayer || targetPlayer.isToppedOut) return;
+      if (targetPlayer !== this.players[myIndex] && !(targetPlayer as any).botId) return;
+
       if (effect.type === 'QUICKSILVER') {
-        myPlayer.activeEffectType = 'QUICKSILVER';
-        myPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
-        myPlayer.inputHandler.freezeFor(myPlayer.activeEffectTimer);
+        targetPlayer.activeEffectType = 'QUICKSILVER';
+        targetPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
+        targetPlayer.inputHandler.freezeFor(targetPlayer.activeEffectTimer);
       } else if (effect.type === 'CHAOS') {
-        myPlayer.activeEffectType = 'CHAOS';
-        myPlayer.activeEffectTimer = effect.durationMs ?? CHAOS_DURATION_MS;
-        myPlayer.inputHandler.reverseFor(myPlayer.activeEffectTimer);
+        targetPlayer.activeEffectType = 'CHAOS';
+        targetPlayer.activeEffectTimer = effect.durationMs ?? CHAOS_DURATION_MS;
+        targetPlayer.inputHandler.reverseFor(targetPlayer.activeEffectTimer);
       } else if (effect.type === 'SCRAMBLE') {
-        this.scramblePreview(myPlayer, effect.amount ?? 5);
+        this.scramblePreview(targetPlayer, effect.amount ?? 5);
       } else if (effect.type === 'GRID_SHIFT') {
-        myPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
+        targetPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
       } else if (effect.type === 'GUARDIAN_ANGEL') {
-        myPlayer.grid.clearBottomLines(effect.amount ?? 4);
+        targetPlayer.grid.clearBottomLines(effect.amount ?? 4);
       } else if (effect.type === 'ABILITY_FREEZE') {
-        myPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
+        targetPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
       }
     };
 
