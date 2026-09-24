@@ -4,10 +4,10 @@
 export const BOT_NAMES: string[] = [
   "Gorr", "HAL 9000", "Skynet", "GLaDOS", "Deep Blue",
   "Corin", "Belial", "Blocks Verstrappen", "Neru", "Miku", "Teto",
-  "Data", "Bender", "Marvin", "KITT", "Djikstra", "ArawAraw",
+  "Data", "Bender", "RafRaf", "Rome", "Djikstra", "ArawAraw",
   "Jarvis", "Ultron", "Cortana", "Samantha", "TARS",
   "EVE", "Bishop", "Ash", "Shockwave", "David",
-  "Sonny", "Grammatra", "Senyatta", "Megatron", "Starscream",
+  "Sonny", "Shitler", "Daboi", "Megatron", "Starscream",
   "Soundwave", "Alexa", "Aela", "Elisha", "Ken",
   "Tricia", "MattPat", "Gab", "EDP445", "T-Hex",
   "Red", "Rico", "BoB", "Lars", "Bigdong",
