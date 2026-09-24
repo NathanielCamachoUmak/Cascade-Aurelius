@@ -1,8 +1,25 @@
 import { Grid, type Cell } from "./Grid";
 import { Tetromino, SHAPES, type ShapeType } from "./Tetromino";
 import { InputHandler, InputAction } from "./InputHandler";
+import { type PlayerClass } from "./PlayerClass";
 
 export type Difficulty = 'EASY' | 'HARD';
+
+/** Context passed from GameManager so the bot can evaluate ability usage. */
+export interface AbilityContext {
+  playerClass: PlayerClass;
+  abilityCooldowns: { Q: number; E: number };
+  classMeter: number;
+  abilityFreezeTimer: number;
+  fortifyCharges: number;
+  reflectGarbage: boolean;
+  gridShiftUsedLevel: number;
+  currentLevel: number;           // Math.floor(totalLinesCleared / 10)
+  boardHeight: number;            // max column height (0–20)
+  holeCount: number;              // current holes in the grid
+  selectedTargetIndex: number | null;
+  hasOpponents: boolean;          // are there living opponents?
+}
 
 interface MoveSequence {
   rotations: number;
@@ -18,6 +35,7 @@ interface MoveSequence {
  * - BFS pathfinding to find all reachable lock positions (including tucks/spins)
  * - Pierre Dellacherie's 6-feature heuristic for board evaluation
  * - 2-ply Expectimax search (current piece + next piece lookahead)
+ * - Ability evaluation for class-specific Q/E/R usage (Stage 2)
  */
 export class AIBot {
   private grid: Grid;
@@ -29,6 +47,10 @@ export class AIBot {
   private isThinking: boolean = false;
   private timeSinceLastAction: number = 0;
   private thinkingTimer: number = 0;
+
+  // Ability evaluation cooldown (prevent spamming ability checks every frame)
+  private abilityEvalTimer: number = 0;
+  private readonly ABILITY_EVAL_INTERVAL = 3000; // ms between ability evaluations
 
   // Delay settings in ms
   private readonly DELAYS = {
@@ -54,9 +76,23 @@ export class AIBot {
 
   /**
    * Called continuously by GameManager during ACTIVE_DROP state.
+   * @param abilityCtx — optional context for ability evaluation (Stage 2).
+   *   When omitted (e.g. offline 1v1) the bot simply plays pieces.
    */
-  public update(currentTetromino: Tetromino | null, nextTetromino: Tetromino | null, dt: number) {
+  public update(currentTetromino: Tetromino | null, nextTetromino: Tetromino | null, dt: number, abilityCtx?: AbilityContext) {
     if (!currentTetromino) return;
+
+    // Ability evaluation runs on its own timer, independent of piece placement
+    if (abilityCtx) {
+      this.abilityEvalTimer += dt;
+      if (this.abilityEvalTimer >= this.ABILITY_EVAL_INTERVAL && this.pendingActions.length === 0) {
+        this.abilityEvalTimer = 0;
+        const abilityAction = this.evaluateAbilities(abilityCtx);
+        if (abilityAction) {
+          this.inputHandler.pushInput(abilityAction);
+        }
+      }
+    }
 
     // Action Execution Phase
     if (this.pendingActions.length > 0) {
@@ -85,6 +121,121 @@ export class AIBot {
         }
         this.isThinking = false;
       }
+    }
+  }
+
+  // ==============================
+  // Ability Evaluation (Stage 2)
+  // ==============================
+
+  /**
+   * Evaluates whether the bot should use an ability right now.
+   * Returns the InputAction to fire, or null if no ability should be used.
+   * 
+   * Priority: R (ultimate) > Q > E
+   * Each class has its own trigger conditions.
+   */
+  private evaluateAbilities(ctx: AbilityContext): InputAction | null {
+    if (ctx.abilityFreezeTimer > 0) return null;
+    if (!ctx.hasOpponents) return null;
+
+    // --- Ultimate (R) evaluation ---
+    const ultimateCost = ctx.playerClass === 'SPEEDSTER' ? 40
+      : ctx.playerClass === 'TANK' ? 50
+      : ctx.playerClass === 'SABOTEUR' ? 35
+      : 45; // SUPPORT
+
+    if (ctx.classMeter >= ultimateCost) {
+      if (this.shouldUseUltimate(ctx)) {
+        return InputAction.ULTIMATE;
+      }
+    }
+
+    // --- Q ability evaluation ---
+    if (ctx.abilityCooldowns.Q <= 0) {
+      if (this.shouldUseQ(ctx)) {
+        return InputAction.ABILITY_Q;
+      }
+    }
+
+    // --- E ability evaluation ---
+    if (ctx.abilityCooldowns.E <= 0) {
+      if (this.shouldUseE(ctx)) {
+        return InputAction.ABILITY_E;
+      }
+    }
+
+    return null;
+  }
+
+  private shouldUseUltimate(ctx: AbilityContext): boolean {
+    switch (ctx.playerClass) {
+      case 'SPEEDSTER':
+        // Bullet Time: freeze all opponents. Use when board is safe.
+        return ctx.boardHeight <= 10 && ctx.holeCount <= 3;
+
+      case 'TANK':
+        // Earthquake: 10 garbage to all opponents. Use when own board is stable.
+        return ctx.boardHeight <= 12 && ctx.holeCount <= 4;
+
+      case 'SABOTEUR':
+        // Chaos Mode: reverse all opponents' controls. Use when own board is safe.
+        return ctx.boardHeight <= 10 && ctx.holeCount <= 3;
+
+      case 'SUPPORT':
+        // Guardian Angel: clear bottom 4 lines. Use when in danger.
+        return ctx.boardHeight >= 14 || ctx.holeCount >= 6;
+
+      default:
+        return false;
+    }
+  }
+
+  private shouldUseQ(ctx: AbilityContext): boolean {
+    switch (ctx.playerClass) {
+      case 'SPEEDSTER':
+        // Sprint: instant hard drop. Skip — the bot already hard-drops optimally.
+        // Only use if the bot is confident (low board, few holes).
+        return false; // Let the normal piece placement handle this
+
+      case 'TANK':
+        // Fortify: ignore next 2 garbage. Use when board is getting tall.
+        return ctx.boardHeight >= 12 && ctx.fortifyCharges === 0;
+
+      case 'SABOTEUR':
+        // Scramble: scramble opponent's next 5 pieces. Use when own board is stable.
+        return ctx.boardHeight <= 14 && ctx.holeCount <= 5;
+
+      case 'SUPPORT':
+        // Recycle: convert next 4 garbage into special blocks. Use when board is tall (expecting garbage).
+        return ctx.boardHeight >= 10;
+
+      default:
+        return false;
+    }
+  }
+
+  private shouldUseE(ctx: AbilityContext): boolean {
+    switch (ctx.playerClass) {
+      case 'SPEEDSTER':
+        // Time Warp: slow own drop speed. Use when board is getting tall to buy time.
+        return ctx.boardHeight >= 14;
+
+      case 'TANK':
+        // Counter Strike: reflect next garbage. Use when board is moderately tall.
+        return ctx.boardHeight >= 10 && !ctx.reflectGarbage;
+
+      case 'SABOTEUR':
+        // Grid Shift: shift opponent's grid. Once per level.
+        return ctx.gridShiftUsedLevel < ctx.currentLevel && ctx.boardHeight <= 14;
+
+      case 'SUPPORT':
+        // Perfect Clear Bonus: 15s window for a perfect clear bonus.
+        // Only use early game when board is very clean.
+        return ctx.boardHeight <= 4 && ctx.holeCount === 0;
+
+      default:
+        return false;
     }
   }
 

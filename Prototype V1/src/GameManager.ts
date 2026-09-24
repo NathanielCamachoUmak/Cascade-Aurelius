@@ -2,7 +2,7 @@ import { Player } from "./Player";
 import { Tetromino, SHAPES } from "./Tetromino";
 import { InputAction } from "./InputHandler";
 import { SpecialBlockType } from "./ItemManager";
-import { type Difficulty } from "./AIBot";
+import { type Difficulty, type AbilityContext } from "./AIBot";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
@@ -411,7 +411,22 @@ export class GameManager {
 
       // AI update
       if (player.bot) {
-        player.bot.update(player.currentPiece, player.nextPiece, dt);
+        // Build ability context for the bot's ability evaluator
+        const abilityCtx: AbilityContext = {
+          playerClass: player.playerClass,
+          abilityCooldowns: { ...player.abilityCooldowns },
+          classMeter: player.classMeter,
+          abilityFreezeTimer: player.abilityFreezeTimer,
+          fortifyCharges: player.fortifyCharges,
+          reflectGarbage: player.reflectGarbage,
+          gridShiftUsedLevel: player.gridShiftUsedLevel,
+          currentLevel: Math.floor(player.scoreManager.totalLinesCleared / 10),
+          boardHeight: this.getMaxColumnHeight(player),
+          holeCount: this.countHoles(player),
+          selectedTargetIndex: player.selectedTargetIndex,
+          hasOpponents: this.players.some(p => p !== player && !p.isToppedOut),
+        };
+        player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx);
       } else {
         // Human input auto-repeat tick
         player.inputHandler.update(dt);
@@ -942,6 +957,39 @@ export class GameManager {
     }
   }
 
+  // ==============================
+  // Board Analysis Helpers (for bot ability context)
+  // ==============================
+
+  private getMaxColumnHeight(player: Player): number {
+    const grid = player.grid;
+    let maxHeight = 0;
+    for (let c = 0; c < grid.width; c++) {
+      for (let r = 0; r < grid.height; r++) {
+        if (grid.matrix[r][c].type !== null) {
+          maxHeight = Math.max(maxHeight, grid.height - r);
+          break;
+        }
+      }
+    }
+    return maxHeight;
+  }
+
+  private countHoles(player: Player): number {
+    const grid = player.grid;
+    let holes = 0;
+    for (let c = 0; c < grid.width; c++) {
+      let blockAbove = false;
+      for (let r = 0; r < grid.height; r++) {
+        if (grid.matrix[r][c].type !== null) {
+          blockAbove = true;
+        } else if (blockAbove) {
+          holes++;
+        }
+      }
+    }
+    return holes;
+  }
 
   // ==============================
   // Visual Effects
