@@ -673,14 +673,13 @@ export class AIBot {
       if (!prevFilled) columnTransitions++;
     }
 
-    // 5. Holes
+    // 5. Holes (Overhangs)
+    // Modified from standard Dellacherie to only count empty cells DIRECTLY below a filled cell.
+    // This prevents the bot from being terrified of plugging a deep well to survive.
     let holes = 0;
     for (let c = 0; c < width; c++) {
-      let blockAbove = false;
-      for (let r = 0; r < height; r++) {
-        if (matrix[r][c].type !== null) {
-          blockAbove = true;
-        } else if (blockAbove) {
+      for (let r = 1; r < height; r++) {
+        if (matrix[r][c].type === null && matrix[r - 1][c].type !== null) {
           holes++;
         }
       }
@@ -720,7 +719,8 @@ export class AIBot {
 
     // Only reward the well if there is EXACTLY ONE well. If there are multiple, it's just a messy board.
     if (wellCount === 1) {
-      tetrisWell = deepestWell;
+      // Cap the reward at depth 4. A deeper well gives no extra Tetris value, but adds massive risk!
+      tetrisWell = Math.min(4, deepestWell);
     }
 
     return (

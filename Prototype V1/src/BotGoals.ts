@@ -109,7 +109,7 @@ export function getActionProfile(goal: GoalId, world: BotWorldState): ActionProf
         delayMultiplier: 0.7, // play faster
         weightModifiers: {
           landingHeight: 2.0,       // heavily penalise high placements
-          erodedPieceCells: 3.0,    // strongly reward clearing lines immediately
+          erodedPieceCells: 8.0,    // MASSIVE reward for clearing lines immediately (forces skimming)
           rowTransitions: 1.0,
           columnTransitions: 1.0,
           holes: 3.0,
