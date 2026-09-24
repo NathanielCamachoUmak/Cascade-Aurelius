@@ -59,6 +59,13 @@ export class AIBot {
   private activeProfile: ActionProfile | null = null;
   private lastWorldState: BotWorldState | null = null;
 
+  // Stage 4: Reactive Replanning & DDA Smoothing
+  private smoothedScoreDelta: number = 0;          // EMA-smoothed score delta (prevents jittery mode switches)
+  private readonly SCORE_SMOOTHING_ALPHA = 0.15;    // EMA smoothing factor (lower = more stable)
+  private goalStabilityCounter: number = 0;         // how many consecutive thinking cycles the current goal has held
+  private readonly GOAL_SWITCH_COOLDOWN = 3;        // must hold a goal for N cycles before switching (prevents flip-flop)
+  private pendingReplan: boolean = false;            // flag set by external events (garbage, scramble) to force replanning
+
   // Delay settings in ms
   private readonly DELAYS = {
     EASY: { think: 1200, action: 120 },
@@ -169,6 +176,7 @@ export class AIBot {
   /**
    * Runs the GOAP planner: evaluates world state, selects the highest-priority
    * goal, and applies the corresponding action profile (weight modifiers + delay).
+   * Stage 4: Uses EMA-smoothed score delta and goal stability cooldown.
    */
   private runGoapPlanning(): void {
     if (!this.lastWorldState) {
@@ -179,9 +187,35 @@ export class AIBot {
       return;
     }
 
-    const goal = selectGoal(this.lastWorldState);
-    this.activeGoal = goal.id;
-    this.activeProfile = getActionProfile(goal.id, this.lastWorldState);
+    // Stage 4: Smooth the score delta using exponential moving average
+    // This prevents jittery mode switches when scores are fluctuating near the 2000-point threshold
+    this.smoothedScoreDelta = this.smoothedScoreDelta * (1 - this.SCORE_SMOOTHING_ALPHA)
+      + this.lastWorldState.scoreDelta * this.SCORE_SMOOTHING_ALPHA;
+
+    // Create a modified world state with the smoothed delta for goal evaluation
+    const smoothedWorld: BotWorldState = {
+      ...this.lastWorldState,
+      scoreDelta: this.smoothedScoreDelta,
+    };
+
+    const goal = selectGoal(smoothedWorld);
+
+    // Stage 4: Goal stability — prevent rapid flip-flopping between goals
+    // Exception: SURVIVE always takes priority immediately (board height >= 14 is urgent)
+    if (goal.id !== this.activeGoal) {
+      if (goal.id === 'SURVIVE' || this.goalStabilityCounter >= this.GOAL_SWITCH_COOLDOWN) {
+        // Allow the switch
+        this.activeGoal = goal.id;
+        this.goalStabilityCounter = 0;
+      } else {
+        // Hold current goal, increment stability counter
+        this.goalStabilityCounter++;
+      }
+    } else {
+      this.goalStabilityCounter = 0;
+    }
+
+    this.activeProfile = getActionProfile(this.activeGoal, smoothedWorld);
 
     // Apply weight modifiers from the action profile
     const mods = this.activeProfile.weightModifiers;
@@ -194,6 +228,21 @@ export class AIBot {
       bumpiness: this.baseWeights.bumpiness * mods.bumpiness,
       tetrisWell: this.baseWeights.tetrisWell * mods.tetrisWell,
     };
+  }
+
+  /**
+   * Stage 4: Reactive Replanning.
+   * Called externally when a disruptive event occurs (garbage received, scramble attack,
+   * sudden death, ally eliminated, K.O. recovery). Clears pending actions and forces
+   * the bot to re-evaluate its goal and recalculate its next move from scratch.
+   */
+  public replan(): void {
+    this.pendingActions = [];
+    this.isThinking = false;
+    this.thinkingTimer = 0;
+    this.pendingReplan = true;
+    // Force stability counter to allow immediate goal switch on next planning cycle
+    this.goalStabilityCounter = this.GOAL_SWITCH_COOLDOWN;
   }
 
   /**

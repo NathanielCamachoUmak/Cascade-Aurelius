@@ -271,6 +271,10 @@ export class GameManager {
           const converted = targetPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, targetPlayer.recycleGarbageLines));
           targetPlayer.recycleGarbageLines = Math.max(0, targetPlayer.recycleGarbageLines - converted);
         }
+        // Stage 4: Reactive replanning — bot received garbage, force re-evaluation
+        if (targetPlayer.bot) {
+          targetPlayer.bot.replan();
+        }
       }
     };
 
@@ -288,6 +292,9 @@ export class GameManager {
     net.onBattleRoyalSuddenDeath = data => {
       this.battleRoyalMode = true;
       this.battleRoyalRemaining = data.remainingPlayers;
+      this.players.forEach(p => {
+        if (p.bot) p.bot.replan();
+      });
       this.renderFn();
     };
     net.onBattleRoyalPostGame = data => {
@@ -323,6 +330,10 @@ export class GameManager {
         targetPlayer.grid.clearBottomLines(effect.amount ?? 4);
       } else if (effect.type === 'ABILITY_FREEZE') {
         targetPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
+      }
+      // Stage 4: Reactive replanning — bot hit by a disruptive effect, force re-evaluation
+      if (targetPlayer.bot) {
+        targetPlayer.bot.replan();
       }
     };
 
@@ -1050,6 +1061,10 @@ export class GameManager {
     } else if (target.recycleGarbageLines > 0) {
       const converted = target.grid.convertGarbageToSpecialBlocks(Math.min(count, target.recycleGarbageLines));
       target.recycleGarbageLines = Math.max(0, target.recycleGarbageLines - converted);
+    }
+    // Stage 4: Reactive replanning for local bots
+    if (target.bot) {
+      target.bot.replan();
     }
   }
 
