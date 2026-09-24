@@ -65,19 +65,21 @@ export class AIBot {
     HARD: { think: 250, action: 50 }
   };
 
-  // Base heuristic weights (CEM-trained, 20 generations, 198.1 avg lines)
-  // These are the defaults; GOAP modifies them via ActionProfile.weightModifiers
+  // Base heuristic weights (CEM-trained with custom adjustments for wells/bumpiness)
   public baseWeights = {
-    landingHeight: -12.519401097223625,
-    erodedPieceCells: 10.910350475683453,
-    rowTransitions: -6.706261313931364,
-    columnTransitions: -29.27362362471224,
-    holes: -24.777107607191077,
-    boardWells: -9.187056546069137
+    landingHeight: -12.519401,
+    erodedPieceCells: 10.910350,
+    rowTransitions: -6.706261,
+    columnTransitions: -29.273623,
+    holes: -24.777107,
+    bumpiness: -5.0,     // NEW: heavily penalize uneven columns to prevent random towers
+    tetrisWell: 15.0     // NEW: reward having exactly one deep well (usually on an edge)
   };
 
   // Active weights (base × profile modifiers), recalculated each thinking cycle
   public weights = { ...({} as any) };
+
+  public personality: 'CHASER' | 'REGULAR' = 'REGULAR';
 
   constructor(grid: Grid, inputHandler: InputHandler, difficulty: Difficulty = 'HARD') {
     this.grid = grid;
@@ -189,7 +191,8 @@ export class AIBot {
       rowTransitions: this.baseWeights.rowTransitions * mods.rowTransitions,
       columnTransitions: this.baseWeights.columnTransitions * mods.columnTransitions,
       holes: this.baseWeights.holes * mods.holes,
-      boardWells: this.baseWeights.boardWells * mods.boardWells,
+      bumpiness: this.baseWeights.bumpiness * mods.bumpiness,
+      tetrisWell: this.baseWeights.tetrisWell * mods.tetrisWell,
     };
   }
 
@@ -683,28 +686,41 @@ export class AIBot {
       }
     }
 
-    // 6. Board Wells
-    let boardWells = 0;
+    // 6. Bumpiness & Tetris Wells
+    let colHeights = new Array(width).fill(0);
     for (let c = 0; c < width; c++) {
       for (let r = 0; r < height; r++) {
-        if (matrix[r][c].type === null) {
-          const leftWall = c === 0 || matrix[r][c - 1].type !== null;
-          const rightWall = c === width - 1 || matrix[r][c + 1].type !== null;
-
-          if (leftWall && rightWall) {
-            let depth = 0;
-            let wr = r;
-            while (wr < height && matrix[wr][c].type === null &&
-                   (c === 0 || matrix[wr][c - 1].type !== null) &&
-                   (c === width - 1 || matrix[wr][c + 1].type !== null)) {
-              depth++;
-              boardWells += depth;
-              wr++;
-            }
-            r = wr - 1;
-          }
+        if (matrix[r][c].type !== null) {
+          colHeights[c] = height - r;
+          break;
         }
       }
+    }
+
+    let bumpiness = 0;
+    for (let c = 0; c < width - 1; c++) {
+      bumpiness += Math.abs(colHeights[c] - colHeights[c + 1]);
+    }
+
+    let tetrisWell = 0;
+    // Look for a single deep well (at least 3 blocks deep) to reward
+    let wellCount = 0;
+    let deepestWell = 0;
+    
+    for (let c = 0; c < width; c++) {
+      const leftHeight = c === 0 ? height : colHeights[c - 1];
+      const rightHeight = c === width - 1 ? height : colHeights[c + 1];
+      const minWall = Math.min(leftHeight, rightHeight);
+      
+      if (minWall - colHeights[c] >= 3) {
+        wellCount++;
+        deepestWell = Math.max(deepestWell, minWall - colHeights[c]);
+      }
+    }
+
+    // Only reward the well if there is EXACTLY ONE well. If there are multiple, it's just a messy board.
+    if (wellCount === 1) {
+      tetrisWell = deepestWell;
     }
 
     return (
@@ -713,7 +729,8 @@ export class AIBot {
       rowTransitions * this.weights.rowTransitions +
       columnTransitions * this.weights.columnTransitions +
       holes * this.weights.holes +
-      boardWells * this.weights.boardWells
+      bumpiness * this.weights.bumpiness +
+      tetrisWell * this.weights.tetrisWell
     );
   }
 

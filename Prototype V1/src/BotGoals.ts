@@ -39,50 +39,40 @@ export function selectGoal(world: BotWorldState): GoalEvaluation {
 // ==============================
 
 function survivalPriority(world: BotWorldState): number {
-  if (world.inCrisis) return 100;
-  if (world.inDanger) return 70;
-  if (world.ownBoardHeight >= 12) return 40;
+  if (world.ownBoardHeight >= 14) return 100; // Mode 3 Trigger
   if (world.isSuddenDeath) return 60;
   return 0;
 }
 
 function buildPriority(world: BotWorldState): number {
-  // Default goal when nothing else is pressing
-  if (world.inCrisis) return 10; // step aside for SURVIVE
-  if (world.inDanger) return 20;
+  // Default fallback if others don't trigger (should rarely happen with new rules)
   return 50;
 }
 
 function attackPriority(world: BotWorldState): number {
-  if (world.inDanger || world.inCrisis) return 0; // don't attack when in trouble
+  if (world.ownBoardHeight >= 14) return 0; // Survival overrides
   if (world.opponentCount === 0) return 0;
 
-  // Behind on score → ramp up attack priority
-  if (world.scoreDeltaPercent < -20) return 65;
-  if (world.scoreDeltaPercent < -10) return 55;
+  // Mode 1: Aggressive (Bot is losing, or leading by less than 2000)
+  if (world.scoreDelta <= 2000) return 80; 
 
-  // Board is clean and stable → can afford to attack
-  if (world.ownBoardHeight <= 8 && world.ownHoleCount <= 2) return 45;
-
-  return 30;
+  return 0;
 }
 
 function cruisePriority(world: BotWorldState): number {
-  if (world.inDanger || world.inCrisis) return 0;
+  if (world.ownBoardHeight >= 14) return 0; // Survival overrides
   if (world.opponentCount === 0) return 0;
 
-  // DDA: when significantly ahead, cruise to let opponents catch up
-  if (world.scoreDeltaPercent > 40) return 70;
-  if (world.scoreDeltaPercent > 20) return 55;
-  if (world.scoreDeltaPercent > 10) return 35;
+  // Mode 2: Passive (Bot is leading by more than 2000 points)
+  if (world.scoreDelta > 2000) return 90;
 
   return 0;
 }
 
 function supportPriority(world: BotWorldState): number {
   if (!world.isTeamMode) return 0;
-  if (world.teamAllyInDanger && world.playerClass === 'SUPPORT') return 80;
-  if (world.teamAllyInDanger) return 40; // Non-support classes care less
+  if (world.teamAllyInDanger && world.playerClass === 'SUPPORT') return 85;
+  if (world.teamAllyInDanger) return 40;
   return 0;
 }
 
@@ -103,7 +93,8 @@ export interface ActionProfile {
     rowTransitions: number;
     columnTransitions: number;
     holes: number;
-    boardWells: number;
+    bumpiness: number;
+    tetrisWell: number;
   };
 }
 
@@ -112,21 +103,22 @@ export interface ActionProfile {
  */
 export function getActionProfile(goal: GoalId, world: BotWorldState): ActionProfile {
   switch (goal) {
-    case 'SURVIVE':
+    case 'SURVIVE': // Mode 3: Survival
       return {
         placementStrategy: 'DOWNSTACK',
-        delayMultiplier: 0.8, // play slightly faster when panicking
+        delayMultiplier: 0.7, // play faster
         weightModifiers: {
           landingHeight: 2.0,       // heavily penalise high placements
-          erodedPieceCells: 2.0,    // strongly reward clearing lines
+          erodedPieceCells: 3.0,    // strongly reward clearing lines immediately
           rowTransitions: 1.0,
           columnTransitions: 1.0,
-          holes: 3.0,              // massively penalise holes
-          boardWells: 0.5,         // don't worry about wells right now
+          holes: 3.0,
+          bumpiness: 2.0,           // stack flat
+          tetrisWell: 0.0,          // ignore wells completely
         },
       };
 
-    case 'BUILD_TETRISES':
+    case 'BUILD_TETRISES': // Fallback
       return {
         placementStrategy: 'OPTIMAL',
         delayMultiplier: 1.0,
@@ -136,35 +128,38 @@ export function getActionProfile(goal: GoalId, world: BotWorldState): ActionProf
           rowTransitions: 1.0,
           columnTransitions: 1.0,
           holes: 1.0,
-          boardWells: 1.0,
+          bumpiness: 1.0,
+          tetrisWell: 1.0,
         },
       };
 
-    case 'ATTACK':
+    case 'ATTACK': // Mode 1: Aggressive
       return {
         placementStrategy: 'OPTIMAL',
-        delayMultiplier: 0.85,  // slightly faster in attack mode
+        delayMultiplier: 0.8, // aggressive
         weightModifiers: {
-          landingHeight: 1.0,
-          erodedPieceCells: 1.5,  // prioritise multi-line clears for garbage
+          landingHeight: 0.8,     // care slightly less about height
+          erodedPieceCells: 0.5,  // care less about single lines (save them for Tetris)
           rowTransitions: 1.0,
           columnTransitions: 1.0,
-          holes: 1.2,
-          boardWells: 0.8,
+          holes: 1.5,
+          bumpiness: 1.5,         // keep board flat...
+          tetrisWell: 2.5,        // ...except for a massive reward for one deep well
         },
       };
 
-    case 'CRUISE':
+    case 'CRUISE': // Mode 2: Passive
       return {
         placementStrategy: 'SUBOPTIMAL',
-        delayMultiplier: clamp(1.0 + (world.scoreDeltaPercent / 100), 1.0, 2.0), // slower the further ahead
+        delayMultiplier: clamp(1.5 + (world.scoreDelta / 10000), 1.5, 3.0), // significantly slower
         weightModifiers: {
-          landingHeight: 0.7,
-          erodedPieceCells: 0.7,
-          rowTransitions: 0.7,
-          columnTransitions: 0.7,
-          holes: 0.7,
-          boardWells: 0.7,
+          landingHeight: 1.0,
+          erodedPieceCells: 1.5,  // clear singles/doubles safely
+          rowTransitions: 1.0,
+          columnTransitions: 1.0,
+          holes: 1.0,
+          bumpiness: 1.5,
+          tetrisWell: 0.5,        // don't build deep wells
         },
       };
 
@@ -178,7 +173,8 @@ export function getActionProfile(goal: GoalId, world: BotWorldState): ActionProf
           rowTransitions: 1.0,
           columnTransitions: 1.0,
           holes: 1.0,
-          boardWells: 1.0,
+          bumpiness: 1.0,
+          tetrisWell: 1.0,
         },
       };
   }

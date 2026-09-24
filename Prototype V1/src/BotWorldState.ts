@@ -52,16 +52,23 @@ export function buildWorldState(params: {
   isSuddenDeath: boolean;
   teamAllyInDanger: boolean;
   isTeamMode: boolean;
+  personality: 'CHASER' | 'REGULAR';
 }): BotWorldState {
   const livingOpponents = params.opponentScores.filter(s => s >= 0);
   const opponentCount = livingOpponents.length;
-  const opponentAvgScore = opponentCount > 0
-    ? livingOpponents.reduce((a, b) => a + b, 0) / opponentCount
-    : 0;
+  
+  let targetScore = 0;
+  if (opponentCount > 0) {
+    if (params.personality === 'CHASER') {
+      targetScore = Math.max(...livingOpponents);
+    } else {
+      targetScore = livingOpponents.reduce((a, b) => a + b, 0) / opponentCount;
+    }
+  }
 
-  const scoreDelta = params.ownScore - opponentAvgScore;
-  const scoreDeltaPercent = opponentAvgScore > 0
-    ? (scoreDelta / opponentAvgScore) * 100
+  const scoreDelta = params.ownScore - targetScore;
+  const scoreDeltaPercent = targetScore > 0
+    ? (scoreDelta / targetScore) * 100
     : (params.ownScore > 0 ? 100 : 0);
 
   return {
@@ -69,7 +76,7 @@ export function buildWorldState(params: {
     ownHoleCount: params.holeCount,
     ownScore: params.ownScore,
     ownLines: params.ownLines,
-    opponentAvgScore,
+    opponentAvgScore: targetScore, // Renamed functionally for priority math, though name is generic
     opponentCount,
     scoreDelta,
     scoreDeltaPercent,

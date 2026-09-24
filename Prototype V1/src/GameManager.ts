@@ -137,6 +137,11 @@ export class GameManager {
 
     // Create player instances. Only our own player is human-controlled.
     this.players = [];
+    
+    // We only assign 1 CHASER per game to keep things balanced. 
+    // We'll pick the first bot owned by the host as the chaser.
+    let chaserAssigned = false;
+
     for (let i = 0; i < playerCount; i++) {
       const spec = playerSpecs[i] || {};
       const pName = spec.name || `P${i + 1}`;
@@ -149,6 +154,15 @@ export class GameManager {
         const botPlayer = new Player(pName, true, 'EASY', false);
         // We'll attach the botId to the player object so we know how to broadcast for it
         (botPlayer as any).botId = spec.id;
+        
+        // Assign personality
+        if (!chaserAssigned && !this.isTeamMode) {
+          if (botPlayer.bot) {
+            botPlayer.bot.personality = 'CHASER';
+            chaserAssigned = true;
+          }
+        }
+
         this.players.push(botPlayer);
       } else {
         // Remote player (or remote bot) — no keyboard, no bot. Grid/piece will be synced from server.
@@ -461,6 +475,7 @@ export class GameManager {
           isSuddenDeath: this.battleRoyalMode && (this.battleRoyalPhase?.toLowerCase().includes('sudden') ?? false),
           teamAllyInDanger,
           isTeamMode: this.isTeamMode,
+          personality: player.bot.personality,
         });
 
         player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx, worldState);
