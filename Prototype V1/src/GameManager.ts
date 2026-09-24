@@ -636,6 +636,11 @@ export class GameManager {
     }
   }
 
+  /** How long a piece can sit on the ground before locking (ms). */
+  private readonly LOCK_DELAY = 500;
+  /** Maximum number of move/rotate resets allowed per piece. */
+  private readonly MAX_LOCK_RESETS = 15;
+
   private handleActiveDrop(player: Player, dt: number) {
     while (player.inputHandler.hasInput()) {
       const action = player.inputHandler.getNextInput()!;
@@ -644,6 +649,34 @@ export class GameManager {
 
     if (!player.currentPiece) return; // Might have locked from hard drop
 
+    // Check if piece is currently grounded (can't move down)
+    const grounded = player.grid.checkCollision(
+      player.currentPiece,
+      player.currentPiece.x,
+      player.currentPiece.y + 1
+    );
+
+    if (grounded) {
+      if (!player.isGrounded) {
+        // Just became grounded — start the lock timer
+        player.isGrounded = true;
+        player.lockTimer = 0;
+      }
+
+      // Tick lock timer
+      player.lockTimer += dt;
+      if (player.lockTimer >= this.LOCK_DELAY) {
+        // Lock delay expired — lock the piece
+        this.handlePieceLock(player);
+        return;
+      }
+    } else {
+      // Piece is NOT grounded (e.g. moved off a ledge) — reset lock state
+      player.isGrounded = false;
+      player.lockTimer = 0;
+    }
+
+    // Normal gravity drop
     player.dropTimer += dt;
     if (player.dropTimer >= player.dropInterval) {
       player.dropTimer = 0;
@@ -843,13 +876,15 @@ export class GameManager {
 
     if (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x + dx, player.currentPiece.y + dy)) {
       player.currentPiece.move(dx, dy);
-      return true;
-    } else {
-      if (dy > 0) {
-        this.handlePieceLock(player);
+      // Reset lock timer if the player moved while grounded (gives more time to T-spin)
+      if (player.isGrounded && player.lockMoveResets < this.MAX_LOCK_RESETS) {
+        player.lockTimer = 0;
+        player.lockMoveResets++;
       }
-      return false;
+      return true;
     }
+    // No instant lock here — the lock delay in handleActiveDrop handles it
+    return false;
   }
 
   private rotatePiece(player: Player, dir: 1 | -1) {
@@ -863,6 +898,11 @@ export class GameManager {
       if (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x + kick.x, player.currentPiece.y + kick.y)) {
         player.currentPiece.move(kick.x, kick.y);
         kicked = true;
+        // Reset lock timer on successful rotation (allows T-spins)
+        if (player.isGrounded && player.lockMoveResets < this.MAX_LOCK_RESETS) {
+          player.lockTimer = 0;
+          player.lockMoveResets++;
+        }
         break;
       }
     }
@@ -878,6 +918,10 @@ export class GameManager {
       player.currentPiece = null;
     }
     
+    // Reset lock delay state for next piece
+    player.isGrounded = false;
+    player.lockTimer = 0;
+    player.lockMoveResets = 0;
     player.hasHeld = false;
     
     const { linesCleared, specialBlocksToTrigger, clearedRows } = player.grid.clearLines();
