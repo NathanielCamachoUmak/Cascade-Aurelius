@@ -3,6 +3,7 @@ import { Tetromino, SHAPES } from "./Tetromino";
 import { InputAction } from "./InputHandler";
 import { SpecialBlockType } from "./ItemManager";
 import { type Difficulty, type AbilityContext } from "./AIBot";
+import { buildWorldState } from "./BotWorldState";
 import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
@@ -68,6 +69,7 @@ export class GameManager {
   public onlineWinnerName: string = "";
   public gameTime: number = 0;
   public battleRoyalMode = false;
+  public isTeamMode = false;
   public battleRoyalPhase = '';
   public battleRoyalRemaining = 0;
   public battleRoyalKills = 0;
@@ -121,12 +123,13 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerSpecs: any[] = [], humanClass: PlayerClass = 'TANK') {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerSpecs: any[] = [], humanClass: PlayerClass = 'TANK', modeOptions?: { isTeamMode?: boolean }) {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
     this.battleRoyalMode = false;
+    this.isTeamMode = modeOptions?.isTeamMode ?? false;
     this.battleRoyalPhase = '';
     this.battleRoyalRemaining = playerCount;
     this.battleRoyalKills = 0;
@@ -411,7 +414,10 @@ export class GameManager {
 
       // AI update
       if (player.bot) {
-        // Build ability context for the bot's ability evaluator
+        const boardHeight = this.getMaxColumnHeight(player);
+        const holeCount = this.countHoles(player);
+
+        // Build ability context for the bot's ability evaluator (Stage 2)
         const abilityCtx: AbilityContext = {
           playerClass: player.playerClass,
           abilityCooldowns: { ...player.abilityCooldowns },
@@ -421,12 +427,43 @@ export class GameManager {
           reflectGarbage: player.reflectGarbage,
           gridShiftUsedLevel: player.gridShiftUsedLevel,
           currentLevel: Math.floor(player.scoreManager.totalLinesCleared / 10),
-          boardHeight: this.getMaxColumnHeight(player),
-          holeCount: this.countHoles(player),
+          boardHeight,
+          holeCount,
           selectedTargetIndex: player.selectedTargetIndex,
           hasOpponents: this.players.some(p => p !== player && !p.isToppedOut),
         };
-        player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx);
+
+        // Build world state for GOAP planner (Stage 3)
+        const ultimateCost = player.playerClass === 'SPEEDSTER' ? 40
+          : player.playerClass === 'TANK' ? 50
+          : player.playerClass === 'SABOTEUR' ? 35
+          : 45;
+
+        const opponentScores = this.players
+          .filter(p => p !== player && !p.isToppedOut)
+          .map(p => p.scoreManager.score);
+
+        const teamAllyInDanger = this.isTeamMode ? this.players.some(p =>
+          p !== player && !p.isToppedOut && p.playerClass !== undefined &&
+          this.getMaxColumnHeight(p) >= 15
+        ) : false;
+
+        const worldState = buildWorldState({
+          boardHeight,
+          holeCount,
+          ownScore: player.scoreManager.score,
+          ownLines: player.scoreManager.totalLinesCleared,
+          opponentScores,
+          playerClass: player.playerClass,
+          abilityCooldowns: { ...player.abilityCooldowns },
+          classMeter: player.classMeter,
+          ultimateCost,
+          isSuddenDeath: this.battleRoyalMode && (this.battleRoyalPhase?.toLowerCase().includes('sudden') ?? false),
+          teamAllyInDanger,
+          isTeamMode: this.isTeamMode,
+        });
+
+        player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx, worldState);
       } else {
         // Human input auto-repeat tick
         player.inputHandler.update(dt);

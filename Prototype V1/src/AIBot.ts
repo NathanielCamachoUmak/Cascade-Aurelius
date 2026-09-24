@@ -2,6 +2,8 @@ import { Grid, type Cell } from "./Grid";
 import { Tetromino, SHAPES, type ShapeType } from "./Tetromino";
 import { InputHandler, InputAction } from "./InputHandler";
 import { type PlayerClass } from "./PlayerClass";
+import { type BotWorldState } from "./BotWorldState";
+import { selectGoal, getActionProfile, type GoalId, type ActionProfile, type PlacementStrategy } from "./BotGoals";
 
 export type Difficulty = 'EASY' | 'HARD';
 
@@ -52,14 +54,20 @@ export class AIBot {
   private abilityEvalTimer: number = 0;
   private readonly ABILITY_EVAL_INTERVAL = 3000; // ms between ability evaluations
 
+  // GOAP state (Stage 3)
+  public activeGoal: GoalId = 'BUILD_TETRISES';
+  private activeProfile: ActionProfile | null = null;
+  private lastWorldState: BotWorldState | null = null;
+
   // Delay settings in ms
   private readonly DELAYS = {
     EASY: { think: 1200, action: 120 },
     HARD: { think: 250, action: 50 }
   };
 
-  // Heuristic weights (CEM-trained, 20 generations, 198.1 avg lines)
-  public weights = {
+  // Base heuristic weights (CEM-trained, 20 generations, 198.1 avg lines)
+  // These are the defaults; GOAP modifies them via ActionProfile.weightModifiers
+  public baseWeights = {
     landingHeight: -12.519401097223625,
     erodedPieceCells: 10.910350475683453,
     rowTransitions: -6.706261313931364,
@@ -68,19 +76,35 @@ export class AIBot {
     boardWells: -9.187056546069137
   };
 
+  // Active weights (base × profile modifiers), recalculated each thinking cycle
+  public weights = { ...({} as any) };
+
   constructor(grid: Grid, inputHandler: InputHandler, difficulty: Difficulty = 'HARD') {
     this.grid = grid;
     this.inputHandler = inputHandler;
     this.difficulty = difficulty;
+    // Initialize active weights to base weights
+    this.weights = { ...this.baseWeights };
   }
 
   /**
    * Called continuously by GameManager during ACTIVE_DROP state.
    * @param abilityCtx — optional context for ability evaluation (Stage 2).
-   *   When omitted (e.g. offline 1v1) the bot simply plays pieces.
+   * @param worldState — optional GOAP world state for goal selection (Stage 3).
    */
-  public update(currentTetromino: Tetromino | null, nextTetromino: Tetromino | null, dt: number, abilityCtx?: AbilityContext) {
+  public update(
+    currentTetromino: Tetromino | null,
+    nextTetromino: Tetromino | null,
+    dt: number,
+    abilityCtx?: AbilityContext,
+    worldState?: BotWorldState
+  ) {
     if (!currentTetromino) return;
+
+    // Store latest world state for GOAP
+    if (worldState) {
+      this.lastWorldState = worldState;
+    }
 
     // Ability evaluation runs on its own timer, independent of piece placement
     if (abilityCtx) {
@@ -97,7 +121,11 @@ export class AIBot {
     // Action Execution Phase
     if (this.pendingActions.length > 0) {
       this.timeSinceLastAction += dt;
-      const actionDelay = this.DELAYS[this.difficulty].action;
+      // Apply delay multiplier from active GOAP profile
+      const baseDelay = this.DELAYS[this.difficulty].action;
+      const actionDelay = this.activeProfile
+        ? baseDelay * this.activeProfile.delayMultiplier
+        : baseDelay;
 
       if (this.timeSinceLastAction >= actionDelay) {
         this.inputHandler.pushInput(this.pendingActions.shift()!);
@@ -111,10 +139,18 @@ export class AIBot {
       this.isThinking = true;
       this.thinkingTimer = 0;
     } else {
+      // Apply delay multiplier from active GOAP profile
+      const baseThink = this.DELAYS[this.difficulty].think;
+      const thinkDelay = this.activeProfile
+        ? baseThink * this.activeProfile.delayMultiplier
+        : baseThink;
+
       this.thinkingTimer += dt;
-      const thinkDelay = this.DELAYS[this.difficulty].think;
 
       if (this.thinkingTimer >= thinkDelay) {
+        // GOAP: evaluate world state → select goal → apply action profile
+        this.runGoapPlanning();
+
         const bestMove = this.expectimaxSearch(currentTetromino, nextTetromino);
         if (bestMove) {
           this.pendingActions = bestMove.actions;
@@ -122,6 +158,46 @@ export class AIBot {
         this.isThinking = false;
       }
     }
+  }
+
+  // ==============================
+  // GOAP Planning (Stage 3)
+  // ==============================
+
+  /**
+   * Runs the GOAP planner: evaluates world state, selects the highest-priority
+   * goal, and applies the corresponding action profile (weight modifiers + delay).
+   */
+  private runGoapPlanning(): void {
+    if (!this.lastWorldState) {
+      // No world state available — use default weights
+      this.weights = { ...this.baseWeights };
+      this.activeGoal = 'BUILD_TETRISES';
+      this.activeProfile = null;
+      return;
+    }
+
+    const goal = selectGoal(this.lastWorldState);
+    this.activeGoal = goal.id;
+    this.activeProfile = getActionProfile(goal.id, this.lastWorldState);
+
+    // Apply weight modifiers from the action profile
+    const mods = this.activeProfile.weightModifiers;
+    this.weights = {
+      landingHeight: this.baseWeights.landingHeight * mods.landingHeight,
+      erodedPieceCells: this.baseWeights.erodedPieceCells * mods.erodedPieceCells,
+      rowTransitions: this.baseWeights.rowTransitions * mods.rowTransitions,
+      columnTransitions: this.baseWeights.columnTransitions * mods.columnTransitions,
+      holes: this.baseWeights.holes * mods.holes,
+      boardWells: this.baseWeights.boardWells * mods.boardWells,
+    };
+  }
+
+  /**
+   * Returns the current placement strategy from the active GOAP profile.
+   */
+  private getPlacementStrategy(): PlacementStrategy {
+    return this.activeProfile?.placementStrategy ?? 'OPTIMAL';
   }
 
   // ==============================
@@ -480,11 +556,24 @@ export class AIBot {
   }
 
   private pickDifficultyMove(moves: MoveSequence[]): MoveSequence {
-    if (this.difficulty === 'EASY' && moves.length >= 4) {
+    const strategy = this.getPlacementStrategy();
+
+    // GOAP SUBOPTIMAL: DDA cruising — intentionally pick a weaker move
+    if (strategy === 'SUBOPTIMAL' && moves.length >= 3) {
+      // Pick from moves ranked 2nd through 4th (skip the best)
+      const pool = moves.slice(1, Math.min(4, moves.length));
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    // Original EASY difficulty randomness (applies when no GOAP profile is active)
+    if (strategy === 'OPTIMAL' && this.difficulty === 'EASY' && moves.length >= 4) {
       if (Math.random() < 0.25) {
         return moves[Math.floor(Math.random() * 3) + 1];
       }
     }
+
+    // OPTIMAL and DOWNSTACK both pick the best move
+    // (DOWNSTACK's "aggressiveness" comes from the modified heuristic weights, not from move selection)
     return moves[0];
   }
 

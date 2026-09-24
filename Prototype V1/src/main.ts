@@ -563,7 +563,7 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass);
+  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass, { isTeamMode: mode?.isTeamMode ?? false });
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
