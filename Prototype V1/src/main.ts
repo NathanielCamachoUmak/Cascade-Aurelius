@@ -91,6 +91,31 @@ const comboElementP2 = document.getElementById('combo-p2')!;
 const multiplierElementP2 = document.getElementById('multiplier-p2')!;
 const koCountP2 = document.getElementById('ko-count-p2')!;
 const koCountP1 = document.getElementById('ko-count-p1')!;
+
+function setText(id: string, text: string) {
+  const el = document.getElementById(id);
+  if (el) el.innerText = text;
+}
+function setWidth(id: string, width: string) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = width;
+}
+function setDisplay(id: string, display: 'hidden' | 'flex') {
+  const el = document.getElementById(id);
+  if (el) {
+    if (display === 'hidden') {
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    } else {
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+  }
+}
+function getCanvas(id: string): HTMLCanvasElement | null {
+  return document.getElementById(id) as HTMLCanvasElement | null;
+}
+
 const abilityMeterP2 = document.getElementById('ability-meter-p2');
 const abilityLabelP2 = document.getElementById('ability-label-p2');
 const abilityFillP2 = document.getElementById('ability-fill-p2'); 
@@ -1003,7 +1028,7 @@ function render() {
   // Update UI for Player 1 (our player)
   const p1 = gameManager.players[myIdx];
   if (p1) {
-    scoreElementP1.innerText = `${Math.round(p1.scoreManager.score)}`;
+    setText('score-p1',  `${Math.round(p1.scoreManager.score)}`); setText('score-p1-br', `${Math.round(p1.scoreManager.score)}`);
 
     // K.O. badge + transient stamp overlay (Battle Royale only)
     const koBadge = document.getElementById('ko-count-badge-p1');
@@ -1012,12 +1037,12 @@ function render() {
     const koStamp = document.getElementById('ko-stamp-overlay');
     if (koBadge && koCountEl && koDecayEl) {
       const hasKos = (p1.koCount || 0) > 0;
-      koBadge.classList.toggle('hidden', !hasKos);
+      ['ko-count-badge-p1', 'ko-count-badge-p1-br'].forEach(id => { let b = document.getElementById(id); if (b) b.classList.toggle('hidden', !hasKos); });
       if (hasKos) {
-        koCountEl.innerText = `${p1.koCount}`;
+        setText('ko-count-p1', `${p1.koCount}`); setText('ko-count-p1-br', `${p1.koCount}`);
         // Mirrors the server's decay formula: raw x 0.85^KOCount
         const retained = Math.round(Math.pow(0.85, p1.koCount) * 100);
-        koDecayEl.innerText = `final x${(retained / 100).toFixed(2)}`;
+        setText('ko-decay-p1', `final x${(retained / 100).toFixed(2)}`); setText('ko-decay-p1-br', `final x${(retained / 100).toFixed(2)}`);
       }
     }
     if (koStamp) {
@@ -1025,9 +1050,9 @@ function render() {
       koStamp.classList.toggle('hidden', !stampVisible);
       koStamp.classList.toggle('flex', stampVisible);
     }
-    levelElementP1.innerText = `${p1.scoreManager.totalLinesCleared}`;
-    comboElementP1.innerText = p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '';
-    multiplierElementP1.innerText = p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '';
+    setText('level-p1', `${p1.scoreManager.totalLinesCleared}`); setText('level-p1-br', `${p1.scoreManager.totalLinesCleared}`);
+    setText('combo-p1', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : ''); setText('combo-p1-br', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '');
+    setText('multiplier-p1', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : ''); setText('multiplier-p1-br', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '');
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
     renderQueueOnMiniCanvas(nextCanvasP1, p1.bag.getPreview(4), PLAYER_COLORS[myIdx] || '#00E5FF');
     nextQueueP1.innerText = p1.bag.getPreview(5).join(' · ');
@@ -1049,7 +1074,7 @@ function render() {
       abilityEStatusP1.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
       abilityLabelP1.innerText = classInfo1.ultimateName.toUpperCase();
       abilityRStatusP1.innerText = `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
-      abilityFillP1.style.width = `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`;
+      setWidth('ability-fill-p1', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`); setWidth('ability-fill-p1-br', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`);
       abilityReadyP1.classList.toggle('hidden', p1.classMeter < classInfo1.ultimateCost);
     }
   }
@@ -1063,13 +1088,13 @@ function render() {
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
 
     const classInfo2 = PLAYER_CLASSES.find((c) => c.id === p2.playerClass);
-    if (abilityMeterP2) {
-      abilityMeterP2.classList.remove('hidden');
-      abilityMeterP2.classList.add('flex');
-      if (classInfo2 && abilityLabelP2 && abilityFillP2) {
-        abilityLabelP2.innerText = `R: ${classInfo2.ultimateName.toUpperCase()} ${p2.classMeter}/${classInfo2.ultimateCost}`;
-        abilityFillP2.style.width = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
-      }
+    setDisplay('ability-meter-p2', 'flex');
+    setDisplay('ability-meter-p2-br', 'flex');
+    if (classInfo2) {
+      const lbl = `R: ${classInfo2.ultimateName.toUpperCase()} ${p2.classMeter}/${classInfo2.ultimateCost}`;
+      setText('ability-label-p2', lbl); setText('ability-label-p2-br', lbl);
+      const wid = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
+      setWidth('ability-fill-p2', wid); setWidth('ability-fill-p2-br', wid);
     }
   }
 
@@ -1188,3 +1213,4 @@ function returnToMenu() {
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
 }
+
