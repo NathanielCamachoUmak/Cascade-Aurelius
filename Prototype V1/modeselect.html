@@ -252,23 +252,23 @@
         <div id="screen-online-mode-select" class="hidden relative z-10 w-full max-w-6xl px-4"></div>
 
         <!-- ───── Screen: Class Select ───── -->
-        <div id="screen-class-select" class="hidden flex-col items-center w-full max-w-5xl px-8 relative z-10">
-          <div class="mb-8 text-center">
-            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">LOADOUT</h2>
-            <h1 class="text-3xl md:text-4xl font-bold">Choose Your Class</h1>
+        <div id="screen-class-select" class="hidden flex-col items-start w-full max-w-7xl px-8 relative z-10 mx-auto pt-16 pb-16">
+          <div class="mb-10 w-full text-left">
+            <h2 class="text-neon-cyan text-[0.72rem] font-black tracking-[0.18em] uppercase mb-4">LOADOUT PREPARATION</h2>
+            <h1 class="text-[clamp(1.7rem,5vw,3.25rem)] leading-none tracking-tight font-extrabold mb-5 text-white">Choose your class</h1>
+            <p class="text-gray-400 text-[clamp(0.95rem,2vw,1.08rem)] leading-relaxed max-w-3xl">Select a tactical class for your upcoming match. Your class dictates your passive advantage, active abilities, and ultimate power.</p>
           </div>
 
-          <div id="class-card-list" class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full mb-12">
+          <div id="class-card-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 w-full mb-10">
             <!-- Class cards injected by main.ts from PLAYER_CLASSES -->
           </div>
 
-          <div class="flex gap-4">
-            <button id="btn-class-continue" class="group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
-              <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-              <span class="relative">CONTINUE</span>
+          <div class="flex flex-wrap sm:flex-nowrap gap-5 w-full items-center mt-6">
+            <button id="btn-class-back" class="order-2 sm:order-1 px-8 py-3 min-h-[46px] w-full sm:w-auto bg-transparent border border-card-border text-white font-extrabold tracking-[0.07em] rounded-[10px] uppercase transition-all hover:bg-white/5 cursor-pointer mr-auto">
+              BACK
             </button>
-            <button id="btn-class-back" class="px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-gray-400 hover:scale-105 cursor-pointer">
-              &lt; BACK
+            <button id="btn-class-continue" class="order-1 sm:order-2 px-10 py-3 min-h-[46px] w-full sm:w-auto bg-neon-cyan text-[#061019] font-extrabold tracking-[0.07em] rounded-[10px] uppercase transition-all hover:brightness-110 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.3)]">
+              CONFIRM LOADOUT
             </button>
           </div>
         </div>
