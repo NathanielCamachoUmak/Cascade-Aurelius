@@ -899,7 +899,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
       const cell = player.grid.matrix[r][c];
       if (cell.type !== null) {
         const color = cell.type === 'GARBAGE' ? '#555555' : playerColor;
-        drawBlock(ctx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize, cell.type);
+        drawBlock(tCtx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize, cell.type);
       }
     }
   }
@@ -918,7 +918,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {
-          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize, player.currentPiece.type);
+          drawBlock(tCtx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize, player.currentPiece.type);
         }
       }
     }
@@ -934,7 +934,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
         if (shape[r][c] !== 0) {
           const specialKey = `${r},${c}`;
           const isSpecial = player.currentPiece.specialBlocks.get(specialKey);
-          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize, player.currentPiece.type);
+          drawBlock(tCtx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize, player.currentPiece.type);
         }
       }
     }
