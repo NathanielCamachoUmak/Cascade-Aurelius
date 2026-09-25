@@ -622,6 +622,13 @@ function getSpecialBlockLetter(special: string): string {
   }
 }
 
+const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
+['I', 'J', 'L', 'O', 'S', 'T', 'Z'].forEach(shape => {
+  const img = new Image();
+  img.src = `/blocks/${shape}-block.png`;
+  BLOCK_SPRITES[shape] = img;
+});
+
 function drawBlock(
   targetCtx: CanvasRenderingContext2D,
   x: number, 
@@ -631,7 +638,8 @@ function drawBlock(
   offsetY: number = 0,
   isSpecial: string | undefined = undefined, 
   isGhost: boolean = false,
-  blockSize: number = BLOCK_SIZE
+  blockSize: number = BLOCK_SIZE,
+  shapeType: string | null = null
 ) {
   const finalX = offsetX + x * blockSize;
   const finalY = offsetY + y * blockSize;
@@ -647,30 +655,41 @@ function drawBlock(
     return;
   }
 
-  targetCtx.fillStyle = '#000000';
-  targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
-  
   if (isSpecial === 'GARBAGE') {
+    targetCtx.fillStyle = '#000000';
+    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
     targetCtx.strokeStyle = '#555555';
     targetCtx.fillStyle = '#333333';
     targetCtx.fillRect(finalX + 2, finalY + 2, blockSize - 4, blockSize - 4);
     return;
   }
 
-  targetCtx.strokeStyle = color;
-  targetCtx.lineWidth = 2;
-  targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
+  if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
+    targetCtx.drawImage(BLOCK_SPRITES[shapeType], finalX, finalY, blockSize, blockSize);
+    
+    // Colored border for player identity
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = 1;
+    targetCtx.strokeRect(finalX, finalY, blockSize, blockSize);
+  } else {
+    targetCtx.fillStyle = '#000000';
+    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
+    
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = 2;
+    targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
+  
+    targetCtx.fillStyle = color;
+    targetCtx.fillRect(finalX + 6, finalY + 6, blockSize - 12, blockSize - 12);
+  }
 
   if (isSpecial) {
-    targetCtx.fillStyle = color;
+    targetCtx.fillStyle = '#FFFFFF';
     targetCtx.font = `${Math.round(blockSize * 0.67)}px "Press Start 2P"`;
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
     const icon = getSpecialBlockLetter(isSpecial);
     targetCtx.fillText(icon, finalX + blockSize / 2, finalY + blockSize / 2 + 2);
-  } else {
-    targetCtx.fillStyle = color;
-    targetCtx.fillRect(finalX + 6, finalY + 6, blockSize - 12, blockSize - 12);
   }
 }
 
@@ -804,7 +823,7 @@ function renderPlayer(player: Player, index: number) {
       const cell = player.grid.matrix[r][c];
       if (cell.type !== null) {
         const color = cell.type === 'GARBAGE' ? '#555555' : playerColor;
-        drawBlock(ctx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize);
+        drawBlock(ctx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize, cell.type);
       }
     }
   }
@@ -823,7 +842,7 @@ function renderPlayer(player: Player, index: number) {
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {
-          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize);
+          drawBlock(ctx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize, player.currentPiece.type);
         }
       }
     }
@@ -839,7 +858,7 @@ function renderPlayer(player: Player, index: number) {
         if (shape[r][c] !== 0) {
           const specialKey = `${r},${c}`;
           const isSpecial = player.currentPiece.specialBlocks.get(specialKey);
-          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize);
+          drawBlock(ctx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize, player.currentPiece.type);
         }
       }
     }
