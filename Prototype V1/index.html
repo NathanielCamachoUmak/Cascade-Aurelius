@@ -29,6 +29,7 @@
               'neon-yellow': '#FFD700',
               'neon-pink': '#FF1493',
               'neon-green': '#00FF00',
+              'neon-purple': '#B026FF',
             },
             fontFamily: {
               pixel: ['"Press Start 2P"', 'monospace'],
@@ -175,15 +176,15 @@
       <div class="relative z-10 text-center max-w-4xl mx-auto">
         <!-- Mode Tags -->
         <div class="mb-8">
-          <p class="text-neon-green text-[10px] sm:text-xs font-semibold tracking-[0.25em] animate-float glow-green">
-            · 1V1 · 4-PLAYER FFA · 3V3 TEAMDEATHMATCH · 30-PLAYER DEATHMATCH ·
+          <p class="text-neon-green font-pixel text-[8px] sm:text-[10px] tracking-[0.25em] animate-float glow-green">
+            - 1V1 - 4-PLAYER FFA - 3V3 TEAMDEATHMATCH - 30-PLAYER DEATHMATCH -
           </p>
         </div>
 
         <!-- Main Title -->
         <div class="mb-8">
           <h1 class="font-pixel text-4xl sm:text-5xl md:text-7xl leading-tight tracking-wider">
-            <span class="block text-neon-cyan glow-cyan">CASCADE</span>
+            <span class="block bg-gradient-to-b from-white to-neon-cyan text-transparent bg-clip-text glow-cyan">CASCADE</span>
           </h1>
         </div>
 
@@ -285,15 +286,15 @@
       const TAGS = [
         { name: 'PUZZLE', border: 'border-neon-cyan', text: 'text-neon-cyan' },
         { name: 'ROGUELIKE', border: 'border-neon-pink', text: 'text-neon-pink' },
-        { name: 'SABOTAGE', border: 'border-neon-yellow', text: 'text-neon-yellow' },
-        { name: 'RANDOMIZED', border: 'border-neon-green', text: 'text-neon-green' },
+        { name: 'SABOTAGE', border: 'border-neon-green', text: 'text-neon-green' },
+        { name: 'RANDOMIZED', border: 'border-neon-purple', text: 'text-neon-purple' },
       ];
       const tagsContainer = document.getElementById('genre-tags');
 
       TAGS.forEach(tag => {
         const span = document.createElement('span');
         span.textContent = tag.name;
-        span.className = `px-4 py-1.5 text-[10px] font-bold tracking-widest rounded-full border bg-white/5 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 cursor-default ${tag.border} ${tag.text}`;
+        span.className = `px-4 py-1.5 font-pixel text-[8px] tracking-widest rounded-full border bg-white/5 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 cursor-default ${tag.border} ${tag.text}`;
         tagsContainer.appendChild(span);
       });
 
