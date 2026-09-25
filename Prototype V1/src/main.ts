@@ -68,8 +68,6 @@ const teamScoreMagenta = document.getElementById('team-score-magenta')!;
 const teamMatchTimer = document.getElementById('team-match-timer')!;
 const postGameTeamScores = document.getElementById('post-game-team-scores')!;
 
-const hudP2 = document.getElementById('hud-p2')!;
-
 const scoreElementP1 = document.getElementById('score-p1')!;
 const levelElementP1 = document.getElementById('level-p1')!;
 const comboElementP1 = document.getElementById('combo-p1')!;
@@ -594,11 +592,7 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
 
   // Show P2 HUD if there are 2+ players
   if (playerCount >= 2) {
-    hudP2.classList.remove('hidden');
-    hudP2.classList.add('flex');
   } else {
-    hudP2.classList.add('hidden');
-    hudP2.classList.remove('flex');
   }
 
   // Initialize the online game
@@ -618,12 +612,8 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   canvas.height = ROWS * BLOCK_SIZE;
 
   if (mode === 'SOLO') {
-    hudP2.classList.add('hidden');
-    hudP2.classList.remove('flex');
     gameManager.initSolo(selectedClass, 5000);
   } else {
-    hudP2.classList.remove('hidden');
-    hudP2.classList.add('flex');
     gameManager.init1v1(mode, selectedClass, 5000);
   }
 
@@ -874,24 +864,34 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
 // both read from this instead of assuming a uniform board size.
 let boardLayout: BoardLayoutEntry[] = [];
 
-function renderPlayer(player: Player, index: number) {
-  const { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
+function renderPlayer(player: Player, index: number, isDuo: boolean) {
+  let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
   const playerColor = PLAYER_COLORS[index] || '#00E5FF';
+  
+  let tCtx = ctx;
+  if (isDuo) {
+    const target = index === 0 ? document.getElementById('board-p1') as HTMLCanvasElement : document.getElementById('board-p2') as HTMLCanvasElement;
+    if (target) {
+      tCtx = target.getContext('2d')!;
+      offsetX = 0;
+      offsetY = 0;
+    }
+  }
 
 
   // Draw Grid background (optional faint lines)
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      tCtx.lineWidth = 1;
+      tCtx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
     }
   }
 
   // Draw Player Grid Border
-  ctx.strokeStyle = playerColor;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+  tCtx.strokeStyle = playerColor;
+  tCtx.lineWidth = 2;
+  tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
   // Draw Block Matrix
   for (let r = 0; r < ROWS; r++) {
@@ -942,33 +942,64 @@ function renderPlayer(player: Player, index: number) {
 
   // Draw topping out overlay for this player
   if (player.isToppedOut) {
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-    ctx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+    tCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+    tCtx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
   }
 
   // Target Indicator
   const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
   if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && index !== (gameManager.myPlayerIndex ?? 0)) {
-    ctx.fillStyle = '#FF007F';
-    ctx.beginPath();
+    tCtx.fillStyle = '#FF007F';
+    tCtx.beginPath();
     const centerX = offsetX + (COLS * blockSize) / 2;
     const arrowY = offsetY - 10;
-    ctx.moveTo(centerX - 10, arrowY - 15);
-    ctx.lineTo(centerX + 10, arrowY - 15);
-    ctx.lineTo(centerX, arrowY);
-    ctx.fill();
+    tCtx.moveTo(centerX - 10, arrowY - 15);
+    tCtx.lineTo(centerX + 10, arrowY - 15);
+    tCtx.lineTo(centerX, arrowY);
+    tCtx.fill();
     
     // Glowing border for targeted player
-    ctx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(offsetX - 2, offsetY - 2, (COLS * blockSize) + 4, (ROWS * blockSize) + 4);
+    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
+    tCtx.lineWidth = 4;
+    tCtx.strokeRect(offsetX - 2, offsetY - 2, (COLS * blockSize) + 4, (ROWS * blockSize) + 4);
   }
 }
 
 function render() {
   if (gameManager.state === GameState.MAIN_MENU) return;
 
-  // Clear main canvas
+  const activeMode = gameManager.isOnline ? activeOnlineMode : null;
+  const isDuo = !gameManager.isOnline || activeMode === 'classic-pvp' || false;
+  
+  if (isDuo) {
+    setDisplay('canvas-container', 'hidden');
+    setDisplay('duo-layout-container', 'flex');
+    setDisplay('hud-p1-br', 'hidden'); 
+    setDisplay('hud-p2-br', 'hidden');
+    
+    if (gameManager.players.length > 1) {
+      setDisplay('p2-pod', 'flex');
+      const p1 = document.getElementById('p1-pod');
+      if (p1) { p1.classList.remove('justify-center'); p1.classList.add('justify-end'); }
+    } else {
+      setDisplay('p2-pod', 'hidden');
+      const p1 = document.getElementById('p1-pod');
+      if (p1) { p1.classList.remove('justify-end'); p1.classList.add('justify-center'); }
+    }
+    
+    // Clear mini canvases
+    const b1 = document.getElementById('board-p1') as HTMLCanvasElement;
+    if (b1) b1.getContext('2d')!.clearRect(0, 0, b1.width, b1.height);
+    const b2 = document.getElementById('board-p2') as HTMLCanvasElement;
+    if (b2) b2.getContext('2d')!.clearRect(0, 0, b2.width, b2.height);
+  } else {
+    setDisplay('duo-layout-container', 'hidden');
+    setDisplay('canvas-container', 'flex');
+    setDisplay('hud-p1-br', 'flex');
+    if (gameManager.players.length > 1 && !gameManager.isOnline) setDisplay('hud-p2-br', 'flex');
+  }
+
+  // Clear main canvas (used by BR/fallback)
   ctx.resetTransform();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -976,46 +1007,86 @@ function render() {
   boardLayout = computeBoardLayout(gameManager.players.length, myIdxForLayout, gameManager.isOnline ? activeOnlineMode : null);
 
   for (let i = 0; i < gameManager.players.length; i++) {
-    renderPlayer(gameManager.players[i], i);
+    renderPlayer(gameManager.players[i], i, isDuo);
   }
 
   // Render visual effects
   const effects = gameManager.getEffects();
+  const eCanvas = document.getElementById('effects-canvas') as HTMLCanvasElement;
+  let eCtx = ctx;
+  if (isDuo && eCanvas) {
+      eCtx = eCanvas.getContext('2d')!;
+      eCtx.clearRect(0, 0, eCanvas.width, eCanvas.height);
+  }
+
+  function getCanvasRectOffset(pIdx: number) {
+      if (!isDuo) return { x: 0, y: 0 };
+      const targetId = pIdx === 0 ? 'board-p1' : 'board-p2';
+      const el = document.getElementById(targetId);
+      const container = document.getElementById('effects-canvas');
+      if (el && container) {
+          const rect = el.getBoundingClientRect();
+          const contRect = container.getBoundingClientRect();
+          return { x: rect.left - contRect.left, y: rect.top - contRect.top };
+      }
+      return { x: 0, y: 0 };
+  }
 
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
-    const myIdx2 = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
-    const { blockSize, offsetX, offsetY } = boardLayout[myIdx2] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
-    ctx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
-    ctx.fillRect(offsetX, offsetY + flash.row * blockSize, COLS * blockSize, blockSize);
+    const pIdx = (flash as any).playerIndex ?? 0;
+    const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+    const rectOffset = getCanvasRectOffset(pIdx);
+    
+    const targetCtx = isDuo ? eCtx : ctx;
+    const finalX = isDuo ? rectOffset.x : offsetX;
+    const finalY = isDuo ? rectOffset.y : offsetY;
+    
+    targetCtx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
+    targetCtx.fillRect(finalX, finalY + flash.row * blockSize, COLS * blockSize, blockSize);
   }
 
-  
   // Draw particles
   for (const p of effects.particles) {
+    const pIdx = (p as any).playerIndex ?? 0;
+    const rectOffset = getCanvasRectOffset(pIdx);
+    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
+    
+    const targetCtx = isDuo ? eCtx : ctx;
+    const finalX = isDuo ? (p.x - offsetX + rectOffset.x) : p.x;
+    const finalY = isDuo ? (p.y - offsetY + rectOffset.y) : p.y;
+
     const alpha = Math.max(0, p.life / p.maxLife);
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
-    ctx.fill();
+    targetCtx.globalAlpha = alpha;
+    targetCtx.fillStyle = p.color;
+    targetCtx.beginPath();
+    targetCtx.arc(finalX, finalY, p.size * alpha, 0, Math.PI * 2);
+    targetCtx.fill();
   }
+  if(isDuo) eCtx.globalAlpha = 1;
   ctx.globalAlpha = 1;
   
   // Draw combo texts
   for (const t of effects.comboTexts) {
-    const alpha = Math.max(0, t.life / t.maxLife);
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = t.color;
-    ctx.font = `bold ${t.size}px "Press Start 2P"`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    const pIdx = (t as any).playerIndex ?? 0;
+    const rectOffset = getCanvasRectOffset(pIdx);
+    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
     
-    // Glow effect
-    ctx.shadowColor = t.color;
-    ctx.shadowBlur = 20;
-    ctx.fillText(t.text, t.x, t.y);
-    ctx.shadowBlur = 0;
+    const targetCtx = isDuo ? eCtx : ctx;
+    const finalX = isDuo ? (t.x - offsetX + rectOffset.x) : t.x;
+    const finalY = isDuo ? (t.y - offsetY + rectOffset.y) : t.y;
+
+    const alpha = Math.max(0, t.life / t.maxLife);
+    targetCtx.globalAlpha = alpha;
+    targetCtx.fillStyle = t.color;
+    targetCtx.font = `bold ${t.size}px "Press Start 2P"`;
+    targetCtx.textAlign = 'center';
+    targetCtx.textBaseline = 'middle';
+    
+    targetCtx.shadowColor = t.color;
+    targetCtx.shadowBlur = 20;
+    targetCtx.fillText(t.text, finalX, finalY);
+    targetCtx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
 
@@ -1213,4 +1284,5 @@ function returnToMenu() {
   screenMain.classList.remove('hidden');
   uiLayer.classList.remove('hidden');
 }
+
 
