@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -432,6 +432,7 @@
       <!--            IN-GAME HUD OVERLAY              -->
       <!-- ═══════════════════════════════════════════ -->
       <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
+<canvas id="effects-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-50"></canvas>
         <div id="ko-stamp-overlay" class="hidden absolute inset-0 z-30 items-center justify-center pointer-events-none">
           <div class="border-4 border-neon-pink px-10 py-5 -rotate-12 bg-deep-purple/70 shadow-[0_0_40px_rgba(255,20,147,0.6)]">
             <div class="font-pixel text-4xl text-neon-pink tracking-widest">K.O.</div>
@@ -632,13 +633,14 @@
                <div id="ability-fill-p2"></div>
             </div>
             <div id="ko-count-badge-p1" class="hidden"><span id="ko-decay-p1"></span></div>
-            <div id="team-match-strip" class="hidden"><span id="team-score-cyan"></span></div>
+            <div id="team-match-strip" class="hidden"><span id="team-score-cyan"></span><span id="team-score-magenta"></span><span id="team-match-timer"></span></div>
             <!-- <div id="ability-meter-p1" class="hidden">
                <div id="ability-q-label-p1"></div><div id="ability-q-status-p1"></div>
                <div id="ability-e-label-p1"></div><div id="ability-e-status-p1"></div>
                <div id="ability-label-p1"></div><div id="ability-ready-p1"></div>
                <div id="ability-fill-p1"></div><div id="ability-r-status-p1"></div>
             </div>
+            </div> <!-- closes game-layout-wrapper -->`n</div>
 
 
         </div>
@@ -647,7 +649,10 @@
     </main>
 
     <script type="module" src="/src/main.ts"></script>
-  <canvas id="effects-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-50"></canvas>
-</body>
+  </body>
 </html>
+
+
+
+
 
