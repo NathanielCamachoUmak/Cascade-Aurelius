@@ -1063,11 +1063,13 @@ function render() {
     multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
 
     const classInfo2 = PLAYER_CLASSES.find((c) => c.id === p2.playerClass);
-    if (abilityMeterP2) { abilityMeterP2.classList.remove('hidden');
-    abilityMeterP2.classList.add('flex');
-    if (classInfo2) {
-      abilityLabelP2.innerText = `R: ${classInfo2.ultimateName.toUpperCase()} ${p2.classMeter}/${classInfo2.ultimateCost}`;
-      abilityFillP2.style.width = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
+    if (abilityMeterP2) {
+      abilityMeterP2.classList.remove('hidden');
+      abilityMeterP2.classList.add('flex');
+      if (classInfo2 && abilityLabelP2 && abilityFillP2) {
+        abilityLabelP2.innerText = `R: ${classInfo2.ultimateName.toUpperCase()} ${p2.classMeter}/${classInfo2.ultimateCost}`;
+        abilityFillP2.style.width = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
+      }
     }
   }
 
