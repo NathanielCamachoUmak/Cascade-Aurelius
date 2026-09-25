@@ -10,7 +10,8 @@ import { type PlayerClass } from "./PlayerClass";
 import { AudioManager } from "./AudioManager";
 
 // Visual Effects System
-interface Particle {
+export interface Particle {
+  playerIndex: number;
   x: number;
   y: number;
   vx: number;
@@ -954,7 +955,7 @@ export class GameManager {
 
       // Trigger visual + audio effects for the local player's clears
       if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
-        this.triggerLineClearEffects(linesCleared, clearedRows);
+        this.triggerLineClearEffects(linesCleared, clearedRows, this.players.indexOf(player));
         AudioManager.playSfx('lineClear');
       }
 
@@ -1106,7 +1107,7 @@ export class GameManager {
   // Visual Effects
   // ==============================
 
-  private triggerLineClearEffects(linesCleared: number, clearedRows: number[]) {
+  private triggerLineClearEffects(linesCleared: number, clearedRows: number[], pIdx: number) {
     const BLOCK_SIZE = 30;
     const COLS = 10;
 
@@ -1129,8 +1130,9 @@ export class GameManager {
         const particleCount = linesCleared >= 3 ? Math.floor(Math.random() * 4) + 3 : Math.floor(Math.random() * 2) + 1;
         for (let i = 0; i < particleCount; i++) {
           this.particles.push({
-            x: px + (Math.random() - 0.5) * BLOCK_SIZE,
-            y: py + (Math.random() - 0.5) * BLOCK_SIZE,
+            playerIndex: pIdx,
+            x: (c * BLOCK_SIZE + BLOCK_SIZE / 2) + (Math.random() - 0.5) * BLOCK_SIZE,
+            y: (row * BLOCK_SIZE + BLOCK_SIZE / 2) + (Math.random() - 0.5) * BLOCK_SIZE,
             vx: (Math.random() - 0.5) * (linesCleared >= 3 ? 8 : 3),
             vy: (Math.random() - 0.5) * (linesCleared >= 3 ? 8 : 3) - 2,
             life: 600 + Math.random() * 400,
