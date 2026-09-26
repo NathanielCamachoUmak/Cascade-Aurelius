@@ -43,6 +43,15 @@ const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
 
+// Tutorial elements
+const btnHowToPlay = document.getElementById('btn-how-to-play')!;
+const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
+const tutorialModal = document.getElementById('tutorial-modal')!;
+const tutorialClassList = document.getElementById('tutorial-class-list')!;
+const tutorialBlockList = document.getElementById('tutorial-block-list')!;
+const tutorialTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tutorial-tab'));
+const tutorialPanels = Array.from(document.querySelectorAll<HTMLElement>('.tutorial-panel'));
+
 // Class select elements
 const screenClassSelect = document.getElementById('screen-class-select')!;
 const classCardList = document.getElementById('class-card-list')!;
@@ -284,7 +293,7 @@ function renderClassCards() {
         </div>
       </div>
     `;
-    card.addEventListener('click', () => {
+        card.addEventListener('click', () => {
       selectedClass = info.id;
       renderClassCards();
     });
@@ -292,6 +301,90 @@ function renderClassCards() {
   }
 }
 renderClassCards();
+
+// --- Tutorial ---
+const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> = {
+  Speedster: { text: 'text-neon-yellow', border: 'border-neon-yellow/40' },
+  Tank: { text: 'text-neon-cyan', border: 'border-neon-cyan/40' },
+  Saboteur: { text: 'text-neon-pink', border: 'border-neon-pink/40' },
+  Support: { text: 'text-neon-green', border: 'border-neon-green/40' },
+};
+
+const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[] = [
+  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area around it, clearing nearby blocks too.' },
+  { letter: 'W', name: 'Heavy', description: 'When its line clears, also destroys the entire row directly beneath it.' },
+  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your score for the next 8 seconds.' },
+  { letter: 'V', name: 'Speed', description: "When its line clears, speeds up your own piece drop rate — good for aggressive stacking." },
+  { letter: 'S', name: 'Shield', description: 'When its line clears, blocks the very next garbage attack sent at you completely.' },
+  { letter: 'F', name: 'Freeze', description: "When its line clears, freezes every opponent's Q/E/R abilities for 3 seconds." },
+  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, instantly eats one line of garbage from the bottom of your own board.' },
+];
+
+function renderTutorialClasses() {
+  if (tutorialClassList.childElementCount > 0) return; // static content, only needs building once
+  for (const info of PLAYER_CLASSES) {
+    const accent = TUTORIAL_CLASS_ACCENTS[info.name] ?? { text: 'text-neon-cyan', border: 'border-card-border' };
+    const card = document.createElement('div');
+    card.className = `bg-deep-purple/40 border ${accent.border} rounded-lg p-4`;
+    card.innerHTML = `
+      <h4 class="${accent.text} font-extrabold text-sm mb-1">${info.name}</h4>
+      <p class="text-gray-500 text-xs mb-3">${info.tagline}</p>
+      <ul class="space-y-1.5 text-xs text-gray-300">
+        <li><span class="text-gray-400 font-bold">Passive —</span> ${info.passiveDescription.replace(/^Passive:\s*/i, '')}</li>
+        <li><span class="${accent.text} font-bold">[Q] ${info.abilityQName} —</span> ${info.abilityQDescription.replace(/^Q [·\-] .*?cooldown:?\s*/i, '')}</li>
+        <li><span class="${accent.text} font-bold">[E] ${info.abilityEName} —</span> ${info.abilityEDescription.replace(/^E [·\-] .*?(?:cooldown|level):?\s*/i, '')}</li>
+        <li><span class="${accent.text} font-bold">[R] ${info.ultimateName} (${info.ultimateCost} lines) —</span> ${info.ultimateDescription.replace(/^R [·\-] .*?lines:?\s*/i, '')}</li>
+      </ul>
+    `;
+    tutorialClassList.appendChild(card);
+  }
+}
+
+function renderTutorialBlocks() {
+  if (tutorialBlockList.childElementCount > 0) return; // static content, only needs building once
+  for (const block of SPECIAL_BLOCK_INFO) {
+    const row = document.createElement('div');
+    row.className = 'flex items-start gap-3 bg-deep-purple/40 border border-card-border rounded-lg p-3';
+    row.innerHTML = `
+      <span class="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-black border-2 border-neon-cyan text-neon-cyan font-pixel text-sm">${block.letter}</span>
+      <div>
+        <h4 class="text-white font-bold text-xs mb-0.5">${block.name}</h4>
+        <p class="text-gray-500 text-xs leading-relaxed">${block.description}</p>
+      </div>
+    `;
+    tutorialBlockList.appendChild(row);
+  }
+}
+
+function openTutorial() {
+  renderTutorialClasses();
+  renderTutorialBlocks();
+  tutorialModal.classList.remove('hidden');
+}
+
+function closeTutorial() {
+  tutorialModal.classList.add('hidden');
+}
+
+btnHowToPlay.addEventListener('click', openTutorial);
+btnTutorialClose.addEventListener('click', closeTutorial);
+tutorialModal.addEventListener('click', (e) => {
+  if (e.target === tutorialModal) closeTutorial();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !tutorialModal.classList.contains('hidden')) closeTutorial();
+});
+
+tutorialTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    tutorialTabs.forEach(t => t.classList.remove('tutorial-tab-active'));
+    tab.classList.add('tutorial-tab-active');
+    const target = tab.dataset.tab;
+    tutorialPanels.forEach(panel => {
+      panel.classList.toggle('hidden', panel.dataset.panel !== target);
+    });
+  });
+});
 
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {

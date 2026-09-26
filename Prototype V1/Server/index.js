@@ -952,7 +952,15 @@ io.on('connection', socket => {
     const socketTargetId = targetPlayer.isBot ? targetPlayer.ownerId : targetId;
     io.to(socketTargetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index, targetIndex: targetPlayer.index });
   });
-
+  
+  socket.on('lineClear', (data) => {
+    const linesCleared = data?.linesCleared;
+    if (typeof linesCleared !== 'number' || linesCleared < 1 || linesCleared > 4) {
+        return;
+    }
+    socket.to(socket.roomId).emit('receiveGarbage', { amount: linesCleared - 1 });
+  });
+  
   socket.on('reflect-garbage', ({ targetIndex, count }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
@@ -1017,9 +1025,21 @@ io.on('connection', socket => {
     if (roomId) socket.to(roomId).emit('show-ribbon', { message });
   });
 
+  // Replace/update your socket disconnect listener:
   socket.on('disconnect', () => {
-    console.log(`[disconnect] ${socket.id}`);
-    removePlayer(socket, { announceDisconnect: true });
+    const room = rooms[socket.roomId];
+    if (room) {
+        if (room.gameInterval) {
+            clearInterval(room.gameInterval);
+            room.gameInterval = null;
+        }
+        delete room.players[socket.id];
+        if (Object.keys(room.players).length === 0) {
+            delete rooms[socket.roomId];
+        } else {
+            io.to(socket.roomId).emit('playerLeft', socket.id);
+        }
+    }
   });
 });
 

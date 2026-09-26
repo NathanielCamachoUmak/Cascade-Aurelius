@@ -129,6 +129,33 @@
         transform: translateY(-4px);
       }
 
+      /* Tutorial modal */
+      .tutorial-key {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #E5E5E5;
+        white-space: nowrap;
+      }
+      .tutorial-tab {
+        color: #9CA3AF;
+        border-bottom: 2px solid transparent;
+      }
+      .tutorial-tab:hover {
+        color: #E5E5E5;
+      }
+      .tutorial-tab-active {
+        color: #00FFFF;
+        border-bottom: 2px solid #00FFFF;
+      }
+      .tutorial-panel.hidden {
+        display: none;
+      }
+
       /* Panel glow on hover */
       .panel-glow {
         transition: all 0.3s ease;
@@ -230,7 +257,7 @@
           <!-- Subtitle -->
           <p class="text-gray-400 text-xs tracking-[0.3em] uppercase mb-10">SELECT YOUR MODE</p>
 
-          <!-- Mode buttons (styled like index.html CTA buttons) -->
+                    <!-- Mode buttons (styled like index.html CTA buttons) -->
           <div class="flex flex-col sm:flex-row gap-4 w-full max-w-2xl px-4">
             <button id="btn-solo" class="group relative flex-1 px-8 py-4 bg-neon-cyan text-deep-purple font-bold text-lg tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_25px_rgba(0,255,255,0.3)] hover:shadow-[0_0_40px_rgba(0,255,255,0.5)]">
               <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
@@ -243,6 +270,69 @@
             <button id="btn-play-online" class="group relative flex-1 px-8 py-4 bg-card-bg/80 backdrop-blur-sm border-2 border-neon-pink/40 text-neon-pink font-bold text-lg tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:bg-neon-pink hover:text-deep-purple hover:shadow-[0_0_30px_rgba(255,20,147,0.3)] cursor-pointer">
               <span class="relative flex items-center justify-center gap-2">▶ PLAY ONLINE</span>
             </button>
+          </div>
+
+          <!-- How To Play -->
+          <button id="btn-how-to-play" class="mt-5 flex items-center gap-2 px-5 py-2 text-gray-400 hover:text-white text-[11px] font-bold tracking-[0.2em] uppercase border border-card-border hover:border-neon-cyan/50 rounded-full transition-all duration-200 cursor-pointer">
+            <span class="text-neon-cyan">?</span> How To Play
+          </button>
+        </div>
+
+        <!-- ───── Tutorial Modal ───── -->
+        <div id="tutorial-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+          <div class="relative w-full max-w-4xl max-h-[85vh] bg-card-bg border border-card-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-card-border shrink-0">
+              <h2 class="text-white font-extrabold text-lg tracking-wide">How To Play</h2>
+              <button id="btn-tutorial-close" class="text-gray-400 hover:text-white text-2xl leading-none cursor-pointer">&times;</button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex gap-1 px-6 pt-4 shrink-0 border-b border-card-border">
+              <button data-tab="controls" class="tutorial-tab tutorial-tab-active px-4 py-2 text-[11px] font-bold tracking-widest uppercase rounded-t-md cursor-pointer">Controls</button>
+              <button data-tab="classes" class="tutorial-tab px-4 py-2 text-[11px] font-bold tracking-widest uppercase rounded-t-md cursor-pointer">Classes & Abilities</button>
+              <button data-tab="blocks" class="tutorial-tab px-4 py-2 text-[11px] font-bold tracking-widest uppercase rounded-t-md cursor-pointer">Special Blocks</button>
+            </div>
+
+            <!-- Panels -->
+            <div class="overflow-y-auto p-6">
+              <!-- Controls Panel -->
+              <div data-panel="controls" class="tutorial-panel grid sm:grid-cols-2 gap-6">
+                <div>
+                  <h3 class="text-neon-cyan text-[11px] font-black tracking-widest uppercase mb-3">Movement</h3>
+                  <ul class="space-y-2 text-sm text-gray-300">
+                    <li class="flex items-center justify-between"><span>Move Left / Right</span><span class="tutorial-key">← / →</span></li>
+                    <li class="flex items-center justify-between"><span>Soft Drop</span><span class="tutorial-key">↓</span></li>
+                    <li class="flex items-center justify-between"><span>Hard Drop</span><span class="tutorial-key">Space</span></li>
+                    <li class="flex items-center justify-between"><span>Rotate Clockwise</span><span class="tutorial-key">↑ / X</span></li>
+                    <li class="flex items-center justify-between"><span>Rotate Counter-Clockwise</span><span class="tutorial-key">Z</span></li>
+                    <li class="flex items-center justify-between"><span>Hold Piece</span><span class="tutorial-key">C</span></li>
+                  </ul>
+                </div>
+                <div>
+                  <h3 class="text-neon-yellow text-[11px] font-black tracking-widest uppercase mb-3">Abilities & Targeting</h3>
+                  <ul class="space-y-2 text-sm text-gray-300">
+                    <li class="flex items-center justify-between"><span>Ability Q</span><span class="tutorial-key">Q</span></li>
+                    <li class="flex items-center justify-between"><span>Ability E</span><span class="tutorial-key">E</span></li>
+                    <li class="flex items-center justify-between"><span>Ultimate</span><span class="tutorial-key">R / Shift</span></li>
+                    <li class="flex items-center justify-between"><span>Cycle Target Opponent</span><span class="tutorial-key">Tab</span></li>
+                  </ul>
+                  <p class="text-gray-500 text-xs leading-relaxed mt-4">Your ultimate charges as you clear lines — the amount needed depends on your class. Some abilities (like Scramble, Grid Shift, and Guardian Angel) affect whichever opponent you have targeted, so use Tab to pick who you're aiming at before you fire.</p>
+                </div>
+              </div>
+
+              <!-- Classes Panel -->
+              <div data-panel="classes" class="tutorial-panel hidden">
+                <p class="text-gray-500 text-xs leading-relaxed mb-4">Every class has a passive bonus plus a Q, E, and ultimate ability. Pick the one that matches how you like to play.</p>
+                <div id="tutorial-class-list" class="grid sm:grid-cols-2 gap-4"></div>
+              </div>
+
+              <!-- Special Blocks Panel -->
+              <div data-panel="blocks" class="tutorial-panel hidden">
+                <p class="text-gray-500 text-xs leading-relaxed mb-4">Clearing a line containing one of these blocks triggers its effect. Look for the letter printed on the block to know what you're about to trigger.</p>
+                <div id="tutorial-block-list" class="grid sm:grid-cols-2 gap-3"></div>
+              </div>
+            </div>
           </div>
         </div>
 
