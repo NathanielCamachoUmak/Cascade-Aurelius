@@ -7,6 +7,8 @@ import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
 import { AudioManager } from './AudioManager'
+import { mountInteractiveTutorial } from './InteractiveTutorial'
+
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -385,6 +387,8 @@ tutorialTabs.forEach(tab => {
     });
   });
 });
+
+mountInteractiveTutorial(tutorialModal);
 
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {
