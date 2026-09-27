@@ -1558,6 +1558,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       });
     } else if (config.mode === 'ONLINE') {
+      if (config.onlineModeId) selectedOnlineMode = config.onlineModeId;
       if (lobby && config.onlineModeId) lobby.selectedMode = config.onlineModeId;
       lobby.show();
     }
