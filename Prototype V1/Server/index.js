@@ -171,6 +171,7 @@ function getRoomState(roomId) {
       eliminatedAt: player.eliminatedAt || null,
       isBot: !!player.isBot,
       ownerId: player.ownerId || null,
+      classId: player.classId || 'SPEEDSTER',
     })),
   };
 }
@@ -642,7 +643,7 @@ function removePlayer(socket, { announceDisconnect = false } = {}) {
   if (room.phase === 'post-game') updateRematchVotes(roomId);
 }
 
-function addPlayer(socket, roomId, name, requestedModeId, { create = false } = {}) {
+function addPlayer(socket, roomId, name, requestedModeId, classId, { create = false } = {}) {
   if (!rooms.has(roomId) && !create) {
     socket.emit('join-error', { message: 'Room not found. Host this room first or enter an existing room code.' });
     return;
@@ -673,6 +674,7 @@ function addPlayer(socket, roomId, name, requestedModeId, { create = false } = {
     lines: 0,
     kills: 0,
     eliminatedAt: null,
+    classId: classId || 'SPEEDSTER',
   });
   if (!room.hostId) room.hostId = socket.id;
   socket.join(roomId);
@@ -689,7 +691,7 @@ io.on('connection', socket => {
       socket.emit('join-error', { message: 'Leave your current room before hosting another lobby.' });
       return;
     }
-    addPlayer(socket, roomId, name, modeId, { create: true });
+    addPlayer(socket, roomId, name, modeId, classId, { create: true });
   });
 
   socket.on('join-room', ({ roomId, name, modeId, classId }) => {
@@ -697,12 +699,12 @@ io.on('connection', socket => {
       socket.emit('confirm-join', { currentRoom: socket.data.roomId, newRoom: roomId, newModeId: modeId });
       return;
     }
-    if (!socket.data.roomId) addPlayer(socket, roomId, name, modeId, { create: false });
+    if (!socket.data.roomId) addPlayer(socket, roomId, name, modeId, classId, { create: false });
   });
 
-  socket.on('confirm-join', ({ newRoomId, name, modeId }) => {
+  socket.on('confirm-join', ({ newRoomId, name, modeId, classId }) => {
     if (socket.data.roomId) removePlayer(socket);
-    addPlayer(socket, newRoomId, name, modeId, { create: false });
+    addPlayer(socket, newRoomId, name, modeId, classId, { create: false });
   });
 
   socket.on('leave-lobby', () => removePlayer(socket));
@@ -764,6 +766,7 @@ io.on('connection', socket => {
       eliminatedAt: null,
       isBot: true,
       ownerId: socket.id,
+      classId: 'SPEEDSTER',
     });
     emitRoomState(roomId);
   });
