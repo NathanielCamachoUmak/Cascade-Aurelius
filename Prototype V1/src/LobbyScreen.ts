@@ -82,8 +82,9 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     if (network) return network;
     network = new NetworkManager();
 
-    network.onRoomUpdate = (state: RoomState) => {
+    network.onRoomUpdate = (state: RoomState | null) => {
       currentRoomState = state;
+      if (!state) return;
       currentLobbyHostId = state.hostId;
       activeOnlineMode = state.mode.id;
       onlineTeamScores = state.teamScores;
@@ -346,7 +347,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   });
 
   btnLeaveLobby.addEventListener('click', () => {
-    options.onLeaveToMenu();
+    reset();
   });
 
   btnStartMatch.addEventListener('click', () => {

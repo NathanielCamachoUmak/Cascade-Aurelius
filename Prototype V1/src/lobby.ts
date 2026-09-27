@@ -742,8 +742,12 @@ btnPostRematch.addEventListener('click', () => {
 });
 
 btnPostLeave.addEventListener('click', () => {
-  returnToMenu();
-});
+    if (activeOnlineMode) {
+      returnToLobbyAuth();
+    } else {
+      returnToMenu();
+    }
+  });
 
 /**
  * Start an online multiplayer game.
@@ -1499,6 +1503,33 @@ window.addEventListener('keydown', (e: any) => {
     }
   }
 });
+
+function returnToLobbyAuth() {
+  AudioManager.playMusic('menu');
+  gameManager.state = GameState.MAIN_MENU;
+  gameHud.classList.add('hidden');
+  gameHud.classList.remove('flex');
+
+  // Disconnect from server and reset lobby component to auth panel
+  lobby.reset();
+
+  onlinePlayerTeams = [];
+  activeOnlineMode = selectedOnlineMode;
+  onlineTeamScores = { cyan: 0, magenta: 0 };
+  teamMatchEndsAt = null;
+  if (teamTimerInterval) clearInterval(teamTimerInterval);
+  teamTimerInterval = null;
+
+  // Reset menus
+  screenDifficulty.classList.add('hidden');
+  screenDifficulty.classList.remove('flex');
+  screenPostGame.classList.remove('flex');
+  screenPostGame.classList.add('hidden');
+  screenOnlineModeSelect.classList.add('hidden');
+  screenMain.classList.add('hidden');
+  
+  lobby.show();
+}
 
 function returnToMenu() {
   AudioManager.playMusic('menu');
