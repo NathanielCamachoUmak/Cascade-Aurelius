@@ -1066,7 +1066,7 @@ io.on('connection', socket => {
     
     if (target) {
       target.classId = classId;
-      broadcastRoomState(roomId);
+      emitRoomState(roomId);
     }
   });
 
