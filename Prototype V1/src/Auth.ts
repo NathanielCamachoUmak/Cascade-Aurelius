@@ -18,6 +18,7 @@ export async function mountAuth() {
   const emailInput = document.getElementById('auth-email-input') as HTMLInputElement;
   const passwordInput = document.getElementById('auth-password-input') as HTMLInputElement;
   const errorMsg = document.getElementById('auth-error')!;
+  const successMsg = document.getElementById('auth-success')!;
 
   let isRegistering = false;
 
@@ -49,11 +50,13 @@ export async function mountAuth() {
   btnClose.addEventListener('click', () => {
     modal.classList.add('hidden');
     errorMsg.classList.add('hidden');
+    successMsg.classList.add('hidden');
   });
 
   toggleBtn.addEventListener('click', () => {
     isRegistering = !isRegistering;
     errorMsg.classList.add('hidden');
+    successMsg.classList.add('hidden');
     if (isRegistering) {
       title.textContent = 'Register';
       submitBtn.textContent = 'CREATE ACCOUNT';
@@ -76,6 +79,7 @@ export async function mountAuth() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorMsg.classList.add('hidden');
+    successMsg.classList.add('hidden');
     submitBtn.disabled = true;
     submitBtn.textContent = 'PLEASE WAIT...';
 
@@ -85,7 +89,7 @@ export async function mountAuth() {
 
     try {
       if (isRegistering) {
-        const { error } = await supabase.auth.signUp({
+        const { error, data } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -93,7 +97,16 @@ export async function mountAuth() {
           }
         });
         if (error) throw error;
-        // On success, Supabase might require email confirmation, but usually logs in if disabled.
+        
+        // Show success message instead of instantly closing the modal if they need to verify
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error('This email is already registered.');
+        }
+        
+        successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
+        successMsg.classList.remove('hidden');
+        form.reset(); // clear fields
+        
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
