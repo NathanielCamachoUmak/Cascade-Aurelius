@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { showToast } from './Toast';
 
 export async function mountAuth() {
   const btnOpen = document.getElementById('btn-auth-open')!;
@@ -18,7 +19,6 @@ export async function mountAuth() {
   const emailInput = document.getElementById('auth-email-input') as HTMLInputElement;
   const passwordInput = document.getElementById('auth-password-input') as HTMLInputElement;
   const errorMsg = document.getElementById('auth-error')!;
-  const successMsg = document.getElementById('auth-success')!;
 
   let isRegistering = false;
 
@@ -50,22 +50,19 @@ export async function mountAuth() {
   const testSuccessBtn = document.getElementById('btn-test-success');
   if (testSuccessBtn) {
     testSuccessBtn.addEventListener('click', () => {
-      errorMsg.classList.add('hidden');
-      successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
-      successMsg.classList.remove('hidden');
+      showToast('Registration successful! Please check your email.', 'success');
+      modal.classList.add('hidden');
     });
   }
 
   btnClose.addEventListener('click', () => {
     modal.classList.add('hidden');
     errorMsg.classList.add('hidden');
-    successMsg.classList.add('hidden');
   });
 
   toggleBtn.addEventListener('click', () => {
     isRegistering = !isRegistering;
     errorMsg.classList.add('hidden');
-    successMsg.classList.add('hidden');
     if (isRegistering) {
       title.textContent = 'Register';
       submitBtn.textContent = 'CREATE ACCOUNT';
@@ -88,7 +85,6 @@ export async function mountAuth() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorMsg.classList.add('hidden');
-    successMsg.classList.add('hidden');
     submitBtn.disabled = true;
     submitBtn.textContent = 'PLEASE WAIT...';
 
@@ -116,10 +112,11 @@ export async function mountAuth() {
           // Email confirmation is OFF, they are instantly logged in!
           modal.classList.add('hidden');
           form.reset();
+          showToast('Account created and logged in!', 'success');
         } else {
           // Email confirmation is ON, session is null, they need to check email
-          successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
-          successMsg.classList.remove('hidden');
+          showToast('Registration successful! Please check your email.', 'success');
+          modal.classList.add('hidden'); // Close modal so they can go check their email
           form.reset(); // clear fields
         }
         
