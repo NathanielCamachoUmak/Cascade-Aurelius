@@ -754,6 +754,9 @@ io.on('connection', socket => {
     let team = payload?.team;
     if (!team) team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
     const requestedName = payload?.name || 'AI Bot';
+    const classes = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
+    const randomClass = classes[Math.floor(Math.random() * classes.length)];
+    
     room.players.set(botId, {
       name: requestedName,
       ready: true,
@@ -766,7 +769,7 @@ io.on('connection', socket => {
       eliminatedAt: null,
       isBot: true,
       ownerId: socket.id,
-      classId: 'SPEEDSTER',
+      classId: randomClass,
     });
     emitRoomState(roomId);
   });
