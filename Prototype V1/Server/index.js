@@ -1027,24 +1027,37 @@ io.on('connection', socket => {
 
   // Replace/update your socket disconnect listener:
   
-    socket.on('changeClass', (classId) => {
-      const roomId = playerRooms[socket.id];
-      if (!roomId) return;
-      const room = rooms[roomId];
-      const player = room.players.find(p => p.id === socket.id);
-      if (player) {
-        player.classId = classId;
-        io.to(roomId).emit('roomStateUpdate', room);
-      }
-    });
+    socket.on('changeClass', ({ classId, targetId }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    // If targetId is provided, check if we're host and the target is a bot
+    let target = null;
+    if (targetId && room.hostId === socket.id) {
+      target = room.players.get(targetId);
+      if (target && !target.isBot) target = null; // can only change bots
+    } else {
+      target = room.players.get(socket.id);
+    }
+    
+    if (target) {
+      target.classId = classId;
+      broadcastRoomState(roomId);
+    }
+  });
 
     socket.on('chatMessage', (msg) => {
-      const roomId = playerRooms[socket.id];
-      if (!roomId) return;
-      const room = rooms[roomId];
-      const player = room.players.find(p => p.id === socket.id);
-      if (player) {
-        io.to(roomId).emit('chatMessage', { sender: player.name, text: msg });
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (player) {
+      io.to(roomId).emit('chatMessage', { sender: player.name, text: msg });
+    }
+  });
       }
     });
 

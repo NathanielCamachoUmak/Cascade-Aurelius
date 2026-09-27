@@ -173,6 +173,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       const card = document.createElement('div');
       card.className = `flex flex-col border ${borderStyle} bg-card-bg/60 rounded-xl p-4 transition-all`;
       
+      const isMyBot = p.isBot && network?.mySocketId === state.hostId;
       card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -181,9 +182,10 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
               <div class="${nameColor} font-bold flex items-center gap-2">
                 ${p.name}
                 ${isMe ? '<span class="bg-neon-yellow text-black text-[8px] px-1 rounded font-bold uppercase">YOU</span>' : ''}
-                ${isHost ? '<span class="text-orange-500 text-xs">👑</span>' : ''}
+                ${p.isBot ? '<span class="bg-gray-600 text-white text-[8px] px-1 rounded font-bold uppercase">BOT</span>' : ''}
+                ${isHost && !p.isBot ? '<span class="text-orange-500 text-xs">👑</span>' : ''}
               </div>
-              <div class="text-[9px] text-neon-cyan font-bold tracking-widest uppercase">${cInfo.name}</div>
+              <div class="class-label-edit text-[9px] text-neon-cyan font-bold tracking-widest uppercase ${isMyBot ? 'cursor-pointer hover:text-white transition-colors' : ''}">${cInfo.name} ${isMyBot ? '✎' : ''}</div>
             </div>
           </div>
           <div class="text-[9px] text-gray-500 uppercase font-bold tracking-widest">${isTeamMode ? (p.team==='cyan'?'CYAN ':'MAGENTA ') : ''}P${idx + 1}</div>
@@ -208,6 +210,18 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
           ${p.ready ? '<div class="text-[9px] border border-neon-green/30 text-neon-green px-2 py-0.5 rounded tracking-widest uppercase">READY</div>' : '<div class="text-[9px] border border-gray-600 text-gray-400 px-2 py-0.5 rounded tracking-widest uppercase">WAITING</div>'}
         </div>
       `;
+      
+      if (isMyBot) {
+        const editBtn = card.querySelector('.class-label-edit');
+        editBtn?.addEventListener('click', () => {
+          showClassSelectModal({
+            initialClassId: p.classId,
+            onConfirm: (finalClassId) => {
+              if (network) network.changeClass(finalClassId, p.id);
+            }
+          });
+        });
+      }
       return card;
     };
 

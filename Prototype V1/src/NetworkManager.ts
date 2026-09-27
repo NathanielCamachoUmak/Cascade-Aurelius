@@ -262,9 +262,9 @@ export class NetworkManager {
   public sendChatMessage(msg: string) {
       this.socket.emit("chatMessage", msg);
     }
-    public changeClass(classId: string) {
-      this.socket.emit("changeClass", classId);
-    }
+    public changeClass(classId: string, targetId?: string) {
+    this.socket.emit("changeClass", { classId, targetId });
+  }
     public leaveRoom() {
       this.socket.emit("leave-lobby");
       this.socket.disconnect();
