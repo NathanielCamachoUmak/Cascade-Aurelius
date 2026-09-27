@@ -147,7 +147,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     let colFFA!: HTMLElement;
 
     if (isTeamMode) {
-      playerList.className = 'flex flex-col lg:flex-row gap-6 w-full max-h-[75vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent';
+      playerList.className = 'flex flex-col lg:flex-row gap-6 w-full flex-1 min-h-[0px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent';
       
       colMagenta = document.createElement('div');
       colMagenta.className = 'flex-1 flex flex-col gap-4';
@@ -158,7 +158,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       playerList.appendChild(colMagenta);
       playerList.appendChild(colCyan);
     } else {
-      playerList.className = 'grid grid-cols-1 lg:grid-cols-2 gap-4 w-full max-h-[75vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent';
+      playerList.className = 'grid grid-cols-1 lg:grid-cols-2 gap-4 w-full flex-1 min-h-[0px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent';
       colFFA = playerList;
     }
 
@@ -280,10 +280,10 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       // Add empty cards to fill remaining team size
       for (let i = magentaPlayers.length; i < state.mode.teamSize; i++) {
         // Only render the FIRST empty slot, not all of them
-        if (i === magentaPlayers.length) colMagenta.appendChild(createEmptyCardHTML());
+        if (i === magentaPlayers.length) colMagenta.appendChild(createEmptyCardHTML('magenta'));
       }
       for (let i = cyanPlayers.length; i < state.mode.teamSize; i++) {
-        if (i === cyanPlayers.length) colCyan.appendChild(createEmptyCardHTML());
+        if (i === cyanPlayers.length) colCyan.appendChild(createEmptyCardHTML('cyan'));
       }
     } else {
       state.players.forEach((p, idx) => {
