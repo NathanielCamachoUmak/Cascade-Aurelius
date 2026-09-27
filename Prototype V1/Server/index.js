@@ -663,7 +663,8 @@ function addPlayer(socket, roomId, name, requestedModeId, classId, { create = fa
     return;
   }
 
-  const team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
+  let team = payload?.team;
+    if (!team) team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
   room.players.set(socket.id, {
     name: name || 'Player',
     ready: false,
@@ -751,7 +752,8 @@ io.on('connection', socket => {
     if (room.players.size >= room.mode.capacity) return;
 
     const botId = 'bot-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-    const team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
+    let team = payload?.team;
+    if (!team) team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
     const requestedName = payload?.name || 'AI Bot';
     
     room.players.set(botId, {

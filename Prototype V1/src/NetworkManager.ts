@@ -295,8 +295,8 @@ export class NetworkManager {
     this.socket.emit("kick-player", targetId);
   }
 
-  public addBot(name?: string) {
-    this.socket.emit("add-bot", { name });
+  public addBot(name?: string, team?: 'cyan' | 'magenta') {
+    this.socket.emit("add-bot", { name, team });
   }
 
   public removeBot(botId: string) {

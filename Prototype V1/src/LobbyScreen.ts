@@ -241,10 +241,15 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       return card;
     };
 
-    const createEmptyCardHTML = () => {
+    const createEmptyCardHTML = (team?: 'cyan' | 'magenta') => {
       const isHost = network?.mySocketId === state.hostId;
       const emptyCard = document.createElement('div');
-      emptyCard.className = 'flex flex-col border border-dashed border-gray-600 bg-card-bg/20 rounded-xl p-4 items-center justify-center min-h-[220px] transition-all';
+      
+      let borderClass = 'border-gray-600';
+      if (team === 'cyan') borderClass = 'border-neon-cyan/40';
+      if (team === 'magenta') borderClass = 'border-neon-pink/40';
+      
+      emptyCard.className = `flex flex-col border border-dashed ${borderClass} bg-card-bg/20 rounded-xl p-4 items-center justify-center min-h-[220px] transition-all`;
       
       if (isHost) {
         emptyCard.innerHTML = `<button class="px-6 py-3 bg-transparent border-2 border-neon-yellow/60 text-neon-yellow rounded-lg hover:bg-neon-yellow/10 transition-colors uppercase tracking-widest text-xs font-bold shadow-[0_0_15px_rgba(255,220,80,0.15)] flex items-center gap-2">
@@ -255,7 +260,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         btn?.addEventListener('click', () => {
           const existingNames = state.players.map(p => p.name);
           import('./BotNames').then(({ getUniqueBotName }) => {
-            network?.addBot(getUniqueBotName(existingNames));
+            network?.addBot(getUniqueBotName(existingNames), team);
           });
         });
       } else {
