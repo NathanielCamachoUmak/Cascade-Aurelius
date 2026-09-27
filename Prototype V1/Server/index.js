@@ -719,6 +719,28 @@ io.on('connection', socket => {
     beginRoomCountdown(roomId, socket.id);
   });
 
+  
+  socket.on('kick-player', (targetId) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    
+    if (room.players.has(targetId)) {
+      const target = room.players.get(targetId);
+      room.players.delete(targetId);
+      
+      if (!target.isBot) {
+        io.to(targetId).emit('kicked');
+        const targetSocket = io.sockets.sockets.get(targetId);
+        if (targetSocket) {
+          targetSocket.leave(roomId);
+          targetSocket.data.roomId = null;
+        }
+      }
+      emitRoomState(roomId);
+    }
+  });
+
   socket.on('add-bot', (payload) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);

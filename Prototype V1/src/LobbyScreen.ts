@@ -108,6 +108,11 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     network.onPreGameCountdown = (count: number) => {
       footerStatus.innerText = `Match starting in ${count}...`;
     };
+    
+    network.onKicked = () => {
+      alert("You have been kicked from the lobby.");
+      options.onLeaveToMenu();
+    };
 
     network.onChatMessage = (msg) => {
       const el = document.createElement('div');
@@ -210,6 +215,15 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
           ${p.ready ? '<div class="text-[9px] border border-neon-green/30 text-neon-green px-2 py-0.5 rounded tracking-widest uppercase">READY</div>' : '<div class="text-[9px] border border-gray-600 text-gray-400 px-2 py-0.5 rounded tracking-widest uppercase">WAITING</div>'}
         </div>
       `;
+      
+      if (isHost && !isMe) {
+        const kickBtn = card.querySelector('.kick-btn');
+        kickBtn?.addEventListener('click', () => {
+          if (confirm(`Kick ${p.name} from the lobby?`)) {
+            network?.kickPlayer(p.id);
+          }
+        });
+      }
       
       if (isMyBot) {
         const editBtn = card.querySelector('.class-label-edit');
