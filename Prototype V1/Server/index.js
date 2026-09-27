@@ -1079,8 +1079,6 @@ io.on('connection', socket => {
     if (player) {
       io.to(roomId).emit('chatMessage', { sender: player.name, text: msg });
     }
-  });
-      }
     });
 
     socket.on('disconnect', () => {
