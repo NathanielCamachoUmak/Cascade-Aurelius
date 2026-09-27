@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import { showToast } from './Toast';
 
+export function openAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
 export async function mountAuth() {
   const btnOpen = document.getElementById('btn-auth-open')!;
   const userDisplay = document.getElementById('auth-user-display')!;

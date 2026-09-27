@@ -156,5 +156,16 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
   store.onRefreshNeeded = refresh;
   const report = (input: MatchProgressionInput) => { const result = store.recordMatch(input); if (result.earned > 0) showToast(`+${result.earned} customization points earned`, 'reward'); for (const achievement of result.achievements) setTimeout(() => showToast(`Achievement unlocked: ${achievement.title}`, 'reward'), 300); refresh(); return result; };
   const closeOverlay = () => { overlay.classList.remove('open'); overlay.style.display = 'none'; };
-  profileNav.addEventListener('click', event => { event.preventDefault(); refresh(); overlay.classList.add('open'); overlay.style.display = 'flex'; }); overlay.querySelector('.bq-progress-close')?.addEventListener('click', closeOverlay); overlay.addEventListener('click', event => { if (event.target === overlay) closeOverlay(); }); window.addEventListener('keydown', event => { if (event.key === 'Escape') closeOverlay(); }); closeOverlay(); refresh(); return { recordMatch: report, store };
+  profileNav.addEventListener('click', event => { 
+    event.preventDefault(); 
+    if (!store.currentUserId) {
+      import('./Auth').then(m => m.openAuthModal());
+      showToast('Please sign in to view your profile.', 'warning');
+      return;
+    }
+    refresh(); 
+    overlay.classList.add('open'); 
+    overlay.style.display = 'flex'; 
+  }); 
+  overlay.querySelector('.bq-progress-close')?.addEventListener('click', closeOverlay); overlay.addEventListener('click', event => { if (event.target === overlay) closeOverlay(); }); window.addEventListener('keydown', event => { if (event.key === 'Escape') closeOverlay(); }); closeOverlay(); refresh(); return { recordMatch: report, store };
 }
