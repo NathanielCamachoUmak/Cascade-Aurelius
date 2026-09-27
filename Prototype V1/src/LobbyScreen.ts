@@ -209,6 +209,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         </div>
         <div class="flex items-center justify-between mt-auto border-t border-white/5 pt-2">
           <div class="flex items-center gap-2 text-[9px] uppercase tracking-widest font-bold ${p.ready ? 'text-neon-green' : 'text-gray-500'}">
+            ${isHost && !isMe ? `<button class="kick-btn text-red-500 hover:text-red-400 hover:bg-red-500/10 transition-colors bg-black/40 border border-red-500/30 rounded px-1.5 py-0.5 mr-1 flex-shrink-0">KICK</button>` : ''}
             <div class="w-1.5 h-1.5 rounded-full ${p.ready ? 'bg-neon-green' : 'bg-gray-500'}"></div>
             ${p.ready ? 'Ready' : 'Not ready'}
           </div>
