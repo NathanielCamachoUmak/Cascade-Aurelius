@@ -34,6 +34,7 @@ export interface BattleRoyalRanking {
 }
 
 export interface LobbyPlayer {
+  classId?: string;
   id: string;
   name: string;
   ready: boolean;
@@ -104,6 +105,7 @@ export class NetworkManager {
   public currentRoomId: string | null = null;
 
   // --- Lobby callbacks ---
+  public onChatMessage: ((data: {sender: string; text: string}) => void) | null = null;
   public onRoomUpdate: ((state: RoomState) => void) | null = null;
   public onJoinError: ((message: string) => void) | null = null;
   public onConnected: (() => void) | null = null;
@@ -145,6 +147,7 @@ export class NetworkManager {
       this.onConnected?.();
     });
 
+    this.socket.on('chatMessage', (data: {sender: string; text: string}) => { this.onChatMessage?.(data); });
     this.socket.on("room-update", (state: RoomState) => {
       this.currentRoomId = state.roomId;
       this.onRoomUpdate?.(state);
@@ -245,18 +248,28 @@ export class NetworkManager {
 
   // --- Lobby emitters ---
 
-  public hostRoom(roomId: string, name: string, modeId: OnlineModeId) {
-    this.socket.emit('host-room', { roomId, name, modeId });
+  public hostRoom(roomId: string, name: string, modeId: OnlineModeId, classId: string) {
+    this.socket.emit('host-room', { roomId, name, modeId, classId });
   }
 
-  public joinRoom(roomId: string, name: string, modeId: OnlineModeId) {
-    this.socket.emit("join-room", { roomId, name, modeId });
+  public joinRoom(roomId: string, name: string, modeId: OnlineModeId, classId: string) {
+    this.socket.emit("join-room", { roomId, name, modeId, classId });
   }
 
   public switchTeam() {
   this.socket.emit('switch-team');
   }
-  public startLobbyNow() {
+  public sendChatMessage(msg: string) {
+      this.socket.emit("chatMessage", msg);
+    }
+    public changeClass(classId: string) {
+      this.socket.emit("changeClass", classId);
+    }
+    public leaveRoom() {
+      this.socket.emit("leave-lobby");
+      this.socket.disconnect();
+    }
+    public startLobbyNow() {
     this.socket.emit('host-start-now');
   }
 

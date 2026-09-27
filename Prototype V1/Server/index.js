@@ -684,7 +684,7 @@ function addPlayer(socket, roomId, name, requestedModeId, { create = false } = {
 io.on('connection', socket => {
   console.log(`[connect] ${socket.id}`);
 
-  socket.on('host-room', ({ roomId, name, modeId }) => {
+  socket.on('host-room', ({ roomId, name, modeId, classId }) => {
     if (socket.data.roomId) {
       socket.emit('join-error', { message: 'Leave your current room before hosting another lobby.' });
       return;
@@ -692,7 +692,7 @@ io.on('connection', socket => {
     addPlayer(socket, roomId, name, modeId, { create: true });
   });
 
-  socket.on('join-room', ({ roomId, name, modeId }) => {
+  socket.on('join-room', ({ roomId, name, modeId, classId }) => {
     if (socket.data.roomId && socket.data.roomId !== roomId && rooms.has(socket.data.roomId)) {
       socket.emit('confirm-join', { currentRoom: socket.data.roomId, newRoom: roomId, newModeId: modeId });
       return;
@@ -1026,7 +1026,29 @@ io.on('connection', socket => {
   });
 
   // Replace/update your socket disconnect listener:
-  socket.on('disconnect', () => {
+  
+    socket.on('changeClass', (classId) => {
+      const roomId = playerRooms[socket.id];
+      if (!roomId) return;
+      const room = rooms[roomId];
+      const player = room.players.find(p => p.id === socket.id);
+      if (player) {
+        player.classId = classId;
+        io.to(roomId).emit('roomStateUpdate', room);
+      }
+    });
+
+    socket.on('chatMessage', (msg) => {
+      const roomId = playerRooms[socket.id];
+      if (!roomId) return;
+      const room = rooms[roomId];
+      const player = room.players.find(p => p.id === socket.id);
+      if (player) {
+        io.to(roomId).emit('chatMessage', { sender: player.name, text: msg });
+      }
+    });
+
+    socket.on('disconnect', () => {
     const room = rooms[socket.roomId];
     if (room) {
         if (room.gameInterval) {
