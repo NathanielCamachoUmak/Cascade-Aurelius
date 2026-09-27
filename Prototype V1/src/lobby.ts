@@ -11,6 +11,7 @@ import { mountInteractiveTutorial } from './InteractiveTutorial'
 import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
 import { mountSettings } from './Settings'
 import { mountAuth } from './Auth'
+import { showClassSelectModal } from './ClassSelectModal'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -1541,12 +1542,21 @@ window.addEventListener('DOMContentLoaded', () => {
   const bootConfigStr = sessionStorage.getItem('cascade_boot_config');
   if (bootConfigStr) {
     const config = JSON.parse(bootConfigStr);
-    selectedClass = config.selectedClass || selectedClass;
-    if (config.mode === 'SOLO') {
-      startGame('SOLO');
-    } else if (config.mode === 'VS_BOT') {
-
-      startGame(config.botDifficulty === 'HARD' ? 'HARD' : 'EASY');
+    
+    if (config.mode === 'SOLO' || config.mode === 'VS_BOT') {
+      const initialClassId = config.selectedClass?.id || selectedClass;
+      // Show loadout menu for single-player modes before starting
+      showClassSelectModal({
+        initialClassId: initialClassId,
+        onConfirm: (classId) => {
+          selectedClass = classId as PlayerClass;
+          if (config.mode === 'SOLO') {
+            startGame('SOLO');
+          } else {
+            startGame(config.botDifficulty === 'HARD' ? 'HARD' : 'EASY');
+          }
+        }
+      });
     } else if (config.mode === 'ONLINE') {
       if (lobby && config.onlineModeId) lobby.selectedMode = config.onlineModeId;
       lobby.show();
