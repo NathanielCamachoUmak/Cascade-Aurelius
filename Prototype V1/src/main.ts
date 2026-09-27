@@ -10,6 +10,7 @@ import { AudioManager } from './AudioManager'
 import { mountInteractiveTutorial } from './InteractiveTutorial'
 import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
 import { mountSettings } from './Settings'
+import { mountAuth } from './Auth'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -403,6 +404,8 @@ const navSettings = document.getElementById('nav-settings');
 if (navSettings) {
   mountSettings(navSettings);
 }
+
+mountAuth();
 
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {

@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export type ProgressionMode = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
 export type CosmeticKind = 'block-skin' | 'special-effect' | 'profile-style';
 
@@ -79,12 +81,49 @@ function readSave(): SaveData {
 export class ProgressionStore {
   private save: SaveData = readSave();
   private history: ProgressionMode[] = [];
+  public currentUserId: string | null = null;
+  public onRefreshNeeded: (() => void) | null = null;
+
+  constructor() {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      this.currentUserId = session?.user?.id || null;
+      if (this.currentUserId) {
+        // Fetch progression from cloud
+        const { data } = await supabase.from('profiles').select('wins, games_played, settings_and_hotkeys').eq('id', this.currentUserId).single();
+        if (data) {
+          this.save.wins = data.wins;
+          this.save.matches = data.games_played;
+          const cloudSettings: any = data.settings_and_hotkeys || {};
+          if (cloudSettings.progressionData) {
+            this.save.points = cloudSettings.progressionData.points ?? this.save.points;
+            this.save.achievements = cloudSettings.progressionData.achievements ?? this.save.achievements;
+            this.save.cosmetics = cloudSettings.progressionData.cosmetics ?? this.save.cosmetics;
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save));
+          if (this.onRefreshNeeded) this.onRefreshNeeded();
+        }
+      }
+    });
+  }
+
   public get points() { return this.save.points; }
   public get wins() { return this.save.wins; }
   public get matches() { return this.save.matches; }
   public getAchievements(): Achievement[] { return ACHIEVEMENT_DEFS.map(def => ({ ...def, ...(this.save.achievements[def.id] || {}), unlocked: Boolean(this.save.achievements[def.id]?.unlocked) })); }
   public getCosmetics(): Cosmetic[] { return COSMETIC_DEFS.map(def => ({ ...def, ...(this.save.cosmetics[def.id] || {}), unlocked: def.cost === 0 || Boolean(this.save.cosmetics[def.id]?.unlocked), equipped: Boolean(this.save.cosmetics[def.id]?.equipped) })); }
-  private persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save)); }
+  
+  private async persist() { 
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save)); 
+    if (this.currentUserId) {
+      // Sync cloud stats
+      await supabase.from('profiles').update({
+        wins: this.save.wins,
+        games_played: this.save.matches,
+        // We pack points and cosmetics into the flexible jsonb to avoid schema changes
+        settings_and_hotkeys: { progressionData: { points: this.save.points, achievements: this.save.achievements, cosmetics: this.save.cosmetics } }
+      }).eq('id', this.currentUserId);
+    }
+  }
   private unlock(id: string): Achievement | null { const achievement = this.getAchievements().find(item => item.id === id); if (!achievement || achievement.unlocked) return null; this.save.achievements[id] = { unlocked: true, unlockedAt: Date.now() }; this.save.points += achievement.reward; return { ...achievement, unlocked: true, unlockedAt: Date.now() }; }
   public recordMatch(input: MatchProgressionInput): { earned: number; achievements: Achievement[] } {
     this.save.matches += 1; if (input.won) this.save.wins += 1;
@@ -113,6 +152,7 @@ export interface ProgressionController { recordMatch(input: MatchProgressionInpu
 export function mountProgression(profileNav: HTMLElement): ProgressionController {
   ensureStyles(); const store = new ProgressionStore(); const overlay = document.createElement('div'); overlay.className = 'bq-progress-overlay'; overlay.innerHTML = `<div class="bq-progress-panel" role="dialog" aria-modal="true"><div class="bq-progress-head"><div><p>PROFILE PROGRESSION</p><h2>Rewards & achievements</h2></div><button class="bq-progress-close" type="button">×</button></div><div class="bq-progress-body"><div class="bq-progress-summary"><div class="bq-progress-stat"><b data-points>0</b><span>customization points</span></div><div class="bq-progress-stat"><b data-wins>0</b><span>multiplayer wins</span></div><div class="bq-progress-stat"><b data-matches>0</b><span>matches played</span></div></div><div class="bq-progress-section"><h3>Achievements</h3><div class="bq-progress-grid" data-achievements></div></div><div class="bq-progress-section"><h3>Block skins & special effects</h3><div class="bq-progress-grid" data-cosmetics></div></div></div></div>`; document.body.appendChild(overlay);
   const refresh = () => { (overlay.querySelector('[data-points]') as HTMLElement).textContent = store.points.toLocaleString(); (overlay.querySelector('[data-wins]') as HTMLElement).textContent = String(store.wins); (overlay.querySelector('[data-matches]') as HTMLElement).textContent = String(store.matches); const achievements = overlay.querySelector<HTMLElement>('[data-achievements]')!; achievements.innerHTML = store.getAchievements().map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4>${item.unlocked ? '◆ ' : '◇ '}${item.title}</h4><p>${item.description}</p><small>${item.unlocked ? `UNLOCKED · +${item.reward} PTS` : `REWARD · +${item.reward} PTS`}</small></article>`).join(''); const cosmetics = overlay.querySelector<HTMLElement>('[data-cosmetics]')!; cosmetics.innerHTML = store.getCosmetics().map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4 style="color:${item.accent}">${item.name}</h4><p>${item.description}</p><small>${item.unlocked ? (item.equipped ? 'EQUIPPED' : 'UNLOCKED') : `${item.cost} PTS`}</small><br><button class="bq-progress-btn" data-cosmetic="${item.id}">${item.unlocked ? (item.equipped ? 'UNEQUIP' : 'EQUIP') : 'UNLOCK'}</button></article>`).join(''); cosmetics.querySelectorAll<HTMLButtonElement>('[data-cosmetic]').forEach(button => button.addEventListener('click', () => { const id = button.dataset.cosmetic!; const item = store.getCosmetics().find(cosmetic => cosmetic.id === id)!; let result: { ok: boolean; message: string }; if (item.unlocked && item.equipped) { store.unequip(id); result = { ok: true, message: `${item.name} unequipped.` }; } else if (item.unlocked) { store.equip(id); result = { ok: true, message: `${item.name} equipped.` }; } else { result = store.purchase(id); } showToast(result.message); refresh(); })); };
+  store.onRefreshNeeded = refresh;
   const showToast = (message: string) => { const toast = document.createElement('div'); toast.className = 'bq-progress-toast'; toast.textContent = message; document.body.appendChild(toast); setTimeout(() => toast.remove(), 2600); };
   const report = (input: MatchProgressionInput) => { const result = store.recordMatch(input); if (result.earned > 0) showToast(`+${result.earned} customization points earned`); for (const achievement of result.achievements) setTimeout(() => showToast(`Achievement unlocked: ${achievement.title}`), 300); refresh(); return result; };
   const closeOverlay = () => { overlay.classList.remove('open'); overlay.style.display = 'none'; };

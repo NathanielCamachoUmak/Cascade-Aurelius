@@ -1,4 +1,5 @@
 import { AudioManager } from './AudioManager';
+import { supabase } from './supabase';
 
 export interface SettingsData {
   musicEnabled: boolean;
@@ -28,8 +29,32 @@ function readSettings(): SettingsData {
 // event/callback system — matches how showGhostPiece etc. already work.
 export const settingsState: SettingsData = readSettings();
 
-function persist() {
+let currentUserId: string | null = null;
+let settingsRefreshCallback: (() => void) | null = null;
+
+supabase.auth.onAuthStateChange(async (_event, session) => {
+  currentUserId = session?.user?.id || null;
+  if (currentUserId) {
+    // User logged in, fetch settings from cloud
+    const { data } = await supabase.from('profiles').select('settings_and_hotkeys').eq('id', currentUserId).single();
+    if (data && data.settings_and_hotkeys) {
+      const cloudSettings = data.settings_and_hotkeys as Partial<SettingsData>;
+      Object.assign(settingsState, { ...defaultSettings(), ...cloudSettings });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsState));
+      applyAudioSettings();
+      if (settingsRefreshCallback) settingsRefreshCallback();
+    }
+  }
+});
+
+async function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsState));
+  if (currentUserId) {
+    // Push to Supabase quietly
+    await supabase.from('profiles').update({
+      settings_and_hotkeys: settingsState
+    }).eq('id', currentUserId);
+  }
 }
 
 function applyAudioSettings() {
@@ -108,6 +133,7 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
     sfxSlider.disabled = !settingsState.sfxEnabled;
     vfxToggle.checked = settingsState.visualEffectsEnabled;
   };
+  settingsRefreshCallback = refresh;
 
   musicToggle.addEventListener('change', () => {
     settingsState.musicEnabled = musicToggle.checked;
