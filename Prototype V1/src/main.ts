@@ -8,6 +8,7 @@ import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './O
 import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
 import { AudioManager } from './AudioManager'
 import { mountInteractiveTutorial } from './InteractiveTutorial'
+import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
 
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -390,6 +391,14 @@ tutorialTabs.forEach(tab => {
 
 mountInteractiveTutorial(tutorialModal);
 
+// The "Profile" nav link had no click handler at all — mountProgression()
+// is what wires it up to actually open the rewards/achievements overlay.
+const navProfile = document.getElementById('nav-profile');
+let progression: ProgressionController | null = null;
+if (navProfile) {
+  progression = mountProgression(navProfile);
+}
+
 // Menu Event Listeners
 btnSolo.addEventListener('click', () => {
   updateNavHighlight('nav-loadout');
@@ -579,8 +588,26 @@ function wireGameCallbacks(network: NetworkManager) {
       postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
       postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
     }
-    postGameVotes.innerText = `0 voted for rematch`;
+        postGameVotes.innerText = `0 voted for rematch`;
     btnPostRematch.classList.remove('hidden');
+
+    // Record this match's result toward profile progression (points,
+    // achievements, unlockables). Only meaningful for online matches, which
+    // is the only place onPostGameStart ever fires.
+    if (progression) {
+      const me = gameManager.players[gameManager.myPlayerIndex];
+      const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] ?? null;
+      const won = data.winnerTeam
+        ? data.winnerTeam === myTeam
+        : data.winnerId === network?.mySocketId;
+      progression.recordMatch({
+        mode: activeOnlineMode as ProgressionMode,
+        won,
+        score: me?.scoreManager.score ?? 0,
+        lines: me?.scoreManager.totalLinesCleared ?? 0,
+        kills: me?.kills ?? 0,
+      });
+    }
   };
 
   network.onRematchUpdate = (data) => {

@@ -177,6 +177,10 @@
         border: 1px solid rgba(42, 34, 69, 0.8);
         border-radius: 8px;
       }
+
+      /* Keep the full-screen menu layer from stealing clicks from the header. */
+      #ui-layer { pointer-events: none; }
+      #ui-layer > * { pointer-events: auto; }
     </style>
   </head>
 
@@ -192,7 +196,7 @@
     <!-- ═══════════════════════════════════════════ -->
     <!--               TOP NAVBAR                    -->
     <!-- ═══════════════════════════════════════════ -->
-    <header class="fixed top-5 left-0 right-0 z-50 bg-nav-bg/80 backdrop-blur-sm transition-all duration-300">
+    <header class="fixed top-5 left-0 right-0 z-[80] bg-nav-bg/80 backdrop-blur-sm transition-all duration-300">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-14">
           <!-- Logo -->
