@@ -8,9 +8,9 @@ const httpServer = createServer(app);
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:3000'];
+  : ['http://localhost:5173', 'http://localhost:3000', 'https://cascade-aurelius-block-quartet-aurelius.vercel.app'];
 
-const io = new Server(httpServer, { cors: { origin: ALLOWED_ORIGINS } });
+const io = new Server(httpServer, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 3000;
 const MATCH_DURATION_MS = 3 * 60 * 1000;

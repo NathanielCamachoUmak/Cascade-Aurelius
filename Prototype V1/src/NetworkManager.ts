@@ -138,7 +138,7 @@ export class NetworkManager {
   public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
 
   constructor() {
-    this.socket = io(SERVER_URL);
+    this.socket = io(SERVER_URL, { transports: ['websocket'] });
 
     this.socket.on("connect", () => {
       this.mySocketId = this.socket.id ?? "";
