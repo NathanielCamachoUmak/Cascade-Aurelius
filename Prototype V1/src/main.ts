@@ -1,40 +1,19 @@
 import './style.css'
-import { GameManager, GameState } from './GameManager'
-import { Player } from './Player'
-import { Tetromino } from './Tetromino'
-import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
-import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
-import { AudioManager } from './AudioManager'
-import { mountInteractiveTutorial } from './InteractiveTutorial'
-import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
+import { mountProgression, type ProgressionController } from './Progression'
 import { mountSettings } from './Settings'
 import { mountAuth } from './Auth'
 
-const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-const ctx = canvas.getContext('2d')!;
-
-const BLOCK_SIZE = 30;
-const COLS = 10;
-const ROWS = 20;
-const PADDING = 40; // Space between boards in 1v1
-
-// UI Elements
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
 const screenDifficulty = document.getElementById('screen-difficulty')!;
-const gameHud = document.getElementById('game-hud')!;
 function getOrCreateOnlineModeSelectScreen() {
   const existing = document.getElementById('screen-online-mode-select');
   if (existing) return existing;
-
-  // This fallback keeps the game playable when main.ts is updated before
-  // modeselect.html. The intended HTML mount still takes precedence.
   const created = document.createElement('div');
   created.id = 'screen-online-mode-select';
   created.className = 'hidden relative z-10 w-full max-w-6xl px-4';
-  created.setAttribute('aria-live', 'polite');
   uiLayer.appendChild(created);
   return created;
 }
@@ -45,383 +24,92 @@ const btnVsBot = document.getElementById('btn-vs-bot')!;
 const btnEasyBot = document.getElementById('btn-easy-bot')!;
 const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
-const btnToggleGhost = document.getElementById('btn-toggle-ghost')!;
-
-// Tutorial elements
 const btnHowToPlay = document.getElementById('btn-how-to-play')!;
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
-const tutorialClassList = document.getElementById('tutorial-class-list')!;
-const tutorialBlockList = document.getElementById('tutorial-block-list')!;
-const tutorialTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tutorial-tab'));
-const tutorialPanels = Array.from(document.querySelectorAll<HTMLElement>('.tutorial-panel'));
-
-// Class select elements
 const screenClassSelect = document.getElementById('screen-class-select')!;
 const classCardList = document.getElementById('class-card-list')!;
 const btnClassContinue = document.getElementById('btn-class-continue')!;
 const btnClassBack = document.getElementById('btn-class-back')!;
-
-// Online Lobby elements
 const btnPlayOnline = document.getElementById('btn-play-online')!;
-
-// NEW: Lobby & Post-Game Elements
-const navLobby = document.getElementById('nav-lobby')!;
-const screenPostGame = document.getElementById('screen-post-game')!;
-const postGameWinner = document.getElementById('post-game-winner')!;
-const postGameVotes = document.getElementById('post-game-votes')!;
-const btnPostRematch = document.getElementById('btn-post-rematch')!;
-const btnPostLeave = document.getElementById('btn-post-leave')!;
-const preGameOverlay = document.getElementById('pre-game-overlay')!;
-const preGameText = document.getElementById('pre-game-text')!;
-const spectatorBanner = document.getElementById('spectator-banner')!;
-const teamMatchStrip = document.getElementById('team-match-strip')!;
-const teamScoreCyan = document.getElementById('team-score-cyan')!;
-const teamScoreMagenta = document.getElementById('team-score-magenta')!;
-const teamMatchTimer = document.getElementById('team-match-timer')!;
-const postGameTeamScores = document.getElementById('post-game-team-scores')!;
-
-const scoreElementP1 = document.getElementById('score-p1')!;
-const levelElementP1 = document.getElementById('level-p1')!;
-const comboElementP1 = document.getElementById('combo-p1')!;
-const multiplierElementP1 = document.getElementById('multiplier-p1')!;
-const holdCanvasP1 = document.getElementById('hold-canvas-p1') as HTMLCanvasElement;
-
-const duoLayoutContainer = document.getElementById('duo-layout-container')!;
-const globalCanvasContainer = document.getElementById('canvas-container')!;
-const p1Pod = document.getElementById('p1-pod')!;
-const p2Pod = document.getElementById('p2-pod')!;
-const boardP1 = document.getElementById('board-p1') as HTMLCanvasElement;
-const boardP2 = document.getElementById('board-p2') as HTMLCanvasElement;
-const holdCanvasP2 = document.getElementById('hold-canvas-p2') as HTMLCanvasElement;
-const nextCanvasP2 = document.getElementById('next-canvas-p2') as HTMLCanvasElement;
-const effectsCanvas = document.getElementById('effects-canvas') as HTMLCanvasElement;
-const scoreElementP2 = document.getElementById('score-p2')!;
-const levelElementP2 = document.getElementById('level-p2')!;
-const comboElementP2 = document.getElementById('combo-p2')!;
-const multiplierElementP2 = document.getElementById('multiplier-p2')!;
-const koCountP2 = document.getElementById('ko-count-p2')!;
-const koCountP1 = document.getElementById('ko-count-p1')!;
-
-function setText(id: string, text: string) {
-  const el = document.getElementById(id);
-  if (el) el.innerText = text;
-}
-function setWidth(id: string, width: string) {
-  const el = document.getElementById(id);
-  if (el) el.style.width = width;
-}
-function setDisplay(id: string, display: 'hidden' | 'flex') {
-  const el = document.getElementById(id);
-  if (el) {
-    if (display === 'hidden') {
-      el.classList.add('hidden');
-      el.classList.remove('flex');
-    } else {
-      el.classList.remove('hidden');
-      el.classList.add('flex');
-    }
-  }
-}
-function getCanvas(id: string): HTMLCanvasElement | null {
-  return document.getElementById(id) as HTMLCanvasElement | null;
-}
-
-const abilityMeterP2 = document.getElementById('ability-meter-p2');
-const abilityLabelP2 = document.getElementById('ability-label-p2');
-const abilityFillP2 = document.getElementById('ability-fill-p2'); 
-
-const nextCanvasP1 = document.getElementById('next-canvas-p1') as HTMLCanvasElement;
-const nextQueueP1 = document.getElementById('next-queue-p1')!;
-const abilityMeterP1 = document.getElementById('ability-meter-p1')!;
-const abilityQLabelP1 = document.getElementById('ability-q-label-p1')!;
-const abilityQStatusP1 = document.getElementById('ability-q-status-p1')!;
-const abilityELabelP1 = document.getElementById('ability-e-label-p1')!;
-const abilityEStatusP1 = document.getElementById('ability-e-status-p1')!;
-const abilityLabelP1 = document.getElementById('ability-label-p1')!;
-const abilityFillP1 = document.getElementById('ability-fill-p1')!;
-const abilityReadyP1 = document.getElementById('ability-ready-p1')!;
-const abilityRStatusP1 = document.getElementById('ability-r-status-p1')!;
-
-
-
-const gameManager = new GameManager(render);
-
-function updateNavHighlight(activeId: string) {
-  const ids = ['nav-menu', 'nav-lobby', 'nav-loadout', 'nav-game', 'nav-settings', 'nav-profile'];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    if (id === activeId) {
-      el.classList.add('nav-active', 'text-white');
-      el.classList.remove('text-gray-400', 'hover:text-gray-200');
-    } else {
-      el.classList.remove('nav-active', 'text-white');
-      el.classList.add('text-gray-400', 'hover:text-gray-200');
-    }
-  }
-}
-
-let showGhostPiece = true;
-
-// --- Audio ---
-// Unlock audio context on first user interaction (browser autoplay policy)
-function unlockAudio() {
-  AudioManager.resumeContext();
-  AudioManager.playMusic('menu');
-  document.removeEventListener('click', unlockAudio);
-  document.removeEventListener('keydown', unlockAudio);
-}
-document.addEventListener('click', unlockAudio);
-document.addEventListener('keydown', unlockAudio);
-
-// Play menu-select SFX on any button click in the UI layer (delegated)
-document.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement;
-  if (target.closest('button, a, [role="button"]')) {
-    AudioManager.playSfx('menuSelect');
-  }
-});
-
-// --- Class Select ---
-let selectedClass: PlayerClass = 'TANK';
-let pendingMode: 'SOLO' | 'VS_BOT' | 'ONLINE' | null = null;
-let selectedOnlineMode: OnlineModeId = 'classic-pvp';
-
-function getSelectedOnlineMode() {
-  return ONLINE_GAME_MODES.find(mode => mode.id === selectedOnlineMode) ?? ONLINE_GAME_MODES[0];
-}
-
-function showOnlineModeSelect() {
-  updateNavHighlight('nav-lobby');
-  screenMain.classList.add('hidden');
-  screenClassSelect.classList.remove('flex');
-  screenClassSelect.classList.add('hidden');
-  screenDifficulty.classList.remove('flex');
-  screenDifficulty.classList.add('hidden');
-  lobby.hide();
-  screenPostGame.classList.remove('flex');
-  screenPostGame.classList.add('hidden');
-  screenOnlineModeSelect.classList.remove('hidden');
-}
-
-mountOnlineModeSelect({
-  container: screenOnlineModeSelect,
-  initialMode: selectedOnlineMode,
-  onConfirm: mode => {
-    updateNavHighlight('nav-loadout');
-    selectedOnlineMode = mode.id;
-    pendingMode = 'ONLINE';
-    screenOnlineModeSelect.classList.add('hidden');
-    screenClassSelect.classList.remove('hidden');
-    screenClassSelect.classList.add('flex');
-  },
-  onBack: () => {
-    updateNavHighlight('nav-lobby');
-    screenOnlineModeSelect.classList.add('hidden');
-    screenMain.classList.remove('hidden');
-  },
-});
-
-function renderClassCards() {
-  classCardList.innerHTML = '';
-  const roleMap: Record<string, string> = {
-    'Speedster': 'AGILITY FIGHTER',
-    'Tank': 'HEAVY DEFENDER',
-    'Saboteur': 'GRID DISRUPTOR',
-    'Support': 'TACTICAL UTILITY'
-  };
-
-  for (const info of PLAYER_CLASSES) {
-    const isSelected = info.id === selectedClass;
-    const card = document.createElement('button');
-    const roleText = roleMap[info.name] || 'CLASS ROLE';
-    
-    let selectedClasses = '';
-    let hoverClasses = '';
-    let accentColorClass = 'text-neon-cyan';
-
-    if (info.name === 'Speedster') {
-      selectedClasses = 'border-neon-yellow shadow-[inset_0_0_0_1px_rgba(255,215,0,1),_0_0_26px_rgba(255,215,0,0.2)] -translate-y-1';
-      hoverClasses = 'hover:border-neon-yellow hover:shadow-[0_0_0_3px_rgba(255,215,0,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
-      accentColorClass = 'text-neon-yellow';
-    } else if (info.name === 'Tank') {
-      selectedClasses = 'border-neon-cyan shadow-[inset_0_0_0_1px_rgba(0,255,255,1),_0_0_26px_rgba(0,255,255,0.2)] -translate-y-1';
-      hoverClasses = 'hover:border-neon-cyan hover:shadow-[0_0_0_3px_rgba(0,255,255,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
-      accentColorClass = 'text-neon-cyan';
-    } else if (info.name === 'Saboteur') {
-      selectedClasses = 'border-neon-pink shadow-[inset_0_0_0_1px_rgba(255,20,147,1),_0_0_26px_rgba(255,20,147,0.2)] -translate-y-1';
-      hoverClasses = 'hover:border-neon-pink hover:shadow-[0_0_0_3px_rgba(255,20,147,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
-      accentColorClass = 'text-neon-pink';
-    } else if (info.name === 'Support') {
-      selectedClasses = 'border-neon-green shadow-[inset_0_0_0_1px_rgba(0,255,0,1),_0_0_26px_rgba(0,255,0,0.2)] -translate-y-1';
-      hoverClasses = 'hover:border-neon-green hover:shadow-[0_0_0_3px_rgba(0,255,0,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
-      accentColorClass = 'text-neon-green';
-    } else {
-      selectedClasses = 'border-neon-cyan shadow-[inset_0_0_0_1px_rgba(0,255,255,1),_0_0_26px_rgba(0,255,255,0.2)] -translate-y-1';
-      hoverClasses = 'hover:border-neon-cyan hover:shadow-[0_0_0_3px_rgba(0,255,255,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
-      accentColorClass = 'text-neon-cyan';
-    }
-
-    const unselectedClasses = `border-card-border hover:-translate-y-1 ${hoverClasses}`;
-    const baseClasses = "flex-1 flex flex-col items-start bg-card-bg/80 rounded-[12px] border text-left p-6 transition-all duration-150 cursor-pointer min-h-[380px] w-full";
-    
-    card.className = `${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`;
-    
-    const qDesc = info.abilityQDescription.replace(/^Q [·\-] (.*?s cooldown:?)\s*/i, '($1) ');
-    const eDesc = info.abilityEDescription.replace(/^E [·\-] (.*?cooldown:?|once per level:?)\s*/i, '($1) ');
-    const rDesc = info.ultimateDescription.replace(/^R [·\-] (.*?(?:lines|cost):?)\s*/i, '');
-    const passDesc = info.passiveDescription.replace(/^Passive:\s*/i, '');
-
-    card.innerHTML = `
-      <span class="${accentColorClass} text-[0.72rem] font-black uppercase tracking-[0.16em] mb-2">${roleText}</span>
-      <h3 class="text-[clamp(1.4rem,2.5vw,1.75rem)] font-extrabold leading-tight mb-2 text-white">${info.name}</h3>
-      <p class="text-gray-400 text-[0.92rem] leading-relaxed mb-4">${info.tagline}</p>
-      
-      <div class="mt-auto w-full pt-4 border-t border-card-border flex flex-col gap-3">
-        <div class="text-[0.8rem] leading-relaxed">
-          <span class="text-gray-300 font-bold block mb-0.5">Passive</span>
-          <span class="text-gray-400">${passDesc}</span>
-        </div>
-        <div class="text-[0.8rem] leading-relaxed">
-          <span class="text-neon-cyan font-bold block mb-0.5">${info.abilityQName} [Q]</span>
-          <span class="text-neon-cyan/80">${qDesc}</span>
-        </div>
-        <div class="text-[0.8rem] leading-relaxed">
-          <span class="text-neon-yellow font-bold block mb-0.5">${info.abilityEName} [E]</span>
-          <span class="text-neon-yellow/80">${eDesc}</span>
-        </div>
-        <div class="text-[0.8rem] leading-relaxed">
-          <span class="text-neon-pink font-bold block mb-0.5">${info.ultimateName} [R] <span class="text-neon-pink/60 ml-1">(${info.ultimateCost} lines)</span></span>
-          <span class="text-neon-pink/80">${rDesc}</span>
-        </div>
-      </div>
-    `;
-        card.addEventListener('click', () => {
-      selectedClass = info.id;
-      renderClassCards();
-    });
-    classCardList.appendChild(card);
-  }
-}
-renderClassCards();
-
-// --- Tutorial ---
-const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> = {
-  Speedster: { text: 'text-neon-yellow', border: 'border-neon-yellow/40' },
-  Tank: { text: 'text-neon-cyan', border: 'border-neon-cyan/40' },
-  Saboteur: { text: 'text-neon-pink', border: 'border-neon-pink/40' },
-  Support: { text: 'text-neon-green', border: 'border-neon-green/40' },
-};
-
-const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[] = [
-  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area around it, clearing nearby blocks too.' },
-  { letter: 'W', name: 'Heavy', description: 'When its line clears, also destroys the entire row directly beneath it.' },
-  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your score for the next 8 seconds.' },
-  { letter: 'V', name: 'Speed', description: "When its line clears, speeds up your own piece drop rate — good for aggressive stacking." },
-  { letter: 'S', name: 'Shield', description: 'When its line clears, blocks the very next garbage attack sent at you completely.' },
-  { letter: 'F', name: 'Freeze', description: "When its line clears, freezes every opponent's Q/E/R abilities for 3 seconds." },
-  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, instantly eats one line of garbage from the bottom of your own board.' },
-];
-
-function renderTutorialClasses() {
-  if (tutorialClassList.childElementCount > 0) return; // static content, only needs building once
-  for (const info of PLAYER_CLASSES) {
-    const accent = TUTORIAL_CLASS_ACCENTS[info.name] ?? { text: 'text-neon-cyan', border: 'border-card-border' };
-    const card = document.createElement('div');
-    card.className = `bg-deep-purple/40 border ${accent.border} rounded-lg p-4`;
-    card.innerHTML = `
-      <h4 class="${accent.text} font-extrabold text-sm mb-1">${info.name}</h4>
-      <p class="text-gray-500 text-xs mb-3">${info.tagline}</p>
-      <ul class="space-y-1.5 text-xs text-gray-300">
-        <li><span class="text-gray-400 font-bold">Passive —</span> ${info.passiveDescription.replace(/^Passive:\s*/i, '')}</li>
-        <li><span class="${accent.text} font-bold">[Q] ${info.abilityQName} —</span> ${info.abilityQDescription.replace(/^Q [·\-] .*?cooldown:?\s*/i, '')}</li>
-        <li><span class="${accent.text} font-bold">[E] ${info.abilityEName} —</span> ${info.abilityEDescription.replace(/^E [·\-] .*?(?:cooldown|level):?\s*/i, '')}</li>
-        <li><span class="${accent.text} font-bold">[R] ${info.ultimateName} (${info.ultimateCost} lines) —</span> ${info.ultimateDescription.replace(/^R [·\-] .*?lines:?\s*/i, '')}</li>
-      </ul>
-    `;
-    tutorialClassList.appendChild(card);
-  }
-}
-
-function renderTutorialBlocks() {
-  if (tutorialBlockList.childElementCount > 0) return; // static content, only needs building once
-  for (const block of SPECIAL_BLOCK_INFO) {
-    const row = document.createElement('div');
-    row.className = 'flex items-start gap-3 bg-deep-purple/40 border border-card-border rounded-lg p-3';
-    row.innerHTML = `
-      <span class="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-black border-2 border-neon-cyan text-neon-cyan font-pixel text-sm">${block.letter}</span>
-      <div>
-        <h4 class="text-white font-bold text-xs mb-0.5">${block.name}</h4>
-        <p class="text-gray-500 text-xs leading-relaxed">${block.description}</p>
-      </div>
-    `;
-    tutorialBlockList.appendChild(row);
-  }
-}
-
-function openTutorial() {
-  renderTutorialClasses();
-  renderTutorialBlocks();
-  tutorialModal.classList.remove('hidden');
-}
-
-function closeTutorial() {
-  tutorialModal.classList.add('hidden');
-}
-
-btnHowToPlay.addEventListener('click', openTutorial);
-btnTutorialClose.addEventListener('click', closeTutorial);
-tutorialModal.addEventListener('click', (e) => {
-  if (e.target === tutorialModal) closeTutorial();
-});
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !tutorialModal.classList.contains('hidden')) closeTutorial();
-});
-
-tutorialTabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    tutorialTabs.forEach(t => t.classList.remove('tutorial-tab-active'));
-    tab.classList.add('tutorial-tab-active');
-    const target = tab.dataset.tab;
-    tutorialPanels.forEach(panel => {
-      panel.classList.toggle('hidden', panel.dataset.panel !== target);
-    });
-  });
-});
-
-mountInteractiveTutorial(tutorialModal);
-
-// The "Profile" nav link had no click handler at all — mountProgression()
-// is what wires it up to actually open the rewards/achievements overlay.
 const navProfile = document.getElementById('nav-profile');
-let progression: ProgressionController | null = null;
-if (navProfile) {
-  progression = mountProgression(navProfile);
-}
-
 const navSettings = document.getElementById('nav-settings');
-if (navSettings) {
-  mountSettings(navSettings);
-}
 
 mountAuth();
+if (navProfile) mountProgression(navProfile);
+if (navSettings) mountSettings(navSettings);
 
-// Menu Event Listeners
+type ModeType = 'SOLO' | 'VS_BOT' | 'ONLINE' | null;
+let pendingMode: ModeType = null;
+let selectedClass: any = PLAYER_CLASSES[0];
+let onlineModeId: OnlineModeId = ONLINE_GAME_MODES[0].id;
+
+function updateNavHighlight(activeId: string) {
+  const ids = ['nav-menu', 'nav-modes', 'nav-lobby', 'nav-settings', 'nav-profile'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === activeId) {
+      el.classList.add('nav-active', 'text-white');
+      el.classList.remove('text-gray-400');
+    } else {
+      el.classList.remove('nav-active', 'text-white');
+      el.classList.add('text-gray-400');
+    }
+  });
+}
+
+function bootGame(config: any) {
+  sessionStorage.setItem('cascade_boot_config', JSON.stringify(config));
+  window.location.href = 'lobby.html';
+}
+
 btnSolo.addEventListener('click', () => {
-  updateNavHighlight('nav-loadout');
+  updateNavHighlight('nav-modes');
   pendingMode = 'SOLO';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
   screenClassSelect.classList.add('flex');
+  renderClassSelect();
 });
 
 btnVsBot.addEventListener('click', () => {
-  updateNavHighlight('nav-loadout');
+  updateNavHighlight('nav-modes');
   pendingMode = 'VS_BOT';
   screenMain.classList.add('hidden');
   screenClassSelect.classList.remove('hidden');
   screenClassSelect.classList.add('flex');
+  renderClassSelect();
+});
+
+btnPlayOnline.addEventListener('click', () => {
+  updateNavHighlight('nav-modes');
+  pendingMode = 'ONLINE';
+  screenMain.classList.add('hidden');
+  showOnlineModeSelect();
+});
+
+function showOnlineModeSelect() {
+  screenOnlineModeSelect.classList.remove('hidden');
+  screenOnlineModeSelect.classList.add('flex');
+}
+
+mountOnlineModeSelect({
+  container: screenOnlineModeSelect,
+  onConfirm: (mode) => {
+    onlineModeId = mode.id;
+    screenOnlineModeSelect.classList.remove('flex');
+    screenOnlineModeSelect.classList.add('hidden');
+    screenClassSelect.classList.remove('hidden');
+    screenClassSelect.classList.add('flex');
+    renderClassSelect();
+  },
+  onBack: () => {
+    screenOnlineModeSelect.classList.remove('flex');
+    screenOnlineModeSelect.classList.add('hidden');
+    updateNavHighlight('nav-menu');
+    screenMain.classList.remove('hidden');
+  }
 });
 
 btnClassBack.addEventListener('click', () => {
@@ -430,1098 +118,90 @@ btnClassBack.addEventListener('click', () => {
   if (pendingMode === 'ONLINE') {
     showOnlineModeSelect();
   } else {
-    updateNavHighlight('nav-lobby');
+    updateNavHighlight('nav-menu');
     screenMain.classList.remove('hidden');
   }
 });
 
 btnClassContinue.addEventListener('click', () => {
-  screenClassSelect.classList.remove('flex');
-  screenClassSelect.classList.add('hidden');
-
   if (pendingMode === 'SOLO') {
-    startGame('SOLO');
+    bootGame({ mode: 'SOLO', selectedClass });
   } else if (pendingMode === 'VS_BOT') {
-    updateNavHighlight('nav-lobby');
+    screenClassSelect.classList.remove('flex');
+    screenClassSelect.classList.add('hidden');
     screenDifficulty.classList.remove('hidden');
     screenDifficulty.classList.add('flex');
   } else if (pendingMode === 'ONLINE') {
-    updateNavHighlight('nav-lobby');
-    lobby.show();
+    bootGame({ mode: 'ONLINE', selectedClass, onlineModeId });
   }
 });
 
 btnBack.addEventListener('click', () => {
-  updateNavHighlight('nav-lobby');
+  updateNavHighlight('nav-modes');
   screenDifficulty.classList.remove('flex');
   screenDifficulty.classList.add('hidden');
-  screenMain.classList.remove('hidden');
+  screenClassSelect.classList.remove('hidden');
+  screenClassSelect.classList.add('flex');
 });
 
 btnEasyBot.addEventListener('click', () => {
-  startGame('EASY');
+  bootGame({ mode: 'VS_BOT', botDifficulty: 'EASY', selectedClass });
 });
-
 btnHardBot.addEventListener('click', () => {
-  startGame('HARD');
+  bootGame({ mode: 'VS_BOT', botDifficulty: 'HARD', selectedClass });
 });
 
-btnToggleGhost.addEventListener('click', () => {
-  showGhostPiece = !showGhostPiece;
-  btnToggleGhost.innerText = `GHOST: ${showGhostPiece ? 'ON' : 'OFF'}`;
-  btnToggleGhost.className = showGhostPiece 
-    ? "bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded"
-    : "bg-bgPanel border border-gray-500 text-gray-500 px-4 py-2 text-xs font-bold hover:bg-gray-500 hover:text-white transition-colors rounded";
-  // Force a render so it disappears instantly
-  if (gameManager.state === GameState.PLAYING) {
-    render();
-  }
-});
+function renderClassSelect() {
+  classCardList.innerHTML = '';
+  PLAYER_CLASSES.forEach((playerClass, index) => {
+    const isSelected = selectedClass === playerClass;
+    const card = document.createElement('div');
+    const color = ['#00FFFF', '#FFD700', '#FF1493', '#00FF00'][index];
+    card.className = `relative p-5 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
+      isSelected ? 'border-[' + color + '] bg-white/5 shadow-[0_0_20px_rgba(255,255,255,0.1)]' : 'border-card-border bg-card-bg/60 hover:border-gray-500'
+    }`;
+    card.style.borderColor = isSelected ? color : '';
 
-navLobby.addEventListener('click', (e) => {
-  e.preventDefault();
-  if (lobby.network && lobby.network.currentRoomId) {
-    updateNavHighlight('nav-lobby');
-    screenMain.classList.add('hidden');
-    screenClassSelect.classList.remove('flex');
-    screenClassSelect.classList.add('hidden');
-    screenDifficulty.classList.remove('flex');
-    screenDifficulty.classList.add('hidden');
-    screenPostGame.classList.remove('flex');
-    screenPostGame.classList.add('hidden');
-    
-    lobby.show();
-    uiLayer.classList.remove('hidden');
-  }
-});
+    card.innerHTML = `
+      <div class='flex flex-col h-full'>
+        <div class='flex justify-between items-start mb-3'>
+          <div>
+            <h3 class='text-lg font-bold uppercase tracking-wider' style='color: ${color}'>${playerClass.name}</h3>
+            <span class='text-[9px] text-gray-400 tracking-widest uppercase'>${playerClass.tagline}</span>
+          </div>
+        </div>
+        <div class='text-xs text-gray-300 mb-4 flex-1'>
+          <p class='mb-2'><b>Passive:</b> ${playerClass.passiveDescription}</p>
+        </div>
+        <div class='flex flex-col gap-2 mt-auto'>
+          <div class='text-[10px] bg-black/30 p-2 rounded border border-white/5'>
+            <span class='text-neon-cyan font-bold'>Q:</span> ${playerClass.abilityQName}
+          </div>
+          <div class='text-[10px] bg-black/30 p-2 rounded border border-white/5'>
+            <span class='text-neon-yellow font-bold'>E:</span> ${playerClass.abilityEName}
+          </div>
+          <div class='text-[10px] bg-black/30 p-2 rounded border border-white/5'>
+            <span class='text-neon-pink font-bold'>R:</span> ${playerClass.ultimateName} (${playerClass.ultimateCost})
+          </div>
+        </div>
+      </div>
+    `;
 
-// --- Online Lobby ---
-let onlinePlayerTeams: Array<'cyan' | 'magenta' | null> = [];
-let onlineTeamScores = { cyan: 0, magenta: 0 };
-let teamMatchEndsAt: number | null = null;
-let teamTimerInterval: number | null = null;
-let activeOnlineMode: OnlineModeId = selectedOnlineMode;
-let battleRoyalRemainingPlayers = 0;
-let battleRoyalPhaseLabel = '';
-let battleRoyalStartedAt: number | null = null;
-let battleRoyalHud: HTMLElement | null = null;
-
-function ensureBattleRoyalHud() {
-  if (battleRoyalHud) return battleRoyalHud;
-  const hud = document.createElement('section');
-  hud.id = 'battle-royale-hud';
-  hud.className = 'hidden fixed top-28 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
-  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
-  document.body.appendChild(hud);
-  battleRoyalHud = hud;
-  return hud;
-}
-
-function updateBattleRoyalHud() {
-  const hud = ensureBattleRoyalHud();
-  const remaining = hud.querySelector('#br-remaining');
-  const phase = hud.querySelector('#br-phase');
-  const progress = hud.querySelector('#br-progress') as HTMLElement | null;
-  const kills = hud.querySelector('#br-kills');
-  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers} LEFT`;
-  if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
-  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (5 * 60 * 1000)) * 100))}%`;
-  const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
-  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 1,000,000`;
-  hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
-}
-
-function formatTeamTimer() {
-  if (!teamMatchEndsAt) return '3:00';
-  const seconds = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
-  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
-}
-
-function updateTeamScoreHud() {
-  teamScoreCyan.innerText = `${Math.round(onlineTeamScores.cyan)}`;
-  teamScoreMagenta.innerText = `${Math.round(onlineTeamScores.magenta)}`;
-  teamMatchTimer.innerText = formatTeamTimer();
-}
-
-const lobby = mountLobbyScreen({
-  onBack: () => showOnlineModeSelect(),
-  onLeaveToMenu: () => returnToMenu(),
-  getSelectedMode: () => selectedOnlineMode,
-  getGameState: () => gameManager.state,
-  externalScreens: {
-    screenPostGame,
-  },
-  onNetworkReady: (network) => wireGameCallbacks(network),
-});
-
-function wireGameCallbacks(network: NetworkManager) {
-  network.onPreGameCountdown = (seconds: number) => {
-    preGameOverlay.classList.remove('hidden');
-    gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
-    let s = seconds;
-    preGameText.innerText = s.toString();
-    const interval = setInterval(() => {
-      s--;
-      if (s > 0) {
-        preGameText.innerText = s.toString();
-      } else if (s === 0) {
-        preGameText.innerText = "GO!";
-        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
-      } else {
-        clearInterval(interval);
-        preGameOverlay.classList.add('hidden');
-      }
-    }, 1000);
-  };
-
-  network.onPlayerStateUpdate = (data) => {
-    if (data.playerId === network?.mySocketId && data.state === 'spectating') {
-      spectatorBanner.classList.remove('hidden');
-    }
-  };
-
-  network.onPostGameStart = (data) => {
-    updateNavHighlight('nav-lobby');
-    uiLayer.classList.remove('hidden');
-    lobby.hide();
-    screenPostGame.classList.remove('hidden');
-    screenPostGame.classList.add('flex');
-    gameHud.classList.add('hidden');
-    
-    if (data.winnerTeam) {
-      postGameWinner.innerText = `${data.winnerName} WINS`;
-      postGameTeamScores.innerHTML = `<span class="text-neon-cyan">CYAN ${Math.round(data.teamScores.cyan)}</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">MAGENTA ${Math.round(data.teamScores.magenta)}</span>`;
-    } else {
-      const isDraw = data.winnerName.startsWith('Draw');
-      postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
-      postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
-    }
-        postGameVotes.innerText = `0 voted for rematch`;
-    btnPostRematch.classList.remove('hidden');
-
-    // Record this match's result toward profile progression (points,
-    // achievements, unlockables). Only meaningful for online matches, which
-    // is the only place onPostGameStart ever fires.
-    if (progression) {
-      const me = gameManager.players[gameManager.myPlayerIndex];
-      const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] ?? null;
-      const won = data.winnerTeam
-        ? data.winnerTeam === myTeam
-        : data.winnerId === network?.mySocketId;
-      progression.recordMatch({
-        mode: activeOnlineMode as ProgressionMode,
-        won,
-        score: me?.scoreManager.score ?? 0,
-        lines: me?.scoreManager.totalLinesCleared ?? 0,
-        kills: me?.kills ?? 0,
-      });
-    }
-  };
-
-  network.onRematchUpdate = (data) => {
-    postGameVotes.innerText = `${data.votes}/${data.required} voted for rematch`;
-  };
-
-  network.onPlayerDisconnected = () => {
-    gameManager.network?.sendRibbon('A PLAYER DISCONNECTED');
-  };
-
-  network.onGameStart = (data: GameStartData) => {
-    activeOnlineMode = data.modeId;
-    battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
-    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
-    battleRoyalStartedAt = null;
-    updateBattleRoyalHud();
-    selectedOnlineMode = data.modeId;
-    lobby.selectedMode = data.modeId;
-    onlinePlayerTeams = data.players.map(player => player.team);
-    onlineTeamScores = data.teamScores;
-    startOnlineGame(data.players.length, data.myIndex, data.players, data.mode);
-  };
-
-  network.onBattleRoyalPhase = (data) => {
-    battleRoyalPhaseLabel = data.label;
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
-    updateBattleRoyalHud();
-  };
-  network.onBattleRoyalCull = (data) => {
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    battleRoyalPhaseLabel = data.reason === 'score-cull'
-      ? 'Culling lowest score · tie-break lines, kills'
-      : data.reason === 'line-cull'
-        ? 'Culling lowest line count · tie-break score, kills'
-        : 'Culling lowest kills · tie-break lines, score';
-    updateBattleRoyalHud();
-  };
-  network.onBattleRoyalSuddenDeath = (data) => {
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
-    updateBattleRoyalHud();
-  };
-  const showGlobalRibbon = (message: string) => {
-    const ribbon = document.getElementById('global-ribbon');
-    if (!ribbon) return;
-    ribbon.innerText = message;
-    ribbon.classList.remove('hidden');
-    ribbon.classList.add('opacity-100');
-    setTimeout(() => ribbon.classList.add('hidden'), 2000);
-  };
-
-  network.onKoRecover = (data) => {
-    gameManager.applyKoRecovery(data.koCount, data.score);
-    battleRoyalPhaseLabel = `K.O. #${data.koCount} · garbage cleared, -20% score`;
-    updateBattleRoyalHud();
-  };
-  network.onPlayerKnockedOut = (data) => {
-    if (data.playerId !== network?.mySocketId) {
-      showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
-    }
-  };
-  network.onBattleRoyalEvent = (data) => {
-    const label = data.label || data.rule;
-    battleRoyalPhaseLabel = data.densityLabel ? `${label} · ${data.densityLabel}` : label;
-    showGlobalRibbon(String(label).toUpperCase());
-    updateBattleRoyalHud();
-  };
-  network.onBattleRoyalPostGame = (data) => {
-    const rankingText = data.rankings.slice(0, 10).map((entry: any) => `${entry.rank}. ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`).join('<br>');
-    postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
-  };
-  network.onTeamScoreUpdate = (data) => {
-    onlineTeamScores = data.teamScores;
-    updateTeamScoreHud();
-  };
-
-  network.onMatchTimerStart = (data) => {
-    teamMatchEndsAt = data.endsAt;
-    if (teamTimerInterval) clearInterval(teamTimerInterval);
-    teamTimerInterval = window.setInterval(updateTeamScoreHud, 250);
-    updateTeamScoreHud();
-  };
-
-  network.onShowRibbon = (message: string) => {
-    const ribbon = document.getElementById('global-ribbon');
-    if (ribbon) {
-      ribbon.innerText = message;
-      ribbon.classList.remove('hidden');
-      ribbon.classList.add('opacity-100');
-      setTimeout(() => {
-        ribbon.classList.add('hidden');
-        ribbon.classList.remove('opacity-100');
-      }, 2000);
-    }
-  };
-}
-
-// --- Button Listeners ---
-
-btnPlayOnline.addEventListener('click', () => {
-  if (selectedClass !== 'TANK' && selectedClass !== 'SPEEDSTER' && selectedClass !== 'SABOTEUR' && selectedClass !== 'SUPPORT') {
-    alert("Please select a class first!");
-    return;
-  }
-  pendingMode = 'ONLINE';
-  showOnlineModeSelect();
-});
-
-btnPostRematch.addEventListener('click', () => {
-  btnPostRematch.classList.add('hidden');
-  lobby.network?.voteRematch();
-});
-
-btnPostLeave.addEventListener('click', () => {
-  returnToMenu();
-});
-
-/**
- * Start an online multiplayer game.
- * Called when the server emits 'game-start'.
- */
-let onlinePlayerSpecs: any[] = [];
-
-function startOnlineGame(playerCount: number, myIndex: number, players?: any[], mode?: RoomMode) {
-  if (players) {
-    onlinePlayerSpecs = players;
-  }
-  // Hide lobby, show game
-  AudioManager.playMusic('game');
-  updateNavHighlight('nav-game');
-  uiLayer.classList.add('hidden');
-  gameHud.classList.remove('hidden');
-  gameHud.classList.add('flex');
-  spectatorBanner.classList.add('hidden');
-  if (mode?.isTeamMode) {
-    teamMatchStrip.classList.remove('hidden');
-    updateTeamScoreHud();
-  } else {
-    teamMatchStrip.classList.add('hidden');
-  }
-  if (mode?.id === 'battle-royale') {
-    ensureBattleRoyalHud();
-    battleRoyalPhaseLabel = 'Opening battle';
-    battleRoyalRemainingPlayers = playerCount;
-    updateBattleRoyalHud();
-  } else if (battleRoyalHud) {
-    battleRoyalHud.classList.add('hidden');
-  }
-
-  // Size the canvas for the number of players — in 3v3/Battle Royale this
-  // puts our own board at full size top-left and tiles everyone else into a
-  // mosaic grid beside it, so canvas.width/height must span every board's
-  // actual bounding box rather than assuming one straight line of boards.
-  const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
-  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize));
-  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize));
-
-  // Our own board is always pinned at (0,0) when emphasized, so make sure the
-  // container starts scrolled there instead of wherever it was left before.
-  const canvasContainer = document.getElementById('canvas-container');
-  if (canvasContainer) {
-    canvasContainer.scrollLeft = 0;
-    canvasContainer.scrollTop = 0;
-  }
-
-  // Show P2 HUD if there are 2+ players
-  if (playerCount >= 2) {
-  } else {
-  }
-
-  // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass, { isTeamMode: mode?.isTeamMode ?? false });
-}
-
-function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
-  AudioManager.playMusic('game');
-  updateNavHighlight('nav-game');
-  uiLayer.classList.add('hidden');
-  gameHud.classList.remove('hidden');
-  gameHud.classList.add('flex');
-  teamMatchStrip.classList.add('hidden');
-  
-  const playerCount = mode === 'SOLO' ? 1 : 2;
-  canvas.width = (COLS * BLOCK_SIZE * playerCount) + (PADDING * (playerCount - 1));
-  canvas.height = ROWS * BLOCK_SIZE;
-
-  if (mode === 'SOLO') {
-    gameManager.initSolo(selectedClass, 5000);
-  } else {
-    gameManager.init1v1(mode, selectedClass, 5000);
-  }
-
-  // Show the 5 second countdown offline
-  preGameOverlay.classList.remove('hidden');
-  preGameOverlay.classList.add('flex');
-  gameManager.players[0].inputHandler.freeze();
-  let seconds = 5;
-  preGameText.innerText = seconds.toString();
-  
-  const interval = setInterval(() => {
-    seconds--;
-    if (seconds > 0) {
-      preGameText.innerText = seconds.toString();
-    } else if (seconds === 0) {
-      preGameText.innerText = "GO!";
-      gameManager.players[0].inputHandler.unfreeze();
-    } else {
-      clearInterval(interval);
-      preGameOverlay.classList.add('hidden');
-    }
-  }, 1000);
-}
-
-function getSpecialBlockLetter(special: string): string {
-  switch (special) {
-    case 'BOMB': return 'B';
-    case 'HEAVY': return 'W';
-    case 'MULTIPLIER': return 'X';
-    case 'SPEED': return 'V';
-    case 'SHIELD': return 'S';
-    case 'FREEZE': return 'F';
-    case 'GARBAGE_EATER': return 'G';
-    default: return '?';
-  }
-}
-
-const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
-['I', 'J', 'L', 'O', 'S', 'T', 'Z'].forEach(shape => {
-  const img = new Image();
-  img.src = `/blocks/${shape}-block.png`;
-  BLOCK_SPRITES[shape] = img;
-});
-
-function drawBlock(
-  targetCtx: CanvasRenderingContext2D,
-  x: number, 
-  y: number, 
-  color: string, 
-  offsetX: number, 
-  offsetY: number = 0,
-  isSpecial: string | undefined = undefined, 
-  isGhost: boolean = false,
-  blockSize: number = BLOCK_SIZE,
-  shapeType: string | null = null
-) {
-  const finalX = offsetX + x * blockSize;
-  const finalY = offsetY + y * blockSize;
-
-  if (isGhost) {
-    targetCtx.fillStyle = 'transparent';
-    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
-    targetCtx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
-    targetCtx.setLineDash([4, 2]);
-    targetCtx.lineWidth = 2;
-    targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
-    targetCtx.setLineDash([]);
-    return;
-  }
-
-  if (isSpecial === 'GARBAGE') {
-    targetCtx.fillStyle = '#000000';
-    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
-    targetCtx.strokeStyle = '#555555';
-    targetCtx.fillStyle = '#333333';
-    targetCtx.fillRect(finalX + 2, finalY + 2, blockSize - 4, blockSize - 4);
-    return;
-  }
-
-  if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
-    targetCtx.drawImage(BLOCK_SPRITES[shapeType], finalX, finalY, blockSize, blockSize);
-    
-    // Colored border for player identity
-    targetCtx.strokeStyle = color;
-    targetCtx.lineWidth = 1;
-    targetCtx.strokeRect(finalX, finalY, blockSize, blockSize);
-  } else {
-    targetCtx.fillStyle = '#000000';
-    targetCtx.fillRect(finalX, finalY, blockSize, blockSize);
-    
-    targetCtx.strokeStyle = color;
-    targetCtx.lineWidth = 2;
-    targetCtx.strokeRect(finalX + 1, finalY + 1, blockSize - 2, blockSize - 2);
-  
-    targetCtx.fillStyle = color;
-    targetCtx.fillRect(finalX + 6, finalY + 6, blockSize - 12, blockSize - 12);
-  }
-
-  if (isSpecial) {
-    targetCtx.fillStyle = '#FFFFFF';
-    targetCtx.font = `${Math.round(blockSize * 0.67)}px "Press Start 2P"`;
-    targetCtx.textAlign = 'center';
-    targetCtx.textBaseline = 'middle';
-    const icon = getSpecialBlockLetter(isSpecial);
-    targetCtx.fillText(icon, finalX + blockSize / 2, finalY + blockSize / 2 + 2);
-  }
-}
-
-
-function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], color: string) {
-  if (!canvasEl) return;
-  const tCtx = canvasEl.getContext('2d')!;
-  tCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-  
-  const MINI_BLOCK_SIZE = 20;
-  
-  shapes.forEach((shapeType, i) => {
-    const temp = new Tetromino(shapeType as any);
-    const shape = temp.matrix;
-    const size = shape.length;
-    
-    const slotY = i * 90;
-    const offsetX = (90 - size * MINI_BLOCK_SIZE) / 2;
-    const offsetY = slotY + (90 - size * MINI_BLOCK_SIZE) / 2;
-    
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (shape[r][c] !== 0) {
-          const fx = offsetX + c * MINI_BLOCK_SIZE;
-          const fy = offsetY + r * MINI_BLOCK_SIZE;
-          if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
-            tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-            tCtx.strokeStyle = color;
-            tCtx.lineWidth = 1;
-            tCtx.strokeRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-          } else {
-            tCtx.fillStyle = color;
-            tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
-          }
-        }
-      }
-    }
+    card.addEventListener('click', () => {
+      selectedClass = playerClass;
+      renderClassSelect();
+    });
+    classCardList.appendChild(card);
   });
 }
 
-function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino | null, color: string) {
-  const tCtx = canvasEl.getContext('2d')!;
-  tCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-  if (!piece) return;
-
-  const shape = piece.matrix;
-  const size = shape.length;
-  // Center it roughly in the 90x90 canvas (assuming max 4x4 piece blocks of 20px each)
-  const MINI_BLOCK_SIZE = 20;
-  const offsetX = (90 - size * MINI_BLOCK_SIZE) / 2;
-  const offsetY = (90 - size * MINI_BLOCK_SIZE) / 2;
-
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (shape[r][c] !== 0) {
-        // Draw mini block
-        const fx = offsetX + c * MINI_BLOCK_SIZE;
-        const fy = offsetY + r * MINI_BLOCK_SIZE;
-        const specialKey = `${r},${c}`;
-        const specialType = piece.specialBlocks.get(specialKey);
-
-        tCtx.fillStyle = '#000000';
-        tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-        tCtx.strokeStyle = color;
-        tCtx.lineWidth = 2;
-        tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-
-        if (specialType) {
-          // Draw the special block letter indicator
-          tCtx.fillStyle = color;
-          tCtx.font = 'bold 12px "Press Start 2P"';
-          tCtx.textAlign = 'center';
-          tCtx.textBaseline = 'middle';
-          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
-        } else {
-          tCtx.fillStyle = color;
-          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
-        }
-      }
-    }
-  }
-}
-
-// Assign colors per player index for multiplayer
-const PLAYER_COLORS = ['#00E5FF', '#40C4FF', '#80DEEA', '#FF007F', '#FF4081', '#FF80AB'];
-
-// In 3v3 Deathmatch and Battle Royale, your own board renders large and fixed
-// at top-left, and everyone else is tiled into a compact mosaic grid beside
-// you (Tetris 99 style) instead of one long horizontal strip.
-const OWN_BOARD_SCALE = 1.3;
-const OTHER_BOARD_SCALE_TEAM = 0.6;  // 3v3: only 5 opponents, keep them legible
-const OTHER_BOARD_SCALE_BR = 0.22;   // Battle Royale: up to 29 opponents, go small
-const MOSAIC_GAP = 6;
-
-interface BoardLayoutEntry { blockSize: number; offsetX: number; offsetY: number; }
-
-function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
-  const emphasizeOwnBoard = modeId === 'team-deathmatch' || modeId === 'battle-royale';
-  const layout: BoardLayoutEntry[] = new Array(playerCount);
-
-  if (!emphasizeOwnBoard || myIndex < 0) {
-    // Classic side-by-side layout for 1v1 / FFA / local play
-    let cursorX = 0;
-    for (let i = 0; i < playerCount; i++) {
-      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: 0 };
-      cursorX += COLS * BLOCK_SIZE + PADDING;
-    }
-    return layout;
-  }
-
-  const ownBlockSize = BLOCK_SIZE * OWN_BOARD_SCALE;
-  const ownWidth = COLS * ownBlockSize;
-  const ownHeight = ROWS * ownBlockSize;
-  layout[myIndex] = { blockSize: ownBlockSize, offsetX: 0, offsetY: 0 };
-
-  const otherIndices: number[] = [];
-  for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
-
-  const otherScale = modeId === 'battle-royale' ? OTHER_BOARD_SCALE_BR : OTHER_BOARD_SCALE_TEAM;
-  const otherBlockSize = BLOCK_SIZE * otherScale;
-  const otherWidth = COLS * otherBlockSize;
-  const otherHeight = ROWS * otherBlockSize;
-
-  // Tile opponents into a grid matching our board's height, wrapping into a
-  // new column once a column fills up rather than stretching sideways forever.
-  const rowsPerColumn = Math.max(1, Math.floor((ownHeight + MOSAIC_GAP) / (otherHeight + MOSAIC_GAP)));
-  const mosaicStartX = ownWidth + PADDING;
-
-  otherIndices.forEach((playerIdx, i) => {
-    const col = Math.floor(i / rowsPerColumn);
-    const row = i % rowsPerColumn;
-    layout[playerIdx] = {
-      blockSize: otherBlockSize,
-      offsetX: mosaicStartX + col * (otherWidth + MOSAIC_GAP),
-      offsetY: row * (otherHeight + MOSAIC_GAP),
-    };
-  });
-
-  return layout;
-}
-
-// Recomputed once per render() call; renderPlayer() and the effects layer
-// both read from this instead of assuming a uniform board size.
-let boardLayout: BoardLayoutEntry[] = [];
-
-function renderPlayer(player: Player, index: number, isDuo: boolean) {
-  let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
-  const playerColor = PLAYER_COLORS[index] || '#00E5FF';
-  
-  let tCtx = ctx;
-  if (isDuo) {
-    const target = index === 0 ? document.getElementById('board-p1') as HTMLCanvasElement : document.getElementById('board-p2') as HTMLCanvasElement;
-    if (target) {
-      tCtx = target.getContext('2d')!;
-      offsetX = 0;
-      offsetY = 0;
-    }
-  }
-
-
-  // Draw Grid background (optional faint lines)
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      tCtx.lineWidth = 1;
-      tCtx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-    }
-  }
-
-  // Draw Player Grid Border
-  tCtx.strokeStyle = playerColor;
-  tCtx.lineWidth = 2;
-  tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
-
-  // Draw Block Matrix
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const cell = player.grid.matrix[r][c];
-      if (cell.type !== null) {
-        const color = cell.type === 'GARBAGE' ? '#555555' : playerColor;
-        drawBlock(tCtx, c, r, color, offsetX, offsetY, cell.type === 'GARBAGE' ? 'GARBAGE' : cell.special, false, blockSize, cell.type);
-      }
-    }
-  }
-
-  // Ghost Piece Logic — only show for our own player in online mode
-  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
-  if (player.currentPiece && showGhostPiece && isMyPlayer) {
-    let ghostY = player.currentPiece.y;
-    while (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x, ghostY + 1)) {
-      ghostY++;
-    }
-    
-    // Draw Ghost
-    const shape = player.currentPiece.matrix;
-    const size = shape.length;
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (shape[r][c] !== 0) {
-          drawBlock(tCtx, player.currentPiece.x + c, ghostY + r, '#00E5FF', offsetX, offsetY, undefined, true, blockSize, player.currentPiece.type);
-        }
-      }
-    }
-  }
-
-  // Draw Current Piece
-  if (player.currentPiece) {
-    const shape = player.currentPiece.matrix;
-    const size = shape.length;
-    const color = playerColor;
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (shape[r][c] !== 0) {
-          const specialKey = `${r},${c}`;
-          const isSpecial = player.currentPiece.specialBlocks.get(specialKey);
-          drawBlock(tCtx, player.currentPiece.x + c, player.currentPiece.y + r, color, offsetX, offsetY, isSpecial, false, blockSize, player.currentPiece.type);
-        }
-      }
-    }
-  }
-
-  // Draw topping out overlay for this player
-  if (player.isToppedOut) {
-    tCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-    tCtx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
-  }
-
-  // Target Indicator
-  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
-  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && index !== (gameManager.myPlayerIndex ?? 0)) {
-    tCtx.fillStyle = '#FF007F';
-    tCtx.beginPath();
-    const centerX = offsetX + (COLS * blockSize) / 2;
-    const arrowY = offsetY - 10;
-    tCtx.moveTo(centerX - 10, arrowY - 15);
-    tCtx.lineTo(centerX + 10, arrowY - 15);
-    tCtx.lineTo(centerX, arrowY);
-    tCtx.fill();
-    
-    // Glowing border for targeted player
-    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
-    tCtx.lineWidth = 4;
-    tCtx.strokeRect(offsetX - 2, offsetY - 2, (COLS * blockSize) + 4, (ROWS * blockSize) + 4);
-  }
-}
-
-function render() {
-  if (gameManager.state === GameState.MAIN_MENU) return;
-
-  const activeMode = gameManager.isOnline ? activeOnlineMode : null;
-  const isDuo = !gameManager.isOnline || activeMode === 'classic-pvp' || false;
-  
-  if (isDuo) {
-    setDisplay('canvas-container', 'hidden');
-    setDisplay('duo-layout-container', 'flex');
-    setDisplay('hud-p1-br', 'hidden'); 
-    setDisplay('hud-p2-br', 'hidden');
-    
-    if (gameManager.players.length > 1) {
-      setDisplay('p2-pod', 'flex');
-      const p1 = document.getElementById('p1-pod');
-      if (p1) { p1.classList.remove('justify-center'); p1.classList.add('justify-end'); }
-    } else {
-      setDisplay('p2-pod', 'hidden');
-      const p1 = document.getElementById('p1-pod');
-      if (p1) { p1.classList.remove('justify-end'); p1.classList.add('justify-center'); }
-    }
-    
-    // Clear mini canvases
-    const b1 = document.getElementById('board-p1') as HTMLCanvasElement;
-    if (b1) b1.getContext('2d')!.clearRect(0, 0, b1.width, b1.height);
-    const b2 = document.getElementById('board-p2') as HTMLCanvasElement;
-    if (b2) b2.getContext('2d')!.clearRect(0, 0, b2.width, b2.height);
-  } else {
-    setDisplay('duo-layout-container', 'hidden');
-    setDisplay('canvas-container', 'flex');
-    setDisplay('hud-p1-br', 'flex');
-    if (gameManager.players.length > 1 && !gameManager.isOnline) setDisplay('hud-p2-br', 'flex');
-  }
-
-  // Clear main canvas (used by BR/fallback)
-  ctx.resetTransform();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const myIdxForLayout = gameManager.isOnline ? gameManager.myPlayerIndex : -1;
-  boardLayout = computeBoardLayout(gameManager.players.length, myIdxForLayout, gameManager.isOnline ? activeOnlineMode : null);
-
-  for (let i = 0; i < gameManager.players.length; i++) {
-    renderPlayer(gameManager.players[i], i, isDuo);
-  }
-
-  // Render visual effects
-  const effects = gameManager.getEffects();
-  const eCanvas = document.getElementById('effects-canvas') as HTMLCanvasElement;
-  let eCtx = ctx;
-  if (isDuo && eCanvas) {
-      eCtx = eCanvas.getContext('2d')!;
-      eCtx.clearRect(0, 0, eCanvas.width, eCanvas.height);
-  }
-
-  function getCanvasRectOffset(pIdx: number) {
-      if (!isDuo) return { x: 0, y: 0 };
-      const targetId = pIdx === 0 ? 'board-p1' : 'board-p2';
-      const el = document.getElementById(targetId);
-      const container = document.getElementById('effects-canvas');
-      if (el && container) {
-          const rect = el.getBoundingClientRect();
-          const contRect = container.getBoundingClientRect();
-          return { x: rect.left - contRect.left, y: rect.top - contRect.top };
-      }
-      return { x: 0, y: 0 };
-  }
-
-  // Draw line clear flashes
-  for (const flash of effects.lineClearEffects) {
-    const pIdx = (flash as any).playerIndex ?? 0;
-    const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
-    const rectOffset = getCanvasRectOffset(pIdx);
-    
-    const targetCtx = isDuo ? eCtx : ctx;
-    const finalX = isDuo ? rectOffset.x : offsetX;
-    const finalY = isDuo ? rectOffset.y : offsetY;
-    
-    targetCtx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
-    targetCtx.fillRect(finalX, finalY + flash.row * blockSize, COLS * blockSize, blockSize);
-  }
-
-  // Draw particles
-  for (const p of effects.particles) {
-    const pIdx = (p as any).playerIndex ?? 0;
-    const rectOffset = getCanvasRectOffset(pIdx);
-    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
-    
-    const targetCtx = isDuo ? eCtx : ctx;
-    const finalX = isDuo ? (p.x - offsetX + rectOffset.x) : p.x;
-    const finalY = isDuo ? (p.y - offsetY + rectOffset.y) : p.y;
-
-    const alpha = Math.max(0, p.life / p.maxLife);
-    targetCtx.globalAlpha = alpha;
-    targetCtx.fillStyle = p.color;
-    targetCtx.beginPath();
-    targetCtx.arc(finalX, finalY, p.size * alpha, 0, Math.PI * 2);
-    targetCtx.fill();
-  }
-  if(isDuo) eCtx.globalAlpha = 1;
-  ctx.globalAlpha = 1;
-  
-  // Draw combo texts
-  for (const t of effects.comboTexts) {
-    const pIdx = (t as any).playerIndex ?? 0;
-    const rectOffset = getCanvasRectOffset(pIdx);
-    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
-    
-    const targetCtx = isDuo ? eCtx : ctx;
-    const finalX = isDuo ? (t.x - offsetX + rectOffset.x) : t.x;
-    const finalY = isDuo ? (t.y - offsetY + rectOffset.y) : t.y;
-
-    const alpha = Math.max(0, t.life / t.maxLife);
-    targetCtx.globalAlpha = alpha;
-    targetCtx.fillStyle = t.color;
-    targetCtx.font = `bold ${t.size}px "Press Start 2P"`;
-    targetCtx.textAlign = 'center';
-    targetCtx.textBaseline = 'middle';
-    
-    targetCtx.shadowColor = t.color;
-    targetCtx.shadowBlur = 20;
-    targetCtx.fillText(t.text, finalX, finalY);
-    targetCtx.shadowBlur = 0;
-  }
-  ctx.globalAlpha = 1;
-
-  // In online mode, figure out which player index is "ours" for the left HUD
-  const myIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
-  const opIdx = gameManager.isOnline 
-    ? gameManager.players.findIndex((_, i) => i !== myIdx)
-    : 1;
-
-  // Update UI for Player 1 (our player)
-  const p1 = gameManager.players[myIdx];
-  if (p1) {
-    setText('score-p1',  `${Math.round(p1.scoreManager.score)}`); setText('score-p1-br', `${Math.round(p1.scoreManager.score)}`);
-
-    // K.O. badge + transient stamp overlay (Battle Royale only)
-    const koBadge = document.getElementById('ko-count-badge-p1');
-    const koCountEl = document.getElementById('ko-count-p1');
-    const koDecayEl = document.getElementById('ko-decay-p1');
-    const koStamp = document.getElementById('ko-stamp-overlay');
-    if (koBadge && koCountEl && koDecayEl) {
-      const hasKos = (p1.koCount || 0) > 0;
-      ['ko-count-badge-p1', 'ko-count-badge-p1-br'].forEach(id => { let b = document.getElementById(id); if (b) b.classList.toggle('hidden', !hasKos); });
-      if (hasKos) {
-        setText('ko-count-p1', `${p1.koCount}`); setText('ko-count-p1-br', `${p1.koCount}`);
-        // Mirrors the server's decay formula: raw x 0.85^KOCount
-        const retained = Math.round(Math.pow(0.85, p1.koCount) * 100);
-        setText('ko-decay-p1', `final x${(retained / 100).toFixed(2)}`); setText('ko-decay-p1-br', `final x${(retained / 100).toFixed(2)}`);
-      }
-    }
-    if (koStamp) {
-      const stampVisible = (p1.koStampTimer || 0) > 0;
-      koStamp.classList.toggle('hidden', !stampVisible);
-      koStamp.classList.toggle('flex', stampVisible);
-    }
-    setText('level-p1', `${p1.scoreManager.totalLinesCleared}`); setText('level-p1-br', `${p1.scoreManager.totalLinesCleared}`);
-    setText('combo-p1', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : ''); setText('combo-p1-br', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '');
-    setText('multiplier-p1', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : ''); setText('multiplier-p1-br', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '');
-    renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
-    const holdC1BR = document.getElementById('hold-canvas-p1-br') as HTMLCanvasElement;
-    if (holdC1BR) renderPieceOnMiniCanvas(holdC1BR, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
-    
-    const p1Preview = p1.nextPiece ? [p1.nextPiece.type, ...p1.bag.getPreview(3)] : p1.bag.getPreview(4);
-    // Safety clamp to exactly 4 pieces
-    while (p1Preview.length < 4) p1Preview.push(p1.bag.getPreview(1)[0]);
-    p1Preview.length = 4;
-    renderQueueOnMiniCanvas(nextCanvasP1, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF');
-    const nextC1BR = document.getElementById('next-canvas-p1-br') as HTMLCanvasElement;
-    if (nextC1BR) renderQueueOnMiniCanvas(nextC1BR, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF');
-    
-    const p1PreviewText = p1.nextPiece ? [p1.nextPiece.type, ...p1.bag.getPreview(4)].join(' · ') : p1.bag.getPreview(5).join(' · ');
-    nextQueueP1.innerText = p1PreviewText;
-    const nextQueueP1BR = document.getElementById('next-queue-p1-br');
-    if (nextQueueP1BR) nextQueueP1BR.innerText = p1PreviewText;
-
-    const classInfo1 = PLAYER_CLASSES.find((c) => c.id === p1.playerClass);
-    abilityMeterP1.classList.remove('hidden');
-    if (classInfo1) {
-      const qCooldown = Math.max(0, p1.abilityCooldowns.Q);
-      const eCooldown = Math.max(0, p1.abilityCooldowns.E);
-      const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
-      const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
-      const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
-      abilityQLabelP1.innerText = classInfo1.abilityQName.toUpperCase();
-      abilityQStatusP1.innerText = qStatus;
-      abilityQStatusP1.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
-      abilityELabelP1.innerText = classInfo1.abilityEName.toUpperCase();
-      abilityEStatusP1.innerText = eStatus;
-      abilityEStatusP1.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
-      abilityLabelP1.innerText = classInfo1.ultimateName.toUpperCase();
-      abilityRStatusP1.innerText = `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
-      setWidth('ability-fill-p1', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`); setWidth('ability-fill-p1-br', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`);
-      abilityReadyP1.classList.toggle('hidden', p1.classMeter < classInfo1.ultimateCost);
-    }
-  }
-
-  // Update UI for Player 2 (opponent / bot)
-  const p2 = opIdx >= 0 ? gameManager.players[opIdx] : undefined;
-  if (p2) {
-    scoreElementP2.innerText = `${Math.round(p2.scoreManager.score)}`;
-    levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
-    comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
-    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
-    
-    const holdC2 = document.getElementById('hold-canvas-p2') as HTMLCanvasElement;
-    if (holdC2) renderPieceOnMiniCanvas(holdC2, p2.holdPiece, PLAYER_COLORS[1] || '#FF007F');
-    const holdC2BR = document.getElementById('hold-canvas-p2-br') as HTMLCanvasElement;
-    if (holdC2BR) renderPieceOnMiniCanvas(holdC2BR, p2.holdPiece, PLAYER_COLORS[1] || '#FF007F');
-    
-    const p2Preview = p2.nextPiece ? [p2.nextPiece.type, ...p2.bag.getPreview(3)] : p2.bag.getPreview(4);
-    while (p2Preview.length < 4) p2Preview.push(p2.bag.getPreview(1)[0]);
-    p2Preview.length = 4;
-    const nextC2 = document.getElementById('next-canvas-p2') as HTMLCanvasElement;
-    if (nextC2) renderQueueOnMiniCanvas(nextC2, p2Preview, PLAYER_COLORS[1] || '#FF007F');
-    const nextC2BR = document.getElementById('next-canvas-p2-br') as HTMLCanvasElement;
-    if (nextC2BR) renderQueueOnMiniCanvas(nextC2BR, p2Preview, PLAYER_COLORS[1] || '#FF007F');
-
-
-    const classInfo2 = PLAYER_CLASSES.find((c) => c.id === p2.playerClass);
-    setDisplay('ability-meter-p2', 'flex');
-    setDisplay('ability-meter-p2-br', 'flex');
-    if (classInfo2) {
-      const qCooldown = Math.max(0, p2.abilityCooldowns?.Q || 0);
-      const eCooldown = Math.max(0, p2.abilityCooldowns?.E || 0);
-      const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
-      const activeSuffix = p2.activeEffectTimer > 0 ? ` · ${p2.activeEffectType} ${Math.ceil(p2.activeEffectTimer / 1000)}s` : '';
-      const targetName = p2.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p2.selectedTargetIndex]?.name) ?? `P${p2.selectedTargetIndex + 1}`);
-      
-      setText('ability-q-label-p2', classInfo2.abilityQName.toUpperCase());
-      setText('ability-q-status-p2', qStatus);
-      const qEl = document.getElementById('ability-q-status-p2');
-      if (qEl) qEl.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
-      
-      setText('ability-e-label-p2', classInfo2.abilityEName.toUpperCase());
-      setText('ability-e-status-p2', eStatus);
-      const eEl = document.getElementById('ability-e-status-p2');
-      if (eEl) eEl.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
-
-      setText('ability-label-p2', classInfo2.ultimateName.toUpperCase());
-      setText('ability-r-status-p2', `${Math.round(p2.classMeter)}/${classInfo2.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`);
-      const wid = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
-      setWidth('ability-fill-p2', wid); setWidth('ability-fill-p2-br', wid);
-      
-      const rdy = document.getElementById('ability-ready-p2');
-      if (rdy) rdy.classList.toggle('hidden', p2.classMeter < classInfo2.ultimateCost);
-    }
-  }
-  // Update multiplayer scoreboard
-  if (gameManager.isOnline && onlinePlayerSpecs.length > 0) {
-    const scoreboard = document.getElementById('multiplayer-scoreboard')!;
-    const entries = document.getElementById('scoreboard-entries')!;
-
-    // Battle Royale uses its own HUD — keep the sidebar hidden and update BR HUD instead
-    if (activeOnlineMode === 'battle-royale') {
-      scoreboard.classList.add('hidden');
-      updateBattleRoyalHud();
-      return;
-    }
-
-    scoreboard.classList.remove('hidden');
-    entries.innerHTML = '';
-    const playerData: {name: string, score: number, lines: number, kills: number, alive: boolean, team: 'cyan' | 'magenta' | null}[] = [];
-    for (let i = 0; i < gameManager.players.length; i++) {
-      const p = gameManager.players[i];
-      playerData.push({
-        name: onlinePlayerSpecs[i]?.name || `Player ${i+1}`,
-        score: p.scoreManager.score,
-        lines: p.scoreManager.totalLinesCleared,
-        kills: p.kills,
-        alive: !p.isToppedOut,
-        team: onlinePlayerTeams[i] ?? null
-      });
-    }
-    if (activeOnlineMode !== 'team-deathmatch') {
-      for (const player of playerData.sort((a, b) => b.score - a.score)) {
-        const row = document.createElement('div');
-        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
-        row.innerHTML = `<span class="font-bold truncate max-w-[100px]">${player.name}</span><span class="font-pixel text-xs">${Math.round(player.score)}</span>`;
-        entries.appendChild(row);
-      }
-      return;
-    }
-    for (const team of ['cyan', 'magenta'] as const) {
-      const heading = document.createElement('div');
-      heading.className = `flex justify-between items-center pt-2 text-[10px] font-pixel ${team === 'cyan' ? 'text-neonCyan' : 'text-neon-pink'}`;
-      heading.innerHTML = `<span>${team === 'cyan' ? 'CYAN' : 'MAGENTA'}</span><span>${Math.round(onlineTeamScores[team])}</span>`;
-      entries.appendChild(heading);
-      for (const player of playerData.filter(item => item.team === team).sort((a, b) => b.score - a.score)) {
-        const row = document.createElement('div');
-        row.className = `flex justify-between items-center gap-4 text-sm ${player.alive ? 'text-white' : 'text-gray-600 line-through'}`;
-        row.innerHTML = `<span class="font-bold truncate max-w-[100px]">${player.name}</span><span class="font-pixel text-xs">${Math.round(player.score)}</span>`;
-        entries.appendChild(row);
-      }
-    }
-  }
-
-  // Draw Game Over global overlay (only for offline games now)
-  if (gameManager.state === GameState.GAME_OVER) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#00E5FF';
-    ctx.font = '30px "Press Start 2P"';
-    ctx.textAlign = 'center';
-    
-    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
-    ctx.font = '12px "Press Start 2P"';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
-  }
-}
-
-window.addEventListener('keydown', (e) => {
-  if (gameManager.state === GameState.GAME_OVER) {
-    if (e.key === 'Enter') {
-      if (gameManager.isOnline) {
-        // Handled by UI buttons in POST_GAME state instead
-      } else if (gameManager.players.length === 1) {
-        gameManager.initSolo(selectedClass);
-      } else {
-        const botDiff = gameManager.players[1].bot!.difficulty;
-        gameManager.init1v1(botDiff, selectedClass);
-      }
-    } else if (e.key === 'Escape') {
-      returnToMenu();
-    }
-  }
+btnHowToPlay.addEventListener('click', () => {
+  tutorialModal.classList.remove('hidden');
+  tutorialModal.classList.add('flex');
+});
+btnTutorialClose.addEventListener('click', () => {
+  tutorialModal.classList.add('hidden');
+  tutorialModal.classList.remove('flex');
 });
 
-function returnToMenu() {
-  AudioManager.playMusic('menu');
-  gameManager.state = GameState.MAIN_MENU;
-  gameHud.classList.add('hidden');
-  gameHud.classList.remove('flex');
-
-  // Disconnect from server and reset lobby component
-  lobby.reset();
-
-  onlinePlayerTeams = [];
-  activeOnlineMode = selectedOnlineMode;
-  onlineTeamScores = { cyan: 0, magenta: 0 };
-  teamMatchEndsAt = null;
-  if (teamTimerInterval) clearInterval(teamTimerInterval);
-  teamTimerInterval = null;
-
-  // Reset menus
-  screenDifficulty.classList.add('hidden');
-  screenDifficulty.classList.remove('flex');
-  lobby.hide();
-  screenPostGame.classList.remove('flex');
-  screenPostGame.classList.add('hidden');
-  screenOnlineModeSelect.classList.add('hidden');
-  spectatorBanner.classList.add('hidden');
-  preGameOverlay.classList.add('hidden');
-  
-  teamMatchStrip.classList.add('hidden');
-
-  document.getElementById('multiplayer-scoreboard')?.classList.add('hidden');
-  updateNavHighlight('nav-lobby');
-  screenMain.classList.remove('hidden');
-  uiLayer.classList.remove('hidden');
-}
-
-
-
+updateNavHighlight('nav-menu');

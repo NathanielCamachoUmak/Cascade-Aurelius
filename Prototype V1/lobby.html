@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Cascade — Choose your mode. Solo, VS Bot, or Online multiplayer puzzle action." />
+    <meta name="theme-color" content="#0D0B1A" />
+    <title>Cascade — Mode Select</title>
+
+    <!-- Google Fonts: Press Start 2P + Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'deep-purple': '#0D0B1A',
+              'card-bg': '#1A1530',
+              'card-border': '#2A2245',
+              'nav-bg': '#130F25',
+              'surface': '#15112A',
+              'neon-cyan': '#00FFFF',
+              'neon-pink': '#FF1493',
+              'neon-yellow': '#FFD700',
+              'neon-green': '#00FF00',
+              // Legacy aliases (used by main.ts dynamic class generation)
+              bgDark: '#0D0B1A',
+              bgPanel: '#1A1530',
+              bgPanelBorder: '#2A2245',
+              neonCyan: '#00FFFF',
+              neonMagenta: '#FF1493',
+              neonYellow: '#FFD700',
+            },
+            fontFamily: {
+              pixel: ['"Press Start 2P"', 'monospace'],
+              sans: ['Inter', 'sans-serif'],
+            },
+            animation: {
+              'pulse-live': 'pulse-live 1.5s ease-in-out infinite',
+              'float': 'float 3s ease-in-out infinite',
+            },
+            keyframes: {
+              'pulse-live': {
+                '0%, 100%': { opacity: '1' },
+                '50%': { opacity: '0.4' },
+              },
+              'float': {
+                '0%, 100%': { transform: 'translateY(0px)' },
+                '50%': { transform: 'translateY(-6px)' },
+              },
+            },
+          },
+        },
+      }
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background: linear-gradient(180deg, #0D0B1A 0%, #1A0E2E 50%, #0D0B1A 100%);
+        color: #E0E0E0;
+      }
+
+      /* Scanline overlay */
+      .scanlines::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 100;
+        opacity: 0.12;
+        background-image: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.15) 2px,
+          rgba(0, 0, 0, 0.15) 4px
+        );
+      }
+
+      /* Grid background pattern */
+      .grid-bg {
+        background-image:
+          linear-gradient(rgba(0,255,255,0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0,255,255,0.06) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+
+      /* Custom Clip Paths for slanted buttons */
+      .slanted-btn {
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+      }
+      .slanted-btn-reverse {
+        clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+      }
+
+      /* Glow text effects */
+      .glow-cyan {
+        text-shadow: 0 0 10px rgba(0,255,255,0.5), 0 0 30px rgba(0,255,255,0.3), 0 0 60px rgba(0,255,255,0.15);
+      }
+      .glow-green {
+        text-shadow: 0 0 7px rgba(0,255,0,0.6), 0 0 14px rgba(0,255,0,0.3);
+      }
+      .glow-pink {
+        text-shadow: 0 0 10px rgba(255,20,147,0.5), 0 0 30px rgba(255,20,147,0.3);
+      }
+      .glow-yellow {
+        text-shadow: 0 0 10px rgba(255,215,0,0.5), 0 0 30px rgba(255,215,0,0.3);
+      }
+
+      /* Nav link active underline */
+      .nav-active {
+        color: white;
+        border-bottom: 2px solid #00FFFF;
+        padding-bottom: 2px;
+      }
+
+      /* Card hover glow */
+      .card-glow {
+        transition: all 0.3s ease;
+      }
+      .card-glow:hover {
+        transform: translateY(-4px);
+      }
+
+      /* Tutorial modal */
+      .tutorial-key {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #E5E5E5;
+        white-space: nowrap;
+      }
+      .tutorial-tab {
+        color: #9CA3AF;
+        border-bottom: 2px solid transparent;
+      }
+      .tutorial-tab:hover {
+        color: #E5E5E5;
+      }
+      .tutorial-tab-active {
+        color: #00FFFF;
+        border-bottom: 2px solid #00FFFF;
+      }
+      .tutorial-panel.hidden {
+        display: none;
+      }
+
+      /* Panel glow on hover */
+      .panel-glow {
+        transition: all 0.3s ease;
+      }
+      .panel-glow:hover {
+        box-shadow: 0 0 20px rgba(0,255,255,0.1);
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #0D0B1A; }
+      ::-webkit-scrollbar-thumb { background: #2A2245; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3A3265; }
+
+      /* HUD panel glass effect */
+      .hud-panel {
+        background: rgba(26, 21, 48, 0.85);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(42, 34, 69, 0.8);
+        border-radius: 8px;
+      }
+
+      /* Keep the full-screen menu layer from stealing clicks from the header. */
+      #ui-layer { pointer-events: none; }
+      #ui-layer > * { pointer-events: auto; }
+    </style>
+  </head>
+
+  <body class="bg-deep-purple text-white font-sans h-screen w-screen overflow-hidden flex flex-col m-0 p-0 selection:bg-neon-pink scanlines">
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--             PAGE INDICATOR                  -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="fixed top-0 left-0 z-[60] px-4 py-1">
+      <span class="font-pixel text-[8px] text-gray-500 tracking-widest">MENU</span>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--               TOP NAVBAR                    -->
+    <!-- ═══════════════════════════════════════════ -->
+    <header class="fixed top-5 left-0 right-0 z-[80] bg-nav-bg/80 backdrop-blur-sm transition-all duration-300">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-14">
+          <!-- Logo -->
+          <a href="index.html" class="no-underline flex-shrink-0">
+            <span class="font-pixel text-sm text-white tracking-wider">
+              <span class="text-neon-pink">&lt;</span><span class="text-neon-cyan">CASCADE</span><span class="text-neon-pink">&gt;</span>
+            </span>
+          </a>
+
+          <!-- Nav Links -->
+          <nav class="hidden lg:flex items-center space-x-1">
+            <a href="index.html" id="nav-menu" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Menu</a>
+            <a href="modeselect.html" id="nav-modes" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Modes</a>
+            <a href="lobby.html" id="nav-lobby" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer nav-active text-white uppercase no-underline">Lobby</a>
+            <a href="#" id="nav-settings" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Settings</a>
+            <a href="#" id="nav-profile" class="px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200 uppercase no-underline">Profile</a>
+          </nav>
+
+          <!-- Auth & LIVE Indicator -->
+          <div class="flex items-center gap-4">
+            <!-- Auth Button -->
+            <button id="btn-auth-open" class="hidden text-[10px] font-bold tracking-widest uppercase px-4 py-1.5 border border-neon-cyan text-neon-cyan rounded hover:bg-neon-cyan hover:text-black transition-colors cursor-pointer">
+              SIGN IN
+            </button>
+            <div id="auth-user-display" class="hidden flex items-center gap-2">
+              <span id="auth-username" class="text-xs font-bold text-white tracking-wider"></span>
+              <button id="btn-auth-logout" class="text-[10px] text-gray-400 hover:text-white uppercase tracking-widest cursor-pointer">LOGOUT</button>
+            </div>
+
+            <!-- LIVE Indicator -->
+            <div class="flex items-center gap-1.5 bg-neon-pink/10 px-3 py-1.5 rounded-full border border-neon-pink/30">
+              <span class="w-2 h-2 rounded-full bg-neon-pink animate-pulse-live"></span>
+              <span class="text-neon-pink text-[10px] font-bold tracking-widest">LIVE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ───── Auth Modal ───── -->
+    <div id="auth-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+      <div class="relative w-full max-w-sm bg-card-bg border border-card-border rounded-xl shadow-2xl p-6">
+        <button id="btn-auth-close" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl leading-none cursor-pointer">&times;</button>
+        <h2 id="auth-modal-title" class="text-white font-extrabold text-lg tracking-wide mb-1">Sign In</h2>
+        <p id="auth-modal-subtitle" class="text-gray-400 text-xs mb-5">Access your profile and cloud saves.</p>
+
+        <form id="auth-form" class="flex flex-col gap-4">
+          <div id="auth-username-group" class="hidden flex-col gap-1">
+            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Username</label>
+            <input id="auth-username-input" type="text" placeholder="Player123" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Email</label>
+            <input id="auth-email-input" type="email" required placeholder="player@example.com" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Password</label>
+            <input id="auth-password-input" type="password" required placeholder="••••••••" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+          </div>
+          <p id="auth-error" class="text-red-500 text-xs hidden"></p>
+          <button type="submit" id="btn-auth-submit" class="mt-2 w-full px-4 py-2.5 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded transition-all hover:brightness-110 cursor-pointer">SIGN IN</button>
+          <button type="button" id="btn-test-success" class="mt-2 w-full px-4 py-1.5 bg-card-border/50 text-gray-400 font-bold tracking-widest text-[10px] rounded transition-all hover:text-white cursor-pointer border border-dashed border-gray-600">TEST GREEN TEXT (DEV)</button>
+        </form>
+
+        <div class="mt-4 text-center">
+          <button id="btn-auth-toggle" class="text-xs text-gray-400 hover:text-white cursor-pointer underline">Need an account? Register</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--              MAIN VIEWPORT                  -->
+    <!-- ═══════════════════════════════════════════ -->
+    <main class="relative flex-1 w-full h-full flex justify-center items-center">
+
+      <!-- MENU OVERLAY -->
+      <div id="ui-layer" class="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden">
+        <!-- Grid background pattern (same as index.html) -->
+        <div class="absolute inset-0 grid-bg pointer-events-none"></div>
+
+        <!-- Ambient glow orbs (same as index.html) -->
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-neon-cyan/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-neon-pink/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute top-1/2 right-1/3 w-64 h-64 bg-neon-yellow/3 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- ───── Screen: Main Menu ───── -->
+        <div id="screen-lobby" class="hidden flex-col items-center w-full max-w-6xl px-8 pt-24 relative z-10 max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div class="mb-6 w-full text-center">
+            <h1 class="text-3xl md:text-4xl font-bold">Lobby</h1>
+            <p id="lobby-mode-description" class="text-gray-400 text-sm mt-2 uppercase tracking-wider">Choose a mode to create a room</p>
+            <p id="online-mode-label" class="text-neon-cyan text-[10px] mt-3 font-bold uppercase tracking-[0.2em]"></p>
+          </div>
+
+          <!-- Two-column layout: controls left, player roster right -->
+          <div class="flex flex-col lg:flex-row gap-6 w-full flex-1 min-h-0">
+
+            <!-- LEFT COLUMN: Form controls & buttons -->
+            <div class="w-full lg:w-[380px] shrink-0 flex flex-col gap-4">
+              <!-- Nickname -->
+              <div class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-5 panel-glow">
+                <label for="lobby-nickname-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Nickname</label>
+                <div class="mt-2">
+                  <input id="lobby-nickname-input" type="text" placeholder="Enter your nickname..." maxlength="16"
+                    class="w-full bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-pink focus:shadow-[0_0_15px_rgba(255,20,147,0.2)] transition-all" />
+                </div>
+              </div>
+
+              <!-- Room Code -->
+              <div id="lobby-room-panel" class="w-full bg-card-bg/60 backdrop-blur-md border border-card-border rounded-xl p-5 panel-glow">
+                <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+                  <div class="flex-1">
+                    <label for="lobby-room-input" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Room Code</label>
+                    <input id="lobby-room-input" type="text" value="test-room"
+                      class="mt-2 w-full bg-deep-purple/80 border border-card-border text-white px-4 py-2.5 text-base rounded-lg focus:outline-none focus:border-neon-cyan focus:shadow-[0_0_15px_rgba(0,255,255,0.2)] transition-all" />
+                  </div>
+                  <div class="flex gap-2 sm:shrink-0">
+                    <button id="btn-host-lobby" class="px-5 py-2.5 bg-neon-pink text-white font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(255,20,147,0.2)]">HOST</button>
+                    <button id="btn-join-lobby" class="px-5 py-2.5 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(0,255,255,0.2)]">JOIN</button>
+                  </div>
+                </div>
+                <p id="lobby-action-hint" class="mt-3 text-[10px] text-gray-500 uppercase tracking-widest">Host creates this mode's room. Join connects to an existing room with the same mode.</p>
+              </div>
+
+              <!-- Status & hints -->
+              <div id="lobby-countdown" class="hidden text-neon-yellow text-2xl font-bold font-pixel animate-pulse text-center"></div>
+              <div id="lobby-status" class="text-gray-400 text-sm min-h-[20px] text-center"></div>
+              <p id="lobby-start-hint" class="text-[10px] text-gray-500 uppercase tracking-widest text-center">The host can start with the current roster. Ready starts automatically when the room is full.</p>
+
+              <!-- Action buttons -->
+              <div class="flex flex-wrap justify-center gap-3 mt-auto pt-4">
+                <button id="btn-lobby-start-now" class="hidden px-8 py-3 bg-neon-yellow text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(255,220,80,0.25)]">START NOW</button>
+                <button id="btn-lobby-add-bot" class="hidden px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-neon-yellow/60 text-neon-yellow font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-neon-yellow hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(255,220,80,0.15)]">+ ADD BOT</button>
+                <button id="btn-lobby-ready" class="hidden group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+                  <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+                  <span class="relative">READY UP</span>
+                </button>
+                <button id="btn-lobby-switch-team" class="hidden px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-neon-pink/50 text-neon-pink font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-neon-pink hover:scale-105 cursor-pointer">
+                  SWITCH TEAM
+                </button>
+                <button id="btn-lobby-back" class="px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-gray-400 hover:scale-105 cursor-pointer">
+                  &lt; BACK
+                </button>
+                <button id="btn-lobby-leave" class="hidden px-8 py-3 bg-red-900/50 backdrop-blur-sm border-2 border-red-500/50 text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-red-500 hover:scale-105 cursor-pointer">
+                  LEAVE LOBBY
+                </button>
+              </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Player roster -->
+            <div class="flex-1 flex flex-col min-h-0 min-w-0">
+              <div id="team-lobby-summary" class="hidden w-full grid grid-cols-2 gap-3 mb-3 text-[10px] font-bold tracking-widest uppercase">
+                <div class="border border-neon-cyan/40 bg-neon-cyan/5 px-4 py-3 text-neon-cyan">Cyan Circuit <span id="team-lobby-cyan">0/3</span></div>
+                <div class="border border-neon-pink/40 bg-neon-pink/5 px-4 py-3 text-neon-pink text-right">Magenta Voltage <span id="team-lobby-magenta">0/3</span></div>
+              </div>
+
+              <div id="lobby-player-list" class="w-full flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
+                <!-- Player rows injected by main.ts -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ───── Screen: Difficulty Select ───── -->
+        <div id="global-ribbon" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full bg-neon-pink/90 text-white font-bold text-4xl py-6 text-center z-[60] shadow-[0_0_40px_rgba(255,20,147,0.8)] border-y-4 border-white tracking-[0.2em] uppercase transition-opacity duration-300">
+          TETRIS!
+        </div>
+
+        <!-- ───── Screen: Post-Game ───── -->
+        <div id="screen-post-game" class="hidden flex-col items-center w-full max-w-2xl px-8 relative z-10">
+          <div class="mb-8 w-full text-center">
+            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">MATCH FINISHED</h2>
+            <h1 class="text-4xl md:text-5xl font-bold font-pixel text-neon-yellow glow-yellow mb-6">GAME OVER</h1>
+            <p id="post-game-winner" class="text-white text-2xl tracking-widest"></p>
+            <p id="post-game-team-scores" class="text-sm tracking-[0.22em] uppercase mt-4"></p>
+          </div>
+          
+          <div id="post-game-votes" class="text-gray-400 text-sm mb-8 tracking-widest uppercase">
+            0/0 voted for rematch
+          </div>
+          
+          <div class="flex gap-4">
+            <button id="btn-post-rematch" class="group relative px-10 py-3 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+              <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+              <span class="relative">VOTE REMATCH</span>
+            </button>
+            <button id="btn-post-leave" class="px-8 py-3 bg-red-900/50 backdrop-blur-sm border-2 border-red-500/50 text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-red-500 hover:scale-105 cursor-pointer">
+              LEAVE LOBBY
+            </button>
+          </div>
+        </div>
+
+        <!-- ───── Modal: Confirm Join ───── -->
+        <div id="modal-confirm-join" class="hidden absolute inset-0 z-[70] bg-black/80 flex items-center justify-center backdrop-blur-sm">
+          <div class="bg-card-bg border border-neon-pink rounded-xl p-8 max-w-md text-center shadow-[0_0_30px_rgba(255,20,147,0.3)]">
+            <h3 class="text-neon-pink font-bold text-xl mb-4 tracking-widest uppercase">Leave Current Lobby?</h3>
+            <p class="text-gray-300 mb-8">Joining a new lobby will close your current session and forfeit any active game.</p>
+            <div class="flex gap-4 justify-center">
+              <button id="btn-confirm-join-yes" class="px-6 py-2 bg-neon-pink text-deep-purple font-bold tracking-widest rounded-lg transition-all hover:scale-105 cursor-pointer">
+                CONFIRM
+              </button>
+              <button id="btn-confirm-join-no" class="px-6 py-2 bg-card-bg border border-gray-500 text-gray-300 font-bold tracking-widest rounded-lg transition-all hover:border-gray-300 hover:scale-105 cursor-pointer">
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!--            IN-GAME HUD OVERLAY              -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div id="game-hud" class="absolute inset-0 z-10 hidden flex-col justify-center items-center pointer-events-none">
+<canvas id="effects-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-50"></canvas>
+        <div id="ko-stamp-overlay" class="hidden absolute inset-0 z-30 items-center justify-center pointer-events-none">
+          <div class="border-4 border-neon-pink px-10 py-5 -rotate-12 bg-deep-purple/70 shadow-[0_0_40px_rgba(255,20,147,0.6)]">
+            <div class="font-pixel text-4xl text-neon-pink tracking-widest">K.O.</div>
+            <div id="ko-stamp-sub" class="mt-2 text-center text-[10px] uppercase tracking-widest text-gray-300">Garbage cleared &middot; -20% score</div>
+          </div>
+        </div>
+        <!-- Pre-Game Countdown Overlay -->
+        <div id="pre-game-overlay" class="absolute inset-0 flex items-center justify-center z-[70] hidden pointer-events-none">
+          <div id="pre-game-text" class="text-7xl font-pixel text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)] animate-pulse"></div>
+        </div>
+        
+        <!-- Spectator Banner -->
+        <div id="spectator-banner" class="absolute top-16 left-1/2 -translate-x-1/2 bg-deep-purple/90 border border-neon-cyan px-8 py-3 rounded-full z-[60] hidden pointer-events-none shadow-[0_0_15px_rgba(0,255,255,0.3)]">
+          <span class="text-neon-cyan font-bold tracking-[0.3em] uppercase glow-cyan text-sm">SPECTATING</span>
+        </div>
+
+        <!-- Settings Toggle / Ghost Piece Button -->
+        <div class="absolute top-28 right-8 pointer-events-auto flex gap-4 z-[60]">
+          <button id="btn-toggle-ghost" class="bg-bgPanel border border-neonCyan text-neonCyan px-4 py-2 text-xs font-bold hover:bg-neonCyan hover:text-black transition-colors rounded">
+            GHOST: ON
+          </button>
+        </div>
+
+        <!-- The HUD wraps around the Canvas -->
+          <div id="game-layout-wrapper" class="relative flex justify-center items-start gap-4 w-full max-w-[1800px] px-8 h-[600px]">
+            
+            <!-- SOLO & 1V1 Layout container -->
+            <div id="duo-layout-container" class="hidden w-full flex justify-center items-center gap-6">
+              
+              <!-- PLAYER 1 POD -->
+              <div id="p1-pod" class="flex justify-end items-stretch gap-4 flex-1">
+                <!-- P1 Left Info -->
+                <div class="flex flex-col justify-between w-40 shrink-0 gap-4">
+                  <!-- Hold -->
+                  <div class="hud-panel p-4 text-center flex flex-col justify-center bg-card-bg/80 border border-card-border rounded-xl">
+                    <h3 class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">HOLD</h3>
+                    <canvas id="hold-canvas-p1" width="90" height="90" class="mx-auto"></canvas>
+                  </div>
+                  <!-- Stats -->
+                  <div class="hud-panel p-4 text-center bg-card-bg/80 border border-card-border rounded-xl">
+                    <h3 class="text-neon-cyan text-[10px] font-bold tracking-widest mb-3 glow-cyan">YOU</h3>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Score</div>
+                      <div id="score-p1" class="text-xl font-bold font-pixel text-neon-cyan">0</div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines Sent</div>
+                      <div id="ko-count-p1" class="text-lg font-bold font-pixel text-neon-pink">0</div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Multiplier</div>
+                      <div id="multiplier-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Effects</div>
+                      <div id="combo-p1" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines</div>
+                      <div id="level-p1" class="text-lg font-bold">0</div>
+                    </div>
+                    <div id="ability-meter-p1" class="mt-4 flex flex-col gap-1.5" aria-label="Class abilities">
+                      <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-1">
+                        <kbd class="text-center text-[10px] font-pixel text-neon-cyan">Q</kbd>
+                        <span id="ability-q-label-p1" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY Q</span>
+                        <span id="ability-q-status-p1" class="text-[9px] font-bold text-neon-cyan">READY</span>
+                      </div>
+                      <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-yellow/30 bg-neon-yellow/5 px-2 py-1">
+                        <kbd class="text-center text-[10px] font-pixel text-neon-yellow">E</kbd>
+                        <span id="ability-e-label-p1" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY E</span>
+                        <span id="ability-e-status-p1" class="text-[9px] font-bold text-neon-yellow">READY</span>
+                      </div>
+                      <div class="rounded border border-neon-magenta/30 bg-neon-magenta/5 px-2 py-1.5">
+                        <div class="flex justify-between items-baseline gap-2">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <kbd class="text-center text-[10px] font-pixel text-neon-magenta">R</kbd>
+                            <div id="ability-label-p1" class="truncate text-[9px] text-neon-magenta uppercase font-bold tracking-wider">ULTIMATE</div>
+                          </div>
+                          <div id="ability-ready-p1" class="hidden whitespace-nowrap text-[9px] text-neon-yellow font-bold">READY</div>
+                        </div>
+                        <div class="mt-1 w-full bg-deep-purple border border-card-border h-2 rounded-full overflow-hidden">
+                          <div id="ability-fill-p1" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                        </div>
+                        <div id="ability-r-status-p1" class="mt-1 text-right text-[9px] font-bold text-neon-magenta">0 LINES</div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- P1 Board -->
+                <div class="relative p-2 bg-card-bg/80 border-2 border-neon-cyan rounded-xl shadow-[0_0_20px_rgba(0,229,255,0.2)] shrink-0 overflow-hidden">
+                  <canvas id="board-p1" width="300" height="600" class="bg-black/50 rounded"></canvas>
+                </div>
+
+                <!-- P1 Right Info -->
+                <div class="flex flex-col justify-between w-32 shrink-0 gap-4">
+                  <!-- Next -->
+                  <div class="hud-panel p-4 text-center flex flex-col justify-start bg-card-bg/80 border border-card-border rounded-xl h-full">
+                    <h3 class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">NEXT</h3>
+                    <canvas id="next-canvas-p1" width="90" height="360" class="mx-auto"></canvas>
+                    <div id="next-queue-p1" class="hidden"></div> <!-- kept for legacy code compat -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Scoreboard (Middle) -->
+              <div id="multiplayer-scoreboard" class="hidden shrink-0 hud-panel p-4 z-20 pointer-events-auto min-w-[200px] h-fit self-center bg-card-bg/90 border border-card-border rounded-xl">
+                <h3 class="text-[10px] font-bold text-neonYellow tracking-widest uppercase mb-3 glow-yellow text-center">SCOREBOARD</h3>
+                <div id="scoreboard-entries" class="flex flex-col gap-2"></div>
+              </div>
+
+              <!-- PLAYER 2 POD -->
+              <div id="p2-pod" class="hidden justify-start items-stretch gap-4 flex-1">
+                <!-- P2 Left Info (Mirrored: Next) -->
+                <div class="flex flex-col justify-between w-32 shrink-0 gap-4">
+                  <div class="hud-panel p-4 text-center flex flex-col justify-start bg-card-bg/80 border border-card-border rounded-xl h-full">
+                    <h3 class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">NEXT</h3>
+                    <canvas id="next-canvas-p2" width="90" height="360" class="mx-auto"></canvas>
+                    <div id="next-queue-p2" class="hidden"></div>
+                  </div>
+                </div>
+
+                <!-- P2 Board -->
+                <div class="relative p-2 bg-card-bg/80 border-2 border-neon-magenta rounded-xl shadow-[0_0_20px_rgba(255,0,255,0.2)] shrink-0 overflow-hidden">
+                  <canvas id="board-p2" width="300" height="600" class="bg-black/50 rounded"></canvas>
+                </div>
+
+                <!-- P2 Right Info (Mirrored: Hold, Stats) -->
+                <div class="flex flex-col justify-between w-40 shrink-0 gap-4">
+                  <div class="hud-panel p-4 text-center flex flex-col justify-center bg-card-bg/80 border border-card-border rounded-xl">
+                    <h3 class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">HOLD</h3>
+                    <canvas id="hold-canvas-p2" width="90" height="90" class="mx-auto"></canvas>
+                  </div>
+                  <div class="hud-panel p-4 text-center bg-card-bg/80 border border-card-border rounded-xl">
+                    <h3 class="text-neon-magenta text-[10px] font-bold tracking-widest mb-3 glow-pink">OPPONENT</h3>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Score</div>
+                      <div id="score-p2" class="text-xl font-bold font-pixel text-neon-magenta">0</div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines Sent</div>
+                      <div id="ko-count-p2" class="text-lg font-bold font-pixel text-neon-pink">0</div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Multiplier</div>
+                      <div id="multiplier-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Effects</div>
+                      <div id="combo-p2" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                    </div>
+                    <div class="mb-2">
+                      <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines</div>
+                      <div id="level-p2" class="text-lg font-bold">0</div>
+                    </div>
+                    <div id="ability-meter-p2" class="mt-4 flex flex-col gap-1.5" aria-label="Class abilities">
+                      <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-1">
+                        <kbd class="text-center text-[10px] font-pixel text-neon-cyan">Q</kbd>
+                        <span id="ability-q-label-p2" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY</span>
+                        <span id="ability-q-status-p2" class="text-[9px] font-bold text-neon-cyan">READY</span>
+                      </div>
+                      <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-yellow/30 bg-neon-yellow/5 px-2 py-1">
+                        <kbd class="text-center text-[10px] font-pixel text-neon-yellow">E</kbd>
+                        <span id="ability-e-label-p2" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY</span>
+                        <span id="ability-e-status-p2" class="text-[9px] font-bold text-neon-yellow">READY</span>
+                      </div>
+                      <div class="rounded border border-neon-magenta/30 bg-neon-magenta/5 px-2 py-1.5">
+                        <div class="flex justify-between items-baseline gap-2">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <kbd class="text-center text-[10px] font-pixel text-neon-magenta">R</kbd>
+                            <div id="ability-label-p2" class="truncate text-[9px] text-neon-magenta uppercase font-bold tracking-wider">ULTIMATE</div>
+                          </div>
+                          <div id="ability-ready-p2" class="hidden whitespace-nowrap text-[9px] text-neon-yellow font-bold">READY</div>
+                        </div>
+                        <div class="mt-1 w-full bg-deep-purple border border-card-border h-2 rounded-full overflow-hidden">
+                          <div id="ability-fill-p2" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                        </div>
+                        <div id="ability-r-status-p2" class="mt-1 text-right text-[9px] font-bold text-neon-magenta">0 LINES</div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+            <!-- BR HUD P1 -->
+            <div id="hud-p1-br" class="hidden flex-col gap-4 w-48 shrink-0">
+              <div class="hud-panel p-4 text-center h-32 flex flex-col justify-between">
+                <h3 class="text-[10px] font-bold text-gray-400 tracking-widest">HOLD</h3>
+                <canvas id="hold-canvas-p1-br" width="90" height="90" class="mx-auto"></canvas>
+              </div>
+              <div class="hud-panel p-4 text-center min-h-32 flex flex-col justify-between">
+                <h3 class="text-[10px] font-bold text-gray-400 tracking-widest">NEXT</h3>
+                <canvas id="next-canvas-p1-br" width="90" height="90" class="mx-auto"></canvas>
+                <div id="next-queue-p1-br" class="mt-2 text-[9px] font-pixel tracking-[0.15em] text-neon-cyan"></div>
+              </div>
+              <div class="hud-panel p-4">
+                <h3 class="text-neon-cyan text-[10px] font-bold tracking-widest mb-3 glow-cyan">YOU</h3>
+                <div class="mb-4">
+                  <div class="text-[10px] text-gray-400 uppercase tracking-wider">Score</div>
+                  <div id="score-p1-br" class="text-xl font-bold font-pixel text-neon-cyan">0</div>
+                </div>
+                <div id="ko-count-badge-p1-br" class="mb-4 hidden">
+                  <div class="text-[10px] text-gray-400 uppercase tracking-wider">K.O. Count</div>
+                  <div class="flex items-baseline gap-2">
+                    <span id="ko-count-p1-br" class="text-xl font-bold font-pixel text-neon-pink">0</span>
+                    <span id="ko-decay-p1-br" class="text-[10px] text-gray-500 uppercase tracking-wider"></span>
+                  </div>
+                </div>
+                <div class="mb-4">
+                  <div class="text-[10px] text-gray-400 uppercase tracking-wider">Multiplier</div>
+                  <div id="multiplier-p1-br" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                </div>
+                <div class="mb-4">
+                  <div class="text-[10px] text-gray-400 uppercase tracking-wider">Effects</div>
+                  <div id="combo-p1-br" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+                </div>
+                <div class="mb-2">
+                  <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines</div>
+                  <div id="level-p1-br" class="text-lg font-bold">0</div>
+                </div>
+                <div id="ability-meter-p1-br" class="mt-2 flex flex-col gap-1.5" aria-label="Class abilities">
+                  <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-1">
+                    <kbd class="text-center text-[10px] font-pixel text-neon-cyan">Q</kbd>
+                    <span id="ability-q-label-p1-br" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY Q</span>
+                    <span id="ability-q-status-p1-br" class="text-[9px] font-bold text-neon-cyan">READY</span>
+                  </div>
+                  <div class="grid grid-cols-[24px_1fr_auto] items-center gap-2 rounded border border-neon-yellow/30 bg-neon-yellow/5 px-2 py-1">
+                    <kbd class="text-center text-[10px] font-pixel text-neon-yellow">E</kbd>
+                    <span id="ability-e-label-p1-br" class="truncate text-[9px] font-bold uppercase tracking-wider text-white">ABILITY E</span>
+                    <span id="ability-e-status-p1-br" class="text-[9px] font-bold text-neon-yellow">READY</span>
+                  </div>
+                  <div class="rounded border border-neon-magenta/30 bg-neon-magenta/5 px-2 py-1.5">
+                    <div class="flex justify-between items-baseline gap-2">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <kbd class="text-center text-[10px] font-pixel text-neon-magenta">R</kbd>
+                        <div id="ability-label-p1-br" class="truncate text-[9px] text-neon-magenta uppercase font-bold tracking-wider">ULTIMATE</div>
+                      </div>
+                      <div id="ability-ready-p1-br" class="hidden whitespace-nowrap text-[9px] text-neon-yellow font-bold">READY</div>
+                    </div>
+                    <div class="mt-1 w-full bg-deep-purple border border-card-border h-2 rounded-full overflow-hidden">
+                      <div id="ability-fill-p1-br" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                    </div>
+                    <div id="ability-r-status-p1-br" class="mt-1 text-right text-[9px] font-bold text-neon-magenta">0 LINES</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Global Canvas for Battle Royale / Fallback -->
+            <div id="canvas-container" class="w-full flex-1 min-w-0 flex items-center justify-start p-4 max-h-[82vh] overflow-x-auto overflow-y-hidden">
+              <canvas id="gameCanvas" class="h-auto object-contain rounded-lg border border-card-border shadow-2xl shrink-0"></canvas>
+            </div>
+            <!-- BR HUD P2 (used occasionally as fallback) -->
+            <div id="hud-p2-br" class="absolute -bottom-24 right-[15%] flex gap-6 w-auto shrink-0 hidden hud-panel p-4 shadow-lg shadow-deep-purple/50 z-10">
+               <div class="flex flex-col">
+                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Score</div>
+                 <div id="score-p2-br" class="text-lg font-bold font-pixel text-neonMagenta">0</div>
+               </div>
+               <div class="flex flex-col">
+                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Mult</div>
+                 <div id="multiplier-p2-br" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+               </div>
+               <div class="flex flex-col">
+                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Effects</div>
+                 <div id="combo-p2-br" class="text-neonYellow text-sm font-bold min-h-[20px]"></div>
+               </div>
+               <div class="flex flex-col">
+                 <div class="text-[10px] text-gray-400 uppercase tracking-wider">Lines</div>
+                 <div id="level-p2-br" class="text-lg font-bold">0</div>
+               </div>
+               <div id="ability-meter-p2-br" class="hidden flex-col justify-center w-24">
+                 <div id="ability-label-p2-br" class="text-[10px] text-neonMagenta uppercase font-bold mb-1 tracking-wider"></div>
+                 <div class="w-full bg-deep-purple border border-card-border h-3 rounded-full overflow-hidden">
+                   <div id="ability-fill-p2-br" class="h-full bg-neonMagenta transition-all rounded-full" style="width: 0%"></div>
+                 </div>
+               </div>
+            </div>
+            
+            <div id="team-match-strip" class="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 bg-card-bg/90 backdrop-blur-md px-6 py-2 rounded-full border border-card-border shadow-lg mt-2 hidden">
+              <div class="px-5 py-3 text-neon-cyan font-pixel text-xs text-right">CYAN <span id="team-score-cyan" class="text-lg ml-2">0</span></div>
+              <div id="team-match-timer" class="px-4 py-3 font-pixel text-[10px] text-neon-yellow border-x border-card-border">3:00</div>
+              <div class="px-5 py-3 text-neon-pink font-pixel text-xs"><span id="team-score-magenta" class="text-lg mr-2">0</span> MAGENTA</div>
+            </div>
+
+            
+
+            </div> <!-- closes game-layout-wrapper -->
+</div>
+
+
+        </div>
+      </div>
+
+    </main>
+
+    <script type="module" src="/src/lobby.ts"></script>
+  </body>
+</html>
+
+
+
+
+

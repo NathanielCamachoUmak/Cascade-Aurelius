@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         modeselect: resolve(__dirname, 'modeselect.html'),
+        lobby: resolve(__dirname, 'lobby.html'),
       },
     },
   },
