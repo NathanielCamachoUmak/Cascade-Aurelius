@@ -164,6 +164,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     const createCardHTML = (p: any, idx: number) => {
       const isMe = p.id === network?.mySocketId;
       const isHost = p.id === state.hostId;
+      const amIHost = network?.mySocketId === state.hostId;
       const cInfo = getPlayerClassInfo(p.classId);
       
       let borderStyle = p.ready ? 'border-neon-green/80' : 'border-card-border hover:border-gray-500';
@@ -178,7 +179,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       const card = document.createElement('div');
       card.className = `flex flex-col border ${borderStyle} bg-card-bg/60 rounded-xl p-4 transition-all`;
       
-      const isMyBot = p.isBot && network?.mySocketId === state.hostId;
+      const isMyBot = p.isBot && amIHost;
       card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -209,7 +210,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         </div>
         <div class="flex items-center justify-between mt-auto border-t border-white/5 pt-2">
           <div class="flex items-center gap-2 text-[9px] uppercase tracking-widest font-bold ${p.ready ? 'text-neon-green' : 'text-gray-500'}">
-            ${isHost && !isMe ? `<button class="kick-btn text-red-500 hover:text-red-400 hover:bg-red-500/10 transition-colors bg-black/40 border border-red-500/30 rounded px-1.5 py-0.5 mr-1 flex-shrink-0">KICK</button>` : ''}
+            ${amIHost && !isMe ? `<button class="kick-btn text-red-500 hover:text-red-400 hover:bg-red-500/10 transition-colors bg-black/40 border border-red-500/30 rounded px-1.5 py-0.5 mr-1 flex-shrink-0">KICK</button>` : ''}
             <div class="w-1.5 h-1.5 rounded-full ${p.ready ? 'bg-neon-green' : 'bg-gray-500'}"></div>
             ${p.ready ? 'Ready' : 'Not ready'}
           </div>
@@ -217,7 +218,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         </div>
       `;
       
-      if (isHost && !isMe) {
+      if (amIHost && !isMe) {
         const kickBtn = card.querySelector('.kick-btn');
         kickBtn?.addEventListener('click', () => {
           if (confirm(`Kick ${p.name} from the lobby?`)) {
