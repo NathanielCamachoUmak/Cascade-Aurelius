@@ -152,7 +152,7 @@ const abilityMeterP2 = safeGet('ability-meter-p2');
 const abilityLabelP2 = safeGet('ability-label-p2');
 const abilityFillP2 = safeGet('ability-fill-p2'); 
 
-const nextCanvasP1 = safeGet('next-canvas-p1') as HTMLCanvasElement;
+const nextCanvasP1 = safeGet('next-canvas-p1', 'canvas') as HTMLCanvasElement;
 const nextQueueP1 = safeGet('next-queue-p1')!;
 const abilityMeterP1 = safeGet('ability-meter-p1')!;
 const abilityQLabelP1 = safeGet('ability-q-label-p1')!;
@@ -1375,7 +1375,7 @@ function render() {
     
     const holdC2 = safeGet('hold-canvas-p2', 'canvas') as HTMLCanvasElement;
     if (holdC2) renderPieceOnMiniCanvas(holdC2, p2.holdPiece, PLAYER_COLORS[1] || '#FF007F');
-    const holdC2BR = safeGet('hold-canvas-p2-br') as HTMLCanvasElement;
+    const holdC2BR = safeGet('hold-canvas-p2-br', 'canvas') as HTMLCanvasElement;
     if (holdC2BR) renderPieceOnMiniCanvas(holdC2BR, p2.holdPiece, PLAYER_COLORS[1] || '#FF007F');
     
     const p2Preview = p2.nextPiece ? [p2.nextPiece.type, ...p2.bag.getPreview(3)] : p2.bag.getPreview(4);
@@ -1383,7 +1383,7 @@ function render() {
     p2Preview.length = 4;
     const nextC2 = safeGet('next-canvas-p2', 'canvas') as HTMLCanvasElement;
     if (nextC2) renderQueueOnMiniCanvas(nextC2, p2Preview, PLAYER_COLORS[1] || '#FF007F');
-    const nextC2BR = safeGet('next-canvas-p2-br') as HTMLCanvasElement;
+    const nextC2BR = safeGet('next-canvas-p2-br', 'canvas') as HTMLCanvasElement;
     if (nextC2BR) renderQueueOnMiniCanvas(nextC2BR, p2Preview, PLAYER_COLORS[1] || '#FF007F');
 
 
