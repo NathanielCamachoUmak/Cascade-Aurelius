@@ -70,7 +70,38 @@ function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
-  style.textContent = `.bq-settings-overlay{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(2,4,15,.88);backdrop-filter:blur(8px)}.bq-settings-overlay.open{display:flex}.bq-settings-panel{width:min(100%,480px);max-height:92vh;overflow:auto;background:linear-gradient(145deg,#171943,#07091d);border:1px solid rgba(0,229,255,.4);border-radius:1rem;color:#eef2ff;box-shadow:0 0 70px rgba(0,229,255,.15);font-family:Inter,system-ui,sans-serif}.bq-settings-head{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid rgba(169,176,255,.2)}.bq-settings-head h2{margin:0;font-size:1.1rem}.bq-settings-head p{margin:.3rem 0 0;color:#00e5ff;font-size:.65rem;font-weight:800;letter-spacing:.14em}.bq-settings-close{background:transparent;border:1px solid #596080;color:white;border-radius:.4rem;font-size:1.2rem;width:2rem;height:2rem;cursor:pointer}.bq-settings-body{padding:1.25rem;display:flex;flex-direction:column;gap:1rem}.bq-settings-row{padding:.85rem;border:1px solid rgba(169,176,255,.18);border-radius:.6rem;background:rgba(255,255,255,.035)}.bq-settings-row-head{display:flex;justify-content:space-between;align-items:center}.bq-settings-row-head span{font-size:.82rem;font-weight:700;color:#eef2ff}.bq-settings-row p{margin:.35rem 0 0;color:#9da6c8;font-size:.7rem;line-height:1.4}.bq-settings-slider{width:100%;margin-top:.7rem;accent-color:#00e5ff}.bq-settings-slider:disabled{opacity:.35}.bq-settings-switch{position:relative;width:2.6rem;height:1.5rem;flex-shrink:0}.bq-settings-switch input{opacity:0;width:0;height:0}.bq-settings-switch-track{position:absolute;inset:0;background:#2a2f52;border-radius:999px;cursor:pointer;transition:background .2s}.bq-settings-switch-track::before{content:'';position:absolute;left:.2rem;top:.2rem;width:1.1rem;height:1.1rem;background:#c7ccef;border-radius:50%;transition:transform .2s,background .2s}.bq-settings-switch input:checked+.bq-settings-switch-track{background:#00b8cc}.bq-settings-switch input:checked+.bq-settings-switch-track::before{transform:translateX(1.1rem);background:#eef2ff}`;
+  style.textContent = `
+    .bq-settings-overlay { position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); }
+    .bq-settings-overlay.open { display: flex; }
+    .bq-settings-panel { width: min(100%, 480px); max-height: 92vh; overflow: auto; background: #1A1530; border: 1px solid #2A2245; border-radius: 0.75rem; color: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.75); font-family: Inter, sans-serif; }
+    .bq-settings-head { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid #2A2245; }
+    .bq-settings-head p { margin: 0; color: #00FFFF; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; }
+    .bq-settings-head h2 { margin: 0.25rem 0 0; font-size: 1.25rem; font-weight: 800; tracking: wide; }
+    .bq-settings-close { background: transparent; border: 1px solid #2A2245; border-radius: 0.375rem; color: white; font-size: 1.25rem; line-height: 1; display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; cursor: pointer; transition: background 0.2s; }
+    .bq-settings-close:hover { background: rgba(255, 255, 255, 0.1); }
+    .bq-settings-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+    .bq-settings-row { background: rgba(13, 11, 26, 0.8); border: 1px solid #2A2245; padding: 1.25rem; border-radius: 0.5rem; }
+    .bq-settings-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .bq-settings-row-head span { font-size: 0.9rem; font-weight: 700; color: white; }
+    .bq-settings-row p { margin: 0; color: #9CA3AF; font-size: 0.75rem; line-height: 1.4; }
+    
+    /* Range Slider Styling */
+    .bq-settings-slider { -webkit-appearance: none; width: 100%; margin-top: 1.25rem; background: transparent; }
+    .bq-settings-slider:focus { outline: none; }
+    .bq-settings-slider::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(0, 255, 255, 0.15); border-radius: 999px; border: 1px solid rgba(0, 255, 255, 0.3); }
+    .bq-settings-slider::-webkit-slider-thumb { border: 2px solid #00FFFF; height: 16px; width: 16px; border-radius: 50%; background: #0D0B1A; cursor: pointer; -webkit-appearance: none; margin-top: -6px; box-shadow: 0 0 10px rgba(0, 255, 255, 0.4); transition: all 0.2s; }
+    .bq-settings-slider::-webkit-slider-thumb:hover { background: #00FFFF; box-shadow: 0 0 15px rgba(0, 255, 255, 0.8); transform: scale(1.1); }
+    .bq-settings-slider:disabled::-webkit-slider-runnable-track { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
+    .bq-settings-slider:disabled::-webkit-slider-thumb { border-color: #4B5563; background: #1F2937; box-shadow: none; }
+    
+    /* Custom Toggle Switch */
+    .bq-settings-switch { position: relative; width: 2.75rem; height: 1.5rem; flex-shrink: 0; }
+    .bq-settings-switch input { opacity: 0; width: 0; height: 0; }
+    .bq-settings-switch-track { position: absolute; inset: 0; background: #2A2245; border-radius: 999px; cursor: pointer; transition: background 0.2s; }
+    .bq-settings-switch-track::before { content: ''; position: absolute; left: 0.25rem; top: 0.25rem; width: 1rem; height: 1rem; background: #9CA3AF; border-radius: 50%; transition: transform 0.2s, background 0.2s; }
+    .bq-settings-switch input:checked + .bq-settings-switch-track { background: rgba(0, 255, 255, 0.2); border: 1px solid #00FFFF; }
+    .bq-settings-switch input:checked + .bq-settings-switch-track::before { transform: translateX(1.25rem); background: #00FFFF; box-shadow: 0 0 8px rgba(0, 255, 255, 0.6); }
+  `;
   document.head.appendChild(style);
 }
 
