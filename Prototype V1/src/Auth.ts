@@ -11,7 +11,7 @@ export async function mountAuth() {
   const form = document.getElementById('auth-form') as HTMLFormElement;
   const toggleBtn = document.getElementById('btn-auth-toggle')!;
   const title = document.getElementById('auth-modal-title')!;
-  const submitBtn = document.getElementById('btn-auth-submit')!;
+  const submitBtn = document.getElementById('btn-auth-submit') as HTMLButtonElement;
   
   const usernameGroup = document.getElementById('auth-username-group')!;
   const usernameInput = document.getElementById('auth-username-input') as HTMLInputElement;
