@@ -47,6 +47,15 @@ export async function mountAuth() {
     modal.classList.remove('hidden');
   });
 
+  const testSuccessBtn = document.getElementById('btn-test-success');
+  if (testSuccessBtn) {
+    testSuccessBtn.addEventListener('click', () => {
+      errorMsg.classList.add('hidden');
+      successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
+      successMsg.classList.remove('hidden');
+    });
+  }
+
   btnClose.addEventListener('click', () => {
     modal.classList.add('hidden');
     errorMsg.classList.add('hidden');
@@ -102,10 +111,17 @@ export async function mountAuth() {
         if (data.user && data.user.identities && data.user.identities.length === 0) {
           throw new Error('This email is already registered.');
         }
-        
-        successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
-        successMsg.classList.remove('hidden');
-        form.reset(); // clear fields
+
+        if (data.session) {
+          // Email confirmation is OFF, they are instantly logged in!
+          modal.classList.add('hidden');
+          form.reset();
+        } else {
+          // Email confirmation is ON, session is null, they need to check email
+          successMsg.textContent = 'Registration successful! Please check your email to verify your account.';
+          successMsg.classList.remove('hidden');
+          form.reset(); // clear fields
+        }
         
       } else {
         const { error } = await supabase.auth.signInWithPassword({
