@@ -9,7 +9,7 @@ import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
 import { AudioManager } from './AudioManager'
 import { mountInteractiveTutorial } from './InteractiveTutorial'
 import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
-
+import { mountSettings } from './Settings'
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -397,6 +397,11 @@ const navProfile = document.getElementById('nav-profile');
 let progression: ProgressionController | null = null;
 if (navProfile) {
   progression = mountProgression(navProfile);
+}
+
+const navSettings = document.getElementById('nav-settings');
+if (navSettings) {
+  mountSettings(navSettings);
 }
 
 // Menu Event Listeners
