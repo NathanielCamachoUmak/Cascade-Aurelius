@@ -217,41 +217,7 @@
     <!--              LANDING PAGE JS                -->
     <!-- ═══════════════════════════════════════════ -->
     <script>
-      // ── NAV LINKS ──
-      const NAV_ITEMS = [
-        'MENU', 'LOBBY', 'LOADOUT', 'GAME', 'SETTINGS', 'PROFILE'
-      ];
-      const activeNav = 'MENU';
-      const navContainer = document.getElementById('nav-links');
 
-      NAV_ITEMS.forEach(item => {
-        const btn = document.createElement('button');
-        btn.textContent = item;
-        btn.className = `px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer ${
-          item === activeNav
-            ? 'nav-active text-white'
-            : 'text-gray-400 hover:text-gray-200'
-        }`;
-        btn.addEventListener('click', () => {
-          navContainer.querySelectorAll('button').forEach(b => {
-            b.className = 'px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer text-gray-400 hover:text-gray-200';
-          });
-          btn.className = 'px-3 py-2 text-[10px] font-semibold tracking-widest transition-all duration-200 rounded-sm cursor-pointer nav-active text-white';
-        });
-        navContainer.appendChild(btn);
-      });
-
-      // Scroll-aware navbar
-      const navbar = document.getElementById('navbar');
-      window.addEventListener('scroll', () => {
-        if (window.scrollY > 20) {
-          navbar.classList.add('bg-nav-bg/95', 'shadow-lg');
-          navbar.classList.remove('bg-nav-bg/80');
-        } else {
-          navbar.classList.remove('bg-nav-bg/95', 'shadow-lg');
-          navbar.classList.add('bg-nav-bg/80');
-        }
-      });
 
       // ── GENRE PILL TAGS ──
       const TAGS = [
