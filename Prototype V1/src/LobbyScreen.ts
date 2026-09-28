@@ -68,6 +68,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   let activeOnlineMode: OnlineModeId = selectedOnlineMode;
   let onlineTeamScores = { cyan: 0, magenta: 0 };
   let currentRoomState: RoomState | null = null;
+  let defaultNickname = '';
 
   function getSelectedOnlineModeInfo() {
     return ONLINE_GAME_MODES.find(m => m.id === selectedOnlineMode) ?? ONLINE_GAME_MODES[0];
@@ -316,7 +317,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       initialClassId: classId,
       onConfirm: (finalClassId) => {
         const roomId = inputRoom.value.trim() || 'test-room';
-        const nickname = inputNickname.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+        const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
         ensureNetwork();
         network?.hostRoom(roomId, nickname, selectedOnlineMode, finalClassId);
         authStatus.innerText = 'Creating lobby...';
@@ -333,7 +334,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       initialClassId: classId,
       onConfirm: (finalClassId) => {
         const roomId = inputRoom.value.trim() || 'test-room';
-        const nickname = inputNickname.value.trim() || `Player-${Math.floor(Math.random() * 1000)}`;
+        const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
         ensureNetwork();
         network?.joinRoom(roomId, nickname, selectedOnlineMode, finalClassId);
         authStatus.innerText = 'Joining lobby...';
@@ -379,12 +380,27 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     if (e.key === 'Enter') btnChatSend.click();
   });
 
+  inputNickname.addEventListener('focus', () => {
+    if (inputNickname.value === defaultNickname) {
+      inputNickname.value = '';
+    }
+  });
+
   function show() {
     screenLobby.classList.remove('hidden');
     screenLobby.classList.add('flex');
     selectedOnlineMode = options.getSelectedMode();
     const modeInfo = getSelectedOnlineModeInfo();
     authModeLabel.innerText = `${modeInfo.title} • ${modeInfo.format} • ${modeInfo.playerCount} PLAYERS`;
+    
+    const userDisplay = document.getElementById('auth-user-display');
+    const usernameDisplay = document.getElementById('auth-username');
+    if (userDisplay && !userDisplay.classList.contains('hidden') && usernameDisplay) {
+      defaultNickname = usernameDisplay.textContent || '';
+      inputNickname.value = defaultNickname;
+    } else {
+      defaultNickname = '';
+    }
   }
 
   function hide() {
