@@ -13,9 +13,12 @@
 // ---------------------------------------------------------------------------
 
 const MUSIC_TRACKS = {
-  menu:  '/audio/ost/Menu.wav',
-  game:  '/audio/ost/GameMusic.m4a',
-  // finalRound: '/audio/ost/FinalRound.m4a',  // reserved for future use
+  menu:  ['/audio/ost/Menu.wav'],
+  game:  [
+    '/audio/ost/SpaceFriends.m4a',
+    '/audio/ost/Stracchino.wav'
+  ],
+  // finalRound: ['/audio/ost/FinalRound.m4a'],  // reserved for future use
 } as const;
 
 const SFX_CLIPS = {
@@ -57,7 +60,9 @@ function getOrCreate(src: string): HTMLAudioElement {
 
 /** Preload all tracks so they're ready when needed. */
 function preload() {
-  for (const src of Object.values(MUSIC_TRACKS)) getOrCreate(src);
+  for (const group of Object.values(MUSIC_TRACKS)) {
+    for (const src of group) getOrCreate(src);
+  }
   for (const src of Object.values(SFX_CLIPS))    getOrCreate(src);
 }
 
@@ -101,7 +106,8 @@ export const AudioManager = {
       currentMusic.currentTime = 0;
     }
 
-    const src = MUSIC_TRACKS[track];
+    const group = MUSIC_TRACKS[track];
+    const src = group[Math.floor(Math.random() * group.length)];
     const audio = getOrCreate(src);
     audio.loop = true;
     audio.volume = musicVolume;
