@@ -1155,20 +1155,17 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
 
   // Target Indicator
   const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
-  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && index !== (gameManager.myPlayerIndex ?? 0)) {
+  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && true) {
     tCtx.fillStyle = '#FF007F';
     tCtx.beginPath();
     const centerX = offsetX + (COLS * blockSize) / 2;
-    const arrowY = offsetY - 10;
-    tCtx.moveTo(centerX - 10, arrowY - 15);
-    tCtx.lineTo(centerX + 10, arrowY - 15);
-    tCtx.lineTo(centerX, arrowY);
+    tCtx.moveTo(centerX - 12, offsetY); tCtx.lineTo(centerX + 12, offsetY); tCtx.lineTo(centerX, offsetY + 15);
     tCtx.fill();
     
     // Glowing border for targeted player
     tCtx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
     tCtx.lineWidth = 4;
-    tCtx.strokeRect(offsetX - 2, offsetY - 2, (COLS * blockSize) + 4, (ROWS * blockSize) + 4);
+    tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
   }
 }
 

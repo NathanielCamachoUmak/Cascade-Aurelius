@@ -811,7 +811,7 @@ export class GameManager {
   private cycleClassTarget(player: Player) {
     const candidates = this.players
       .map((target, index) => ({ target, index }))
-      .filter(({ target }) => target !== player && !target.isToppedOut)
+      .filter(({ target }) => !target.isToppedOut)
       .map(({ index }) => index);
     if (!candidates.length) {
       player.selectedTargetIndex = null;
