@@ -1,3 +1,4 @@
+import './globalAudio';
 import './style.css'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'

@@ -186,24 +186,7 @@ function updateNavHighlight(activeId: string) {
 
 let showGhostPiece = true;
 
-// --- Audio ---
-// Unlock audio context on first user interaction (browser autoplay policy)
-function unlockAudio() {
-  AudioManager.resumeContext();
-  AudioManager.playMusic('menu');
-  document.removeEventListener('click', unlockAudio);
-  document.removeEventListener('keydown', unlockAudio);
-}
-document.addEventListener('click', unlockAudio);
-document.addEventListener('keydown', unlockAudio);
-
-// Play menu-select SFX on any button click in the UI layer (delegated)
-document.addEventListener('click', (e: any) => {
-  const target = e.target as HTMLElement;
-  if (target.closest('button, a, [role="button"]')) {
-    AudioManager.playSfx('menuSelect');
-  }
-});
+import './globalAudio';
 
 // --- Class Select ---
 let selectedClass: PlayerClass = 'TANK';
