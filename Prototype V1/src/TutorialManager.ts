@@ -7,6 +7,7 @@ type TutorialStep =
   | 'PIECE_1_SOFT_DROP'
   | 'PIECE_2_HARD_DROP'
   | 'PIECE_3_HOLD'
+  | 'PIECE_4_DROP_FIRST'
   | 'PIECE_4_SWAP_HOLD'
   | 'COMPLETED';
 
@@ -16,7 +17,7 @@ const BLOCK_SIZE = 30;
 const PLAYER_COLOR = '#00E5FF';
 
 // Deterministic sequence for Stage 1 so every run is predictable
-const STAGE_1_QUEUE: ShapeType[] = ['T', 'I', 'O', 'L', 'S', 'J', 'Z'];
+const STAGE_1_QUEUE: ShapeType[] = ['T', 'I', 'O', 'L', 'S', 'J', 'Z', 'T', 'I'];
 
 const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
 ['I', 'J', 'L', 'O', 'S', 'T', 'Z'].forEach(shape => {
@@ -222,8 +223,8 @@ export class TutorialManager {
             <span class="text-neon-green font-bold">C</span>
           </div>
           <div class="flex justify-between items-center text-gray-300">
-            <span>4th Block · Swap Held Block</span>
-            <span class="text-neon-green font-bold">C</span>
+            <span>4th Block · Drop then Swap Held</span>
+            <span class="text-neon-green font-bold">DROP then C</span>
           </div>
         </div>
 
@@ -381,8 +382,8 @@ export class TutorialManager {
     if (this.step === 'PIECE_3_HOLD') {
       if (key === 'c' || key === 'C') {
         this.holdPiece = new Tetromino(this.currentPiece.type);
-        // Spawn 4th block and move to step 4
-        this.step = 'PIECE_4_SWAP_HOLD';
+        // Spawn 4th block which must drop first before Hold can be swapped
+        this.step = 'PIECE_4_DROP_FIRST';
         this.spawnNextPiece();
         this.updateInstructionUi();
         this.render();
@@ -398,7 +399,38 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 4: Press C Again to Replace Current Block with Held Block ───
+    // ─── BLOCK 4 (Part 1): Drop the 4th Block First ───
+    if (this.step === 'PIECE_4_DROP_FIRST') {
+      if (key === 'c' || key === 'C') {
+        this.restartStage('The 4th block must drop first before you can swap your held block!');
+        return;
+      }
+      if (key === ' ') {
+        while (this.tryMove(0, 1)) {
+          // drop to bottom
+        }
+        this.grid.lockTetromino(this.currentPiece);
+        this.updateHudStats(150);
+        this.step = 'PIECE_4_SWAP_HOLD';
+        this.spawnNextPiece();
+        this.updateInstructionUi();
+        this.render();
+      } else if (key === 'ArrowDown') {
+        if (this.tryMove(0, 1)) {
+          this.dropTimer = 0;
+        }
+        this.render();
+      } else if (key === 'ArrowLeft') {
+        this.tryMove(-1, 0);
+        this.render();
+      } else if (key === 'ArrowRight') {
+        this.tryMove(1, 0);
+        this.render();
+      }
+      return;
+    }
+
+    // ─── BLOCK 4 (Part 2): Press C Again to Replace Current Block with Held Block ───
     if (this.step === 'PIECE_4_SWAP_HOLD') {
       if (key === 'c' || key === 'C') {
         if (this.holdPiece) {
@@ -418,7 +450,7 @@ export class TutorialManager {
         this.tryMove(1, 0);
         this.render();
       } else {
-        this.restartStage('For the 4th block, press C again to swap with your held block!');
+        this.restartStage('Now press C to replace the current block with your held block!');
       }
       return;
     }
@@ -483,6 +515,16 @@ export class TutorialManager {
       return;
     }
 
+    // On Block 4 (Part 1), dropping the 4th block unlocks Hold for the next block
+    if (this.step === 'PIECE_4_DROP_FIRST') {
+      this.grid.lockTetromino(this.currentPiece);
+      this.updateHudStats(150);
+      this.step = 'PIECE_4_SWAP_HOLD';
+      this.spawnNextPiece();
+      this.updateInstructionUi();
+      return;
+    }
+
     // Otherwise, the block locked before the player completed the required instruction!
     if (this.step === 'PIECE_1_MOVE') {
       this.restartStage('The 1st block locked before you moved it left or right!');
@@ -493,7 +535,7 @@ export class TutorialManager {
     } else if (this.step === 'PIECE_3_HOLD') {
       this.restartStage('The 3rd block locked before you pressed C to hold it!');
     } else if (this.step === 'PIECE_4_SWAP_HOLD') {
-      this.restartStage('The 4th block locked before you pressed C to swap with the held block!');
+      this.restartStage('The block locked before you pressed C to swap with the held block!');
     }
   }
 
@@ -575,15 +617,23 @@ export class TutorialManager {
           </div>
         </div>
       `;
-    } else if (this.step === 'PIECE_4_SWAP_HOLD' || this.step === 'COMPLETED') {
-      blockBadge.textContent = 'FOURTH BLOCK · SWAP HELD PIECE';
-      const done = this.step === 'COMPLETED';
+    } else if (this.step === 'PIECE_4_DROP_FIRST' || this.step === 'PIECE_4_SWAP_HOLD' || this.step === 'COMPLETED') {
+      blockBadge.textContent = 'FOURTH BLOCK · DROP THEN SWAP HELD PIECE';
+      const dropDone = this.step === 'PIECE_4_SWAP_HOLD' || this.step === 'COMPLETED';
+      const swapDone = this.step === 'COMPLETED';
       list.innerHTML = `
-        <div class="p-3 rounded-lg border ${done ? 'border-neon-green/50 bg-neon-green/10' : 'border-neon-cyan bg-neon-cyan/10'} flex items-start gap-3">
-          <span class="text-sm font-bold ${done ? 'text-neon-green' : 'text-neon-cyan'}">${done ? '✓' : '1.'}</span>
+        <div class="p-3 rounded-lg border ${dropDone ? 'border-neon-green/50 bg-neon-green/10' : 'border-neon-cyan bg-neon-cyan/10'} flex items-start gap-3">
+          <span class="text-sm font-bold ${dropDone ? 'text-neon-green' : 'text-neon-cyan'}">${dropDone ? '✓' : '1.'}</span>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-white">Drop the 4th block first</div>
+            <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACEBAR</kbd> or <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↓</kbd> to lock it (Hold resets after a block locks)</div>
+          </div>
+        </div>
+        <div class="p-3 rounded-lg border ${swapDone ? 'border-neon-green/50 bg-neon-green/10' : dropDone ? 'border-neon-cyan bg-neon-cyan/10' : 'border-card-border bg-black/20 opacity-60'} flex items-start gap-3">
+          <span class="text-sm font-bold ${swapDone ? 'text-neon-green' : dropDone ? 'text-neon-cyan' : 'text-gray-500'}">${swapDone ? '✓' : '2.'}</span>
           <div class="flex-1">
             <div class="text-xs font-bold text-white">Replace current block with held block</div>
-            <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">C</kbd> again to swap the current block with your held block</div>
+            <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">C</kbd> again to swap the new block with your held block</div>
           </div>
         </div>
       `;
