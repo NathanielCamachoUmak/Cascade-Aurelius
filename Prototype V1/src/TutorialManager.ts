@@ -6,9 +6,10 @@ type TutorialStep =
   | 'PIECE_1_MOVE'
   | 'PIECE_1_SOFT_DROP'
   | 'PIECE_2_HARD_DROP'
-  | 'PIECE_3_HOLD'
-  | 'PIECE_4_DROP_FIRST'
-  | 'PIECE_4_SWAP_HOLD'
+  | 'PIECE_3_ROTATE'
+  | 'PIECE_4_HOLD'
+  | 'PIECE_5_DROP_FIRST'
+  | 'PIECE_5_SWAP_HOLD'
   | 'COMPLETED';
 
 const COLS = 10;
@@ -16,8 +17,9 @@ const ROWS = 20;
 const BLOCK_SIZE = 30;
 const PLAYER_COLOR = '#00E5FF';
 
-// Deterministic sequence for Stage 1 so every run is predictable
-const STAGE_1_QUEUE: ShapeType[] = ['T', 'I', 'O', 'L', 'S', 'J', 'Z', 'T', 'I'];
+// Deterministic sequence for Stage 1 so every run is predictable:
+// 1: T (Move + Soft Drop), 2: I (Hard Drop), 3: L (Rotate), 4: O (Hold), 5: J (Drop first), then S (Swap Hold)
+const STAGE_1_QUEUE: ShapeType[] = ['T', 'I', 'L', 'O', 'J', 'S', 'Z', 'T', 'I'];
 
 const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
 ['I', 'J', 'L', 'O', 'S', 'T', 'Z'].forEach(shape => {
@@ -35,6 +37,7 @@ export class TutorialManager {
   private step: TutorialStep = 'PIECE_1_MOVE';
   private piece1MovedLeftRight = false;
   private piece1SoftDropped = false;
+  private piece3Rotated = false;
 
   private dropTimer = 0;
   // Slightly relaxed gravity so the player has time to read the instruction,
@@ -147,11 +150,12 @@ export class TutorialManager {
       <div>
         <div class="flex items-center justify-between gap-2 mb-1">
           <span class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-cyan">STAGE 1 TUTORIAL</span>
-          <span id="tut-step-counter" class="text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/40">Block 1 / 4</span>
+          <span id="tut-step-counter" class="text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/40">Block 1 / 5</span>
         </div>
         <h2 class="text-xl font-extrabold text-white tracking-wide">Basic Movements</h2>
-        <div id="tut-progress-dots" class="grid grid-cols-4 gap-1.5 mt-3">
+        <div id="tut-progress-dots" class="grid grid-cols-5 gap-1.5 mt-3">
           <div class="h-1.5 rounded-full bg-neon-cyan"></div>
+          <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
@@ -205,7 +209,7 @@ export class TutorialManager {
           <p class="text-neon-cyan text-[10px] font-bold tracking-[0.3em] uppercase mb-2">STAGE 1 COMPLETE</p>
           <h2 class="text-2xl font-extrabold text-white">Basic Movements Mastered!</h2>
           <p class="text-gray-400 text-xs mt-2 leading-relaxed">
-            You have completed all 4 blocks of the Basic Movements stage: moving left &amp; right, soft dropping, hard dropping, and holding &amp; swapping blocks.
+            You have completed all 5 steps of the Basic Movements stage: moving left &amp; right, soft dropping, hard dropping, rotating, and holding &amp; swapping blocks.
           </p>
         </div>
 
@@ -219,11 +223,15 @@ export class TutorialManager {
             <span class="text-neon-green font-bold">SPACEBAR</span>
           </div>
           <div class="flex justify-between items-center text-gray-300">
-            <span>3rd Block · Hold Block</span>
+            <span>3rd Block · Rotate Block</span>
+            <span class="text-neon-green font-bold">↑ / X / Z</span>
+          </div>
+          <div class="flex justify-between items-center text-gray-300">
+            <span>4th Block · Hold Block</span>
             <span class="text-neon-green font-bold">C</span>
           </div>
           <div class="flex justify-between items-center text-gray-300">
-            <span>4th Block · Drop then Swap Held</span>
+            <span>5th Block · Drop then Swap Held</span>
             <span class="text-neon-green font-bold">DROP then C</span>
           </div>
         </div>
@@ -259,6 +267,7 @@ export class TutorialManager {
     this.step = 'PIECE_1_MOVE';
     this.piece1MovedLeftRight = false;
     this.piece1SoftDropped = false;
+    this.piece3Rotated = false;
     this.dropTimer = 0;
     this.lockTimer = 0;
     this.isRestarting = false;
@@ -306,6 +315,10 @@ export class TutorialManager {
       key === 'ArrowRight' ||
       key === 'ArrowDown' ||
       key === 'ArrowUp' ||
+      key === 'x' ||
+      key === 'X' ||
+      key === 'z' ||
+      key === 'Z' ||
       key === ' ' ||
       key === 'c' ||
       key === 'C';
@@ -361,8 +374,9 @@ export class TutorialManager {
         }
         this.grid.lockTetromino(this.currentPiece);
         this.updateHudStats(100);
-        // Advance to Block 3
-        this.step = 'PIECE_3_HOLD';
+        // Advance to Block 3 (Rotation)
+        this.step = 'PIECE_3_ROTATE';
+        this.piece3Rotated = false;
         this.spawnNextPiece();
         this.updateInstructionUi();
         this.render();
@@ -378,12 +392,53 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 3: Press C to Hold the Current Block ───
-    if (this.step === 'PIECE_3_HOLD') {
+    // ─── BLOCK 3: Rotate the Block (Up Arrow / X / Z), then Drop to Lock ───
+    if (this.step === 'PIECE_3_ROTATE') {
+      if (key === 'ArrowUp' || key === 'x' || key === 'X') {
+        this.tryRotate(1);
+        this.piece3Rotated = true;
+        this.updateInstructionUi();
+        this.render();
+      } else if (key === 'z' || key === 'Z') {
+        this.tryRotate(-1);
+        this.piece3Rotated = true;
+        this.updateInstructionUi();
+        this.render();
+      } else if (key === 'ArrowLeft') {
+        this.tryMove(-1, 0);
+        this.render();
+      } else if (key === 'ArrowRight') {
+        this.tryMove(1, 0);
+        this.render();
+      } else if (key === ' ' && this.piece3Rotated) {
+        while (this.tryMove(0, 1)) {
+          // drop to bottom
+        }
+        this.grid.lockTetromino(this.currentPiece);
+        this.updateHudStats(150);
+        this.step = 'PIECE_4_HOLD';
+        this.spawnNextPiece();
+        this.updateInstructionUi();
+        this.render();
+      } else if (key === 'ArrowDown' && this.piece3Rotated) {
+        if (this.tryMove(0, 1)) {
+          this.dropTimer = 0;
+        }
+        this.render();
+      } else if (!this.piece3Rotated) {
+        this.restartStage('Rotate the 3rd block first using Up Arrow (↑), X, or Z!');
+      } else {
+        this.restartStage('Drop the rotated 3rd block instead of holding it!');
+      }
+      return;
+    }
+
+    // ─── BLOCK 4: Press C to Hold the Current Block ───
+    if (this.step === 'PIECE_4_HOLD') {
       if (key === 'c' || key === 'C') {
         this.holdPiece = new Tetromino(this.currentPiece.type);
-        // Spawn 4th block which must drop first before Hold can be swapped
-        this.step = 'PIECE_4_DROP_FIRST';
+        // Spawn 5th block which must drop first before Hold can be swapped
+        this.step = 'PIECE_5_DROP_FIRST';
         this.spawnNextPiece();
         this.updateInstructionUi();
         this.render();
@@ -394,15 +449,15 @@ export class TutorialManager {
         this.tryMove(1, 0);
         this.render();
       } else {
-        this.restartStage('For the 3rd block, press C to hold the current block!');
+        this.restartStage('For the 4th block, press C to hold the current block!');
       }
       return;
     }
 
-    // ─── BLOCK 4 (Part 1): Drop the 4th Block First ───
-    if (this.step === 'PIECE_4_DROP_FIRST') {
+    // ─── BLOCK 5 (Part 1): Drop the 5th Block First ───
+    if (this.step === 'PIECE_5_DROP_FIRST') {
       if (key === 'c' || key === 'C') {
-        this.restartStage('The 4th block must drop first before you can swap your held block!');
+        this.restartStage('This block must drop first before you can swap your held block!');
         return;
       }
       if (key === ' ') {
@@ -410,8 +465,8 @@ export class TutorialManager {
           // drop to bottom
         }
         this.grid.lockTetromino(this.currentPiece);
-        this.updateHudStats(150);
-        this.step = 'PIECE_4_SWAP_HOLD';
+        this.updateHudStats(200);
+        this.step = 'PIECE_5_SWAP_HOLD';
         this.spawnNextPiece();
         this.updateInstructionUi();
         this.render();
@@ -426,12 +481,18 @@ export class TutorialManager {
       } else if (key === 'ArrowRight') {
         this.tryMove(1, 0);
         this.render();
+      } else if (key === 'ArrowUp' || key === 'x' || key === 'X') {
+        this.tryRotate(1);
+        this.render();
+      } else if (key === 'z' || key === 'Z') {
+        this.tryRotate(-1);
+        this.render();
       }
       return;
     }
 
-    // ─── BLOCK 4 (Part 2): Press C Again to Replace Current Block with Held Block ───
-    if (this.step === 'PIECE_4_SWAP_HOLD') {
+    // ─── BLOCK 5 (Part 2): Press C Again to Replace Current Block with Held Block ───
+    if (this.step === 'PIECE_5_SWAP_HOLD') {
       if (key === 'c' || key === 'C') {
         if (this.holdPiece) {
           const prevHeldType = this.holdPiece.type;
@@ -439,7 +500,7 @@ export class TutorialManager {
           this.currentPiece = new Tetromino(prevHeldType);
         }
         this.step = 'COMPLETED';
-        this.updateHudStats(200);
+        this.updateHudStats(250);
         this.updateInstructionUi();
         this.render();
         this.showConclusionModal();
@@ -462,6 +523,19 @@ export class TutorialManager {
       this.currentPiece.move(dx, dy);
       return true;
     }
+    return false;
+  }
+
+  private tryRotate(dir: 1 | -1): boolean {
+    if (!this.currentPiece) return false;
+    this.currentPiece.rotate(dir);
+    for (const kick of this.currentPiece.getKickData()) {
+      if (!this.grid.checkCollision(this.currentPiece, this.currentPiece.x + kick.x, this.currentPiece.y + kick.y)) {
+        this.currentPiece.move(kick.x, kick.y);
+        return true;
+      }
+    }
+    this.currentPiece.rotate((dir * -1) as 1 | -1);
     return false;
   }
 
@@ -515,11 +589,21 @@ export class TutorialManager {
       return;
     }
 
-    // On Block 4 (Part 1), dropping the 4th block unlocks Hold for the next block
-    if (this.step === 'PIECE_4_DROP_FIRST') {
+    // On Block 3 (Rotation), locking at the bottom is expected ONLY after rotating the piece
+    if (this.step === 'PIECE_3_ROTATE' && this.piece3Rotated) {
       this.grid.lockTetromino(this.currentPiece);
       this.updateHudStats(150);
-      this.step = 'PIECE_4_SWAP_HOLD';
+      this.step = 'PIECE_4_HOLD';
+      this.spawnNextPiece();
+      this.updateInstructionUi();
+      return;
+    }
+
+    // On Block 5 (Part 1), dropping the block unlocks Hold for the next block
+    if (this.step === 'PIECE_5_DROP_FIRST') {
+      this.grid.lockTetromino(this.currentPiece);
+      this.updateHudStats(200);
+      this.step = 'PIECE_5_SWAP_HOLD';
       this.spawnNextPiece();
       this.updateInstructionUi();
       return;
@@ -532,9 +616,11 @@ export class TutorialManager {
       this.restartStage('The 1st block locked before you pressed the Down (↓) Arrow key!');
     } else if (this.step === 'PIECE_2_HARD_DROP') {
       this.restartStage('The 2nd block locked before you pressed SPACEBAR to hard drop!');
-    } else if (this.step === 'PIECE_3_HOLD') {
-      this.restartStage('The 3rd block locked before you pressed C to hold it!');
-    } else if (this.step === 'PIECE_4_SWAP_HOLD') {
+    } else if (this.step === 'PIECE_3_ROTATE') {
+      this.restartStage('The 3rd block locked before you rotated it!');
+    } else if (this.step === 'PIECE_4_HOLD') {
+      this.restartStage('The 4th block locked before you pressed C to hold it!');
+    } else if (this.step === 'PIECE_5_SWAP_HOLD') {
       this.restartStage('The block locked before you pressed C to swap with the held block!');
     }
   }
@@ -558,11 +644,13 @@ export class TutorialManager {
         ? 1
         : this.step === 'PIECE_2_HARD_DROP'
           ? 2
-          : this.step === 'PIECE_3_HOLD'
+          : this.step === 'PIECE_3_ROTATE'
             ? 3
-            : 4;
+            : this.step === 'PIECE_4_HOLD'
+              ? 4
+              : 5;
 
-    stepCounter.textContent = `Block ${activeBlockIndex} / 4`;
+    stepCounter.textContent = `Block ${activeBlockIndex} / 5`;
 
     Array.from(dots.children).forEach((dot, idx) => {
       const blockNum = idx + 1;
@@ -606,8 +694,27 @@ export class TutorialManager {
           </div>
         </div>
       `;
-    } else if (this.step === 'PIECE_3_HOLD') {
-      blockBadge.textContent = 'THIRD BLOCK · HOLD PIECE';
+    } else if (this.step === 'PIECE_3_ROTATE') {
+      blockBadge.textContent = 'THIRD BLOCK · ROTATION';
+      const rotDone = this.piece3Rotated;
+      list.innerHTML = `
+        <div class="p-3 rounded-lg border ${rotDone ? 'border-neon-green/50 bg-neon-green/10' : 'border-neon-cyan bg-neon-cyan/10'} flex items-start gap-3">
+          <span class="text-sm font-bold ${rotDone ? 'text-neon-green' : 'text-neon-cyan'}">${rotDone ? '✓' : '1.'}</span>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-white">Rotate the block</div>
+            <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd>, <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">X</kbd>, or <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">Z</kbd> to rotate</div>
+          </div>
+        </div>
+        <div class="p-3 rounded-lg border ${rotDone ? 'border-neon-cyan bg-neon-cyan/10' : 'border-card-border bg-black/20 opacity-60'} flex items-start gap-3">
+          <span class="text-sm font-bold ${rotDone ? 'text-neon-cyan' : 'text-gray-500'}">2.</span>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-white">Drop the rotated block</div>
+            <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACEBAR</kbd> or <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↓</kbd> to lock it on the grid</div>
+          </div>
+        </div>
+      `;
+    } else if (this.step === 'PIECE_4_HOLD') {
+      blockBadge.textContent = 'FOURTH BLOCK · HOLD PIECE';
       list.innerHTML = `
         <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex items-start gap-3">
           <span class="text-sm font-bold text-neon-cyan">1.</span>
@@ -617,15 +724,15 @@ export class TutorialManager {
           </div>
         </div>
       `;
-    } else if (this.step === 'PIECE_4_DROP_FIRST' || this.step === 'PIECE_4_SWAP_HOLD' || this.step === 'COMPLETED') {
-      blockBadge.textContent = 'FOURTH BLOCK · DROP THEN SWAP HELD PIECE';
-      const dropDone = this.step === 'PIECE_4_SWAP_HOLD' || this.step === 'COMPLETED';
+    } else if (this.step === 'PIECE_5_DROP_FIRST' || this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'COMPLETED') {
+      blockBadge.textContent = 'FIFTH BLOCK · DROP THEN SWAP HELD PIECE';
+      const dropDone = this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'COMPLETED';
       const swapDone = this.step === 'COMPLETED';
       list.innerHTML = `
         <div class="p-3 rounded-lg border ${dropDone ? 'border-neon-green/50 bg-neon-green/10' : 'border-neon-cyan bg-neon-cyan/10'} flex items-start gap-3">
           <span class="text-sm font-bold ${dropDone ? 'text-neon-green' : 'text-neon-cyan'}">${dropDone ? '✓' : '1.'}</span>
           <div class="flex-1">
-            <div class="text-xs font-bold text-white">Drop the 4th block first</div>
+            <div class="text-xs font-bold text-white">Drop this block first</div>
             <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACEBAR</kbd> or <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↓</kbd> to lock it (Hold resets after a block locks)</div>
           </div>
         </div>
