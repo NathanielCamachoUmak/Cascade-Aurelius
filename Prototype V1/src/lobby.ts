@@ -12,6 +12,7 @@ import { mountProgression, type ProgressionController, type ProgressionMode } fr
 import { mountSettings } from './Settings'
 import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
+import { TutorialManager } from './TutorialManager'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -1549,12 +1550,18 @@ function returnToMenu() {
 
 
 // ---- BOOT SEQUENCE ----
+let activeTutorialManager: TutorialManager | null = null;
+
 window.addEventListener('DOMContentLoaded', () => {
   const bootConfigStr = sessionStorage.getItem('cascade_boot_config');
   if (bootConfigStr) {
     const config = JSON.parse(bootConfigStr);
     
-    if (config.mode === 'SOLO' || config.mode === 'VS_BOT') {
+    if (config.mode === 'TUTORIAL') {
+      activeTutorialManager?.stop();
+      activeTutorialManager = new TutorialManager();
+      activeTutorialManager.startStage1();
+    } else if (config.mode === 'SOLO' || config.mode === 'VS_BOT') {
       const initialClassId = config.selectedClass?.id || selectedClass;
       // Show loadout menu for single-player modes before starting
       showClassSelectModal({

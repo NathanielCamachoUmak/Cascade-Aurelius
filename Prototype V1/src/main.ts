@@ -74,7 +74,7 @@ btnSoloGame.addEventListener('click', () => {
 });
 
 btnSoloTutorial.addEventListener('click', () => {
-  tutorialModal.classList.remove('hidden');
+  bootGame({ mode: 'TUTORIAL', stage: 1 });
 });
 
 btnEasyBot.addEventListener('click', () => {
