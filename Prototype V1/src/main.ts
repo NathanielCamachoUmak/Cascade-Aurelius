@@ -26,6 +26,7 @@ const btnEasyBot = document.getElementById('btn-easy-bot')!;
 const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnHowToPlay = document.getElementById('btn-how-to-play')!;
+const btnSoloHowToPlay = document.getElementById('btn-solo-how-to-play');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
@@ -93,6 +94,12 @@ btnBack.addEventListener('click', () => {
 btnHowToPlay.addEventListener('click', () => {
   tutorialModal.classList.remove('hidden');
 });
+
+if (btnSoloHowToPlay) {
+  btnSoloHowToPlay.addEventListener('click', () => {
+    tutorialModal.classList.remove('hidden');
+  });
+}
 
 btnTutorialClose.addEventListener('click', () => {
   tutorialModal.classList.add('hidden');
