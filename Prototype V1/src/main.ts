@@ -117,10 +117,21 @@ btnPlayOnline.addEventListener('click', () => {
   screenOnlineModeSelect.classList.add('flex');
 });
 
-// Auto-show tutorial on first visit
+// Auto-show tooltip pointing to Solo mode on first visit
 if (!localStorage.getItem('cascade_tutorial_seen')) {
   setTimeout(() => {
-    tutorialModal.classList.remove('hidden');
-    localStorage.setItem('cascade_tutorial_seen', 'true');
+    const tooltip = document.getElementById('solo-tutorial-tooltip');
+    if (tooltip) {
+      tooltip.classList.remove('hidden');
+    }
   }, 500);
+
+  // Hook into btnSolo to hide tooltip and set flag
+  btnSolo.addEventListener('click', () => {
+    const tooltip = document.getElementById('solo-tutorial-tooltip');
+    if (tooltip && !tooltip.classList.contains('hidden')) {
+      tooltip.classList.add('hidden');
+      localStorage.setItem('cascade_tutorial_seen', 'true');
+    }
+  });
 }
