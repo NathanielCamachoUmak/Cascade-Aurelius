@@ -2,7 +2,7 @@ import './style.css'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountProgression, type ProgressionController } from './Progression'
-import { mountSettings } from './Settings'
+import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
 
 const uiLayer = document.getElementById('ui-layer')!;
@@ -117,21 +117,37 @@ btnPlayOnline.addEventListener('click', () => {
   screenOnlineModeSelect.classList.add('flex');
 });
 
-// Auto-show tooltip pointing to Solo mode on first visit
-if (!localStorage.getItem('cascade_tutorial_seen')) {
-  setTimeout(() => {
-    const tooltip = document.getElementById('solo-tutorial-tooltip');
-    if (tooltip) {
-      tooltip.classList.remove('hidden');
-    }
-  }, 500);
+function updateTutorialTooltip() {
+  const tooltip = document.getElementById('solo-tutorial-tooltip');
+  if (!tooltip) return;
 
-  // Hook into btnSolo to hide tooltip and set flag
-  btnSolo.addEventListener('click', () => {
-    const tooltip = document.getElementById('solo-tutorial-tooltip');
-    if (tooltip && !tooltip.classList.contains('hidden')) {
-      tooltip.classList.add('hidden');
-      localStorage.setItem('cascade_tutorial_seen', 'true');
-    }
-  });
+  if (settingsState.tutorialEnabled) {
+    tooltip.classList.remove('hidden');
+  } else {
+    tooltip.classList.add('hidden');
+  }
 }
+
+// Show tooltip pointing to Solo mode based on settings
+setTimeout(() => {
+  updateTutorialTooltip();
+}, 500);
+
+window.addEventListener('tutorialSettingChanged', () => {
+  updateTutorialTooltip();
+});
+
+// Hook into btnSolo to hide tooltip and disable the setting
+btnSolo.addEventListener('click', () => {
+  if (settingsState.tutorialEnabled) {
+    settingsState.tutorialEnabled = false;
+    updateTutorialTooltip();
+    
+    // Also save it so it persists when turning it off via playing
+    try {
+      const STORAGE_KEY = 'cascade-aurelius-settings-v1';
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsState));
+      // Optionally we'd notify supbase here too, but simple localStorage is enough for this interaction
+    } catch (e) {}
+  }
+});

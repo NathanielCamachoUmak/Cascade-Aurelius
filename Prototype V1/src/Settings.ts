@@ -7,12 +7,13 @@ export interface SettingsData {
   sfxEnabled: boolean;
   sfxVolume: number; // 0–100, only meaningful while sfxEnabled
   visualEffectsEnabled: boolean; // line-clear particles/flashes
+  tutorialEnabled: boolean;
 }
 
 const STORAGE_KEY = 'cascade-aurelius-settings-v1';
 
 function defaultSettings(): SettingsData {
-  return { musicEnabled: true, musicVolume: 30, sfxEnabled: true, sfxVolume: 60, visualEffectsEnabled: true };
+  return { musicEnabled: true, musicVolume: 30, sfxEnabled: true, sfxVolume: 60, visualEffectsEnabled: true, tutorialEnabled: true };
 }
 
 function readSettings(): SettingsData {
@@ -144,6 +145,13 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
           </div>
           <p>Line-clear particle bursts and flash effects. Turn off for a calmer or lower-powered display.</p>
         </div>
+        <div class="bq-settings-row">
+          <div class="bq-settings-row-head">
+            <span>Enable Tutorial</span>
+            <label class="bq-settings-switch"><input type="checkbox" data-tutorial-toggle /><span class="bq-settings-switch-track"></span></label>
+          </div>
+          <p>Show a simple tutorial pointer before starting the game.</p>
+        </div>
       </div>
     </div>
   `;
@@ -154,6 +162,7 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
   const sfxToggle = overlay.querySelector<HTMLInputElement>('[data-sfx-toggle]')!;
   const sfxSlider = overlay.querySelector<HTMLInputElement>('[data-sfx-volume]')!;
   const vfxToggle = overlay.querySelector<HTMLInputElement>('[data-vfx-toggle]')!;
+  const tutorialToggle = overlay.querySelector<HTMLInputElement>('[data-tutorial-toggle]')!;
 
   const refresh = () => {
     musicToggle.checked = settingsState.musicEnabled;
@@ -163,6 +172,7 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
     sfxSlider.value = String(settingsState.sfxVolume);
     sfxSlider.disabled = !settingsState.sfxEnabled;
     vfxToggle.checked = settingsState.visualEffectsEnabled;
+    tutorialToggle.checked = settingsState.tutorialEnabled;
   };
   settingsRefreshCallback = refresh;
 
@@ -192,6 +202,12 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
   vfxToggle.addEventListener('change', () => {
     settingsState.visualEffectsEnabled = vfxToggle.checked;
     persist();
+  });
+  tutorialToggle.addEventListener('change', () => {
+    settingsState.tutorialEnabled = tutorialToggle.checked;
+    persist();
+    // Dispatch an event so main.ts can dynamically show/hide the tooltip if it's currently on the screen.
+    window.dispatchEvent(new Event('tutorialSettingChanged'));
   });
 
   settingsNav.addEventListener('click', event => {
