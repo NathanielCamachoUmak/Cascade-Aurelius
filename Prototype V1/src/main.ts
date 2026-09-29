@@ -7,7 +7,7 @@ import { mountAuth } from './Auth'
 
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
-const screenDifficulty = document.getElementById('screen-difficulty')!;
+const screenSoloOptions = document.getElementById('screen-solo-options')!;
 function getOrCreateOnlineModeSelectScreen() {
   const existing = document.getElementById('screen-online-mode-select');
   if (existing) return existing;
@@ -20,7 +20,8 @@ function getOrCreateOnlineModeSelectScreen() {
 const screenOnlineModeSelect = getOrCreateOnlineModeSelectScreen();
 
 const btnSolo = document.getElementById('btn-solo')!;
-const btnVsBot = document.getElementById('btn-vs-bot')!;
+const btnSoloTutorial = document.getElementById('btn-solo-tutorial')!;
+const btnSoloGame = document.getElementById('btn-solo-game')!;
 const btnEasyBot = document.getElementById('btn-easy-bot')!;
 const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
@@ -60,14 +61,18 @@ function bootGame(config: any) {
 }
 
 btnSolo.addEventListener('click', () => {
+  screenMain.classList.remove('flex');
+  screenMain.classList.add('hidden');
+  screenSoloOptions.classList.remove('hidden');
+  screenSoloOptions.classList.add('flex');
+});
+
+btnSoloGame.addEventListener('click', () => {
   bootGame({ mode: 'SOLO' });
 });
 
-btnVsBot.addEventListener('click', () => {
-  screenMain.classList.remove('flex');
-  screenMain.classList.add('hidden');
-  screenDifficulty.classList.remove('hidden');
-  screenDifficulty.classList.add('flex');
+btnSoloTutorial.addEventListener('click', () => {
+  tutorialModal.classList.remove('hidden');
 });
 
 btnEasyBot.addEventListener('click', () => {
@@ -79,8 +84,8 @@ btnHardBot.addEventListener('click', () => {
 });
 
 btnBack.addEventListener('click', () => {
-  screenDifficulty.classList.remove('flex');
-  screenDifficulty.classList.add('hidden');
+  screenSoloOptions.classList.remove('flex');
+  screenSoloOptions.classList.add('hidden');
   screenMain.classList.remove('hidden');
   screenMain.classList.add('flex');
 });

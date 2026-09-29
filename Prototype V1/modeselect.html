@@ -315,10 +315,6 @@
                 <span class="relative flex items-center justify-center gap-2">▶ PLAY SOLO</span>
               </button>
             </div>
-            <button id="btn-vs-bot" class="group relative flex-1 px-8 py-4 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold text-lg tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:border-neon-yellow/50 hover:shadow-[0_0_25px_rgba(255,215,0,0.15)] cursor-pointer">
-              <span class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-              <span class="relative flex items-center justify-center gap-2">▶ PLAY VS BOT</span>
-            </button>
             <button id="btn-play-online" class="group relative flex-1 px-8 py-4 bg-card-bg/80 backdrop-blur-sm border-2 border-neon-pink/40 text-neon-pink font-bold text-lg tracking-widest rounded-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:bg-neon-pink hover:text-deep-purple hover:shadow-[0_0_30px_rgba(255,20,147,0.3)] cursor-pointer">
               <span class="relative flex items-center justify-center gap-2">▶ PLAY ONLINE</span>
             </button>
@@ -393,28 +389,41 @@
              empty, existing screen preserves the rest of the menu structure. -->
         <div id="screen-online-mode-select" class="hidden relative z-10 w-full max-w-6xl px-4"></div>
 
-        <!-- ───── Screen: Class Select ───── -->
-        <!-- Screen: Difficulty Select -->
-        <div id="screen-difficulty" class="hidden flex-col items-center w-full max-w-5xl px-8 relative z-10">
+        <!-- ───── Screen: Solo Mode Options ───── -->
+        <div id="screen-solo-options" class="hidden flex-col items-center w-full max-w-4xl px-4 relative z-10">
           <div class="mb-8 text-center">
-            <h2 class="text-neon-yellow text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-yellow">MAIN MENU</h2>
-            <h1 class="text-3xl md:text-4xl font-bold">Choose Your Mode</h1>
-            <p class="text-gray-400 text-sm mt-2 uppercase tracking-wider">Game Mode Selection</p>
+            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">SOLO MODE</h2>
+            <h1 class="text-3xl md:text-4xl font-bold">Choose Your Challenge</h1>
+            <p class="text-gray-400 text-sm mt-2 uppercase tracking-wider">Play offline or practice</p>
           </div>
 
-          <div class="flex flex-col sm:flex-row gap-6 w-full mb-12">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-12">
+            <!-- Mode Card: Tutorial -->
+            <button id="btn-solo-tutorial" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-cyan hover:shadow-[0_0_30px_rgba(0,255,255,0.15)] flex flex-col h-full">
+              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-cyan transition-colors">TUTORIAL</h3>
+              <p class="text-gray-400 text-xs mb-4 flex-grow">Interactive guided training simulation</p>
+              <div class="inline-block border border-neon-cyan/50 text-neon-cyan text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">NO PRESSURE</div>
+            </button>
+
+            <!-- Mode Card: Solo -->
+            <button id="btn-solo-game" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-green hover:shadow-[0_0_30px_rgba(0,255,0,0.15)] flex flex-col h-full">
+              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-green transition-colors">SOLO</h3>
+              <p class="text-gray-400 text-xs mb-4 flex-grow">Endless block dropping for high scores</p>
+              <div class="inline-block border border-neon-green/50 text-neon-green text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">1 PLAYER</div>
+            </button>
+
             <!-- Mode Card: Easy -->
-            <button id="btn-easy-bot" class="group flex-1 bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-6 text-left cursor-pointer card-glow hover:border-neon-cyan hover:shadow-[0_0_30px_rgba(0,255,255,0.15)]">
-              <h3 class="text-2xl font-bold mb-2 group-hover:text-neon-cyan transition-colors">EASY BOT</h3>
-              <p class="text-gray-400 text-sm mb-6">Relaxed pace block battles</p>
-              <div class="inline-block border border-neon-cyan/50 text-neon-cyan text-[10px] px-4 py-1.5 rounded-full tracking-widest font-semibold">1 PLAYER</div>
+            <button id="btn-easy-bot" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-yellow hover:shadow-[0_0_30px_rgba(255,215,0,0.15)] flex flex-col h-full">
+              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-yellow transition-colors">EASY BOT</h3>
+              <p class="text-gray-400 text-xs mb-4 flex-grow">Relaxed pace head-to-head block battles</p>
+              <div class="inline-block border border-neon-yellow/50 text-neon-yellow text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">VS AI</div>
             </button>
 
             <!-- Mode Card: Hard -->
-            <button id="btn-hard-bot" class="group flex-1 bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-6 text-left cursor-pointer card-glow hover:border-neon-pink hover:shadow-[0_0_30px_rgba(255,20,147,0.15)]">
-              <h3 class="text-2xl font-bold mb-2 group-hover:text-neon-pink transition-colors">HARD BOT</h3>
-              <p class="text-gray-400 text-sm mb-6">Intense head-to-head block battles</p>
-              <div class="inline-block border border-neon-pink/50 text-neon-pink text-[10px] px-4 py-1.5 rounded-full tracking-widest font-semibold">2 PLAYERS</div>
+            <button id="btn-hard-bot" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-pink hover:shadow-[0_0_30px_rgba(255,20,147,0.15)] flex flex-col h-full">
+              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-pink transition-colors">HARD BOT</h3>
+              <p class="text-gray-400 text-xs mb-4 flex-grow">Intense head-to-head block battles</p>
+              <div class="inline-block border border-neon-pink/50 text-neon-pink text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">VS AI</div>
             </button>
           </div>
 
