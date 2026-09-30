@@ -337,7 +337,7 @@ function eliminateBattleRoyalPlayers(roomId, count, primary, tieBreakers, reason
     player.state = 'spectating';
     player.eliminatedAt = Date.now();
     eliminated.push({ id, name: player.name, score: player.score, lines: player.lines, kills: player.kills });
-    io.to(roomId).emit('player-state-update', { playerId: id, state: 'spectating', reason, forced: true });
+    io.to(roomId).emit('player-state-update', { playerId: id, playerIndex: player.index, state: 'spectating', reason, forced: true });
   }
   io.to(roomId).emit('battle-royale-cull', {
     reason,
@@ -913,12 +913,13 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('player-eliminated', ({ killerIndex, botId } = {}) => {
+  const handlePlayerToppedOut = ({ killerIndex, botId } = {}) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
     if (!room || room.phase !== 'in-game') return;
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
     if (!player || (botId && player.ownerId !== socket.id)) return;
+    if (player.state !== 'playing') return;
 
     // At or below the K.O. floor, a top-out is survivable: the player is
     // revived with a score penalty instead of being eliminated outright.
@@ -933,11 +934,19 @@ io.on('connection', socket => {
       if (killer) killer.kills = (killer.kills || 0) + 1;
     }
     socket.to(roomId).emit('opponent-topped-out', { playerIndex: player.index });
-    io.to(roomId).emit('player-state-update', { playerId: botId || socket.id, state: 'spectating' });
-    if (room.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
-    else if (!room.mode.isTeamMode) checkEliminationGameOver(roomId);
+    io.to(roomId).emit('player-state-update', { playerId: botId || socket.id, playerIndex: player.index, state: 'spectating' });
+    if (room.mode.id === 'battle-royale') {
+      checkBattleRoyalGameOver(roomId);
+    } else if (room.mode.isTeamMode) {
+      if (activePlayerCount(room) === 0) finishTeamMatch(roomId, 'elimination');
+    } else {
+      checkEliminationGameOver(roomId);
+    }
     emitRoomState(roomId);
-  });
+  };
+
+  socket.on('player-eliminated', handlePlayerToppedOut);
+  socket.on('player-topped-out', (payload) => handlePlayerToppedOut(payload || {}));
 
   socket.on('game-over', () => {
     const roomId = socket.data.roomId;
@@ -1088,20 +1097,9 @@ io.on('connection', socket => {
     });
 
     socket.on('disconnect', () => {
-    const room = rooms[socket.roomId];
-    if (room) {
-        if (room.gameInterval) {
-            clearInterval(room.gameInterval);
-            room.gameInterval = null;
-        }
-        delete room.players[socket.id];
-        if (Object.keys(room.players).length === 0) {
-            delete rooms[socket.roomId];
-        } else {
-            io.to(socket.roomId).emit('playerLeft', socket.id);
-        }
-    }
-  });
+      console.log(`[disconnect] ${socket.id}`);
+      removePlayer(socket, { announceDisconnect: true });
+    });
 });
 
 

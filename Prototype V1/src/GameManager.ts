@@ -147,9 +147,10 @@ export class GameManager {
       const spec = playerSpecs[i] || {};
       const pName = spec.name || `P${i + 1}`;
       
+      let createdPlayer: Player;
       if (i === myIndex) {
         // Our local player — listens to keyboard, uses our chosen class.
-        this.players.push(new Player(pName, false, 'HARD', true, humanClass));
+        createdPlayer = new Player(pName, false, 'HARD', true, humanClass);
       } else if (spec.isBot && spec.ownerId === net.mySocketId) {
         // A bot owned by us! We need to simulate it locally and broadcast its state.
         const botPlayer = new Player(pName, true, 'EASY', false);
@@ -164,11 +165,13 @@ export class GameManager {
           }
         }
 
-        this.players.push(botPlayer);
+        createdPlayer = botPlayer;
       } else {
         // Remote player (or remote bot) — no keyboard, no bot. Grid/piece will be synced from server.
-        this.players.push(new Player(pName, false, 'HARD', false));
+        createdPlayer = new Player(pName, false, 'HARD', false);
       }
+      (createdPlayer as any).socketId = spec.id;
+      this.players.push(createdPlayer);
     }
 
     // Wire up network callbacks for receiving opponent state
@@ -223,12 +226,17 @@ export class GameManager {
       }
     };
 
-    net.onPlayerStateUpdate = ({ playerId, state }) => {
+    const prevOnPlayerStateUpdate = net.onPlayerStateUpdate;
+    net.onPlayerStateUpdate = (data) => {
+      prevOnPlayerStateUpdate?.(data);
+      const { playerId, playerIndex: evtIndex, state } = data;
       if (state !== 'spectating') return;
-      const playerIndex = this.players.findIndex(player => player.id === playerId);
-      if (playerIndex >= 0) {
-        this.players[playerIndex].isToppedOut = true;
-        this.players[playerIndex].battleRoyalEliminated = this.battleRoyalMode;
+      const resolvedIndex = (typeof evtIndex === 'number' && evtIndex >= 0 && evtIndex < this.players.length)
+        ? evtIndex
+        : this.players.findIndex(player => (player as any).socketId === playerId || player.id === playerId);
+      if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
+        this.players[resolvedIndex].isToppedOut = true;
+        this.players[resolvedIndex].battleRoyalEliminated = this.battleRoyalMode;
       }
       if (playerId === net.mySocketId) {
         const localPlayer = this.players[myIndex];
@@ -236,8 +244,8 @@ export class GameManager {
           localPlayer.isToppedOut = true;
           localPlayer.battleRoyalEliminated = this.battleRoyalMode;
         }
-        this.renderFn();
       }
+      this.renderFn();
     };
 
     net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }, targetIndex?: number) => {

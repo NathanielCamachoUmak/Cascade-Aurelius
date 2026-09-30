@@ -576,6 +576,7 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onPostGameStart = (data) => {
+    gameManager.state = GameState.POST_GAME;
     updateNavHighlight('nav-lobby');
     uiLayer.classList.remove('hidden');
     lobby.hide();
@@ -1057,11 +1058,12 @@ let boardLayout: BoardLayoutEntry[] = [];
 
 function renderPlayer(player: Player, index: number, isDuo: boolean) {
   let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
-  const playerColor = PLAYER_COLORS[index] || '#00E5FF';
+  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
+  const playerColor = isDuo ? (isMyPlayer ? PLAYER_COLORS[0] : PLAYER_COLORS[3]) : (PLAYER_COLORS[index] || '#00E5FF');
   
   let tCtx = ctx;
   if (isDuo) {
-    const target = index === 0 ? safeGet('board-p1', 'canvas') as HTMLCanvasElement : safeGet('board-p2', 'canvas') as HTMLCanvasElement;
+    const target = isMyPlayer ? safeGet('board-p1', 'canvas') as HTMLCanvasElement : safeGet('board-p2', 'canvas') as HTMLCanvasElement;
     if (target) {
       tCtx = target.getContext('2d')!;
       offsetX = 0;
@@ -1096,7 +1098,6 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
   // Ghost Piece Logic — only show for our own player in online mode
-  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
   if (player.currentPiece && showGhostPiece && isMyPlayer) {
     let ghostY = player.currentPiece.y;
     while (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x, ghostY + 1)) {
@@ -1209,7 +1210,8 @@ function render() {
 
   function getCanvasRectOffset(pIdx: number) {
       if (!isDuo) return { x: 0, y: 0 };
-      const targetId = pIdx === 0 ? 'board-p1' : 'board-p2';
+      const localIdx = gameManager.isOnline ? gameManager.myPlayerIndex : 0;
+      const targetId = pIdx === localIdx ? 'board-p1' : 'board-p2';
       const el = document.getElementById(targetId);
       const container = safeGet('effects-canvas', 'canvas');
       if (el && container) {
