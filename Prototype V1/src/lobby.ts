@@ -1696,6 +1696,9 @@ function bootFromSessionConfig() {
       if (config.stage === 2) {
         const initialClassId = config.selectedClass?.id || selectedClass;
         openStage2ClassSelector(initialClassId);
+      } else if (config.stage === 3) {
+        activeTutorialManager = new TutorialManager();
+        activeTutorialManager.startStage3();
       } else {
         activeTutorialManager = new TutorialManager();
         activeTutorialManager.startStage1();

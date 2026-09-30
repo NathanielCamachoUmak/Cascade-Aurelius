@@ -35,6 +35,8 @@ const btnStartBasicsStage1 = document.getElementById('btn-start-basics-stage-1')
 const statusBasicsStage1 = document.getElementById('status-basics-stage-1');
 const btnStartBasicsStage2 = document.getElementById('btn-start-basics-stage-2');
 const statusBasicsStage2 = document.getElementById('status-basics-stage-2');
+const btnStartBasicsStage3 = document.getElementById('btn-start-basics-stage-3');
+const statusBasicsStage3 = document.getElementById('status-basics-stage-3');
 const btnTutorialMenuBack = document.getElementById('btn-tutorial-menu-back');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
@@ -108,6 +110,20 @@ function refreshTutorialMenuStatuses() {
       statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
     }
   }
+
+  const completed3 = isTutorialCompleted('basics-stage-3');
+  if (btnStartBasicsStage3) {
+    btnStartBasicsStage3.textContent = completed3 ? 'REPLAY' : 'START';
+  }
+  if (statusBasicsStage3) {
+    if (completed3) {
+      statusBasicsStage3.textContent = '✓ COMPLETED';
+      statusBasicsStage3.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+    } else {
+      statusBasicsStage3.textContent = 'NOT COMPLETED';
+      statusBasicsStage3.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
+    }
+  }
 }
 
 window.addEventListener('tutorialProgressUpdated', refreshTutorialMenuStatuses);
@@ -156,6 +172,12 @@ if (btnStartBasicsStage1) {
 if (btnStartBasicsStage2) {
   btnStartBasicsStage2.addEventListener('click', () => {
     bootGame({ mode: 'TUTORIAL', stage: 2 });
+  });
+}
+
+if (btnStartBasicsStage3) {
+  btnStartBasicsStage3.addEventListener('click', () => {
+    bootGame({ mode: 'TUTORIAL', stage: 3 });
   });
 }
 

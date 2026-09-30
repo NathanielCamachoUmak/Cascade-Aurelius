@@ -5,6 +5,7 @@ import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass';
 import { SpecialBlockType } from './ItemManager';
 import { GameState } from './GameManager';
 import { supabase } from './supabase';
+import { Stage3Tutorial } from './Stage3Tutorial';
 
 type TutorialStep =
   | 'PIECE_1_MOVE'
@@ -220,8 +221,9 @@ function getSpecialLetter(special: string | undefined): string {
 }
 
 export class TutorialManager {
-  private activeStage: 1 | 2 = 1;
+  private activeStage: 1 | 2 | 3 = 1;
   private eFsmState: GameState = GameState.TUTORIAL;
+  private stage3Tutorial: Stage3Tutorial | null = null;
 
   private grid: Grid = new Grid();
   private currentPiece: Tetromino | null = null;
@@ -339,6 +341,17 @@ export class TutorialManager {
     this.loop(performance.now());
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 3: ITEM BLOCKS (7 SPECIAL BLOCK SCENARIOS)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  public startStage3() {
+    this.stop();
+    this.activeStage = 3;
+    this.stage3Tutorial = new Stage3Tutorial();
+    this.stage3Tutorial.start();
+  }
+
   public stop() {
     this.isRunning = false;
     if (this.animationFrameId !== null) {
@@ -352,6 +365,8 @@ export class TutorialManager {
     this.dummyCanvasContainer = null;
     this.conclusionModal?.remove();
     this.conclusionModal = null;
+    this.stage3Tutorial?.stop();
+    this.stage3Tutorial = null;
   }
 
   private prepareArenaDom(showAbilityMeter: boolean) {
