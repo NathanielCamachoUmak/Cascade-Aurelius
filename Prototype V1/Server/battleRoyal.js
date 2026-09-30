@@ -1,69 +1,84 @@
-// Battle Royale rules — single source of truth for the 5-minute "Culling Game".
-// Both the schedule timers and the client HUD read from here, so retiming the
-// match only ever means editing this file.
+// Battle Royale rules — single source of truth for the 4-minute "Culling Game".
+// Both the schedule timers and the client HUD read from here.
 
 export const BATTLE_ROYALE_RULES = Object.freeze({
   id: 'battle-royale',
   title: 'Battle Royale',
   format: '8-30 player solo',
   capacity: 30,
-  minPlayers: 8,      // below this, culling events freeze (see isCullingFrozen)
-  koFloor: 8,         // at or below this, top-out becomes a K.O. instead of elimination
+  minPlayers: 8,      // below this, culling events freeze
+  koFloor: 4,         // K.O. mechanic ONLY applies when 4 or fewer players remain!
   teamSize: 0,
   isTeamMode: false,
-  winnerRule: 'Closest surviving score to 1,000,000 at 5:00',
-  durationMs: 5 * 60 * 1000,
+  winnerRule: 'Highest score / last survivor at 4:00',
+  durationMs: 4 * 60 * 1000,      // Fixed to 4 minutes
   targetScore: 1_000_000,
-  suddenDeathAtMs: 4 * 60 * 1000,
+  suddenDeathAtMs: 3 * 60 * 1000, // Starts at 3:00
 
-  koScorePenalty: 0.20,   // immediate raw-score deduction on K.O.
+  koScorePenalty: 0.20,   // 20% score deduction on K.O.
   koDecayBase: 0.85,      // final = raw * 0.85^KOCount
 
+  // Exact 4-Minute Culling Game Schedule
   phaseBreaks: [
     {
-      atMs: 0, id: 'warmup', label: 'Warmup',
-      gravityScale: 1, scoreMultiplier: 1, garbageRate: 1,
+      atMs: 0, 
+      id: 'garbage-surge', 
+      label: 'High Garbage Surge',
+      gravityScale: 1, 
+      scoreMultiplier: 1, 
+      garbageRate: 2.5,          // High Garbage Distribution (0:00 - 1:00)
+      itemBlockRate: 0.5,
       idlePenaltyMs: 0,
     },
     {
-      atMs: 60 * 1000, id: 'rule-phase', label: 'Rule Phase',
-      gravityScale: 1, scoreMultiplier: 1, garbageRate: 1,
-      idlePenaltyMs: 0, dynamicRules: true,
+      atMs: 60 * 1000, 
+      id: 'item-frenzy', 
+      label: 'Item Block Frenzy',
+      gravityScale: 1.1, 
+      scoreMultiplier: 1, 
+      garbageRate: 1, 
+      itemBlockRate: 3.0,        // High Item Blocks Distribution (1:01 - 2:00)
+      idlePenaltyMs: 0,
     },
     {
-      atMs: 150 * 1000, id: 'culling-escalation', label: 'Culling Escalation',
-      gravityScale: 1.25, scoreMultiplier: 1, garbageRate: 1.5,
+      atMs: 120 * 1000, 
+      id: 'score-frenzy', 
+      label: 'High Score Multiplier',
+      gravityScale: 1.25, 
+      scoreMultiplier: 3.0,      // High Score Multiplier (2:01 - 3:00)
+      garbageRate: 1.0, 
+      itemBlockRate: 1.0,
       idlePenaltyMs: 15 * 1000,
     },
     {
-      atMs: 240 * 1000, id: 'sudden-death', label: 'Sudden Death',
-      gravityScale: 2, scoreMultiplier: 2, garbageRate: 1.5,
-      idlePenaltyMs: 15 * 1000, solidGarbage: true,
+      atMs: 180 * 1000, 
+      id: 'pure-skill', 
+      label: 'Sudden Death (Pure Skill)',
+      gravityScale: 2.0, 
+      scoreMultiplier: 1.0, 
+      garbageRate: 1.0, 
+      itemBlockRate: 0,          // No events/items, just skills & remaining players (3:01 - 4:00)
+      idlePenaltyMs: 10 * 1000, 
+      solidGarbage: true,
     },
   ],
 });
 
-// Adaptive density brackets — chosen by how many players are still active.
+// Adaptive density brackets
 export const DENSITY_BRACKETS = Object.freeze([
   {
     id: 'high', label: 'High Density', min: 21, max: 30,
     eventRotationMs: 45 * 1000, garbageSpeedBonus: 0.5, randomizedTargeting: true,
   },
   {
-    id: 'mid', label: 'Mid Density', min: 14, max: 20,
+    id: 'mid', label: 'Mid Density', min: 10, max: 20,
     eventRotationMs: 60 * 1000, garbageSpeedBonus: 0, randomizedTargeting: false,
   },
   {
-    id: 'low', label: 'Low Density', min: 8, max: 13,
+    id: 'low', label: 'Low Density', min: 1, max: 9,
     eventRotationMs: 60 * 1000, garbageSpeedBonus: 0, randomizedTargeting: false,
     boardHeightLimit: 16, forcedRivalDuels: true,
   },
-]);
-
-// Rotating events for the Rule Phase onward.
-export const DYNAMIC_RULES = Object.freeze([
-  { id: 'double-points', label: 'Double Points', scoreMultiplier: 2 },
-  { id: 'garbage-surge', label: 'Garbage Surge', garbageRate: 1.5 },
 ]);
 
 const numeric = value => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
@@ -83,11 +98,11 @@ export function getDensityBracket(activePlayers) {
     ?? (count > 30 ? DENSITY_BRACKETS[0] : DENSITY_BRACKETS[2]);
 }
 
-// Below the player floor, culling events freeze rather than wiping a thin lobby.
 export function isCullingFrozen(activePlayers) {
   return numeric(activePlayers) < BATTLE_ROYALE_RULES.minPlayers;
 }
 
+// True ONLY when 4 or fewer active players remain
 export function isKoFloorReached(activePlayers) {
   return numeric(activePlayers) <= BATTLE_ROYALE_RULES.koFloor;
 }
@@ -104,7 +119,6 @@ export function hasReachedTarget(score) {
   return numeric(score) >= BATTLE_ROYALE_RULES.targetScore;
 }
 
-// Leaderboard: KOCount ascending is the primary tie-breaker, then decayed score.
 export function rankBattleRoyalPlayers(players) {
   return [...players].sort((a, b) => {
     const aFinal = finalScoreWithDecay(a.score, a.koCount);
@@ -127,16 +141,12 @@ export function rankForCull(players, primary, tieBreakers = []) {
   });
 }
 
-// --- Compatibility helpers used by index.js ---
-
 export function selectBattleRoyalCullTargets(players, count, primary, tieBreakers = []) {
   const wanted = Math.max(0, Math.floor(numeric(count)));
   if (wanted === 0) return [];
   return rankForCull(players, primary, tieBreakers).slice(0, wanted);
 }
 
-// Winner = closest surviving score to the target, using the decayed score so
-// K.O. penalties count toward placement.
 export function closestToTarget(players) {
   if (!players || players.length === 0) return null;
   return [...players].sort((a, b) => {
