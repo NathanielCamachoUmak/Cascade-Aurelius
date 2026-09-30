@@ -10,6 +10,7 @@ type TutorialStep =
   | 'PIECE_4_HOLD'
   | 'PIECE_5_DROP_FIRST'
   | 'PIECE_5_SWAP_HOLD'
+  | 'PIECE_5_DROP_SWAPPED'
   | 'COMPLETED';
 
 const COLS = 10;
@@ -499,11 +500,11 @@ export class TutorialManager {
           this.holdPiece = new Tetromino(this.currentPiece.type);
           this.currentPiece = new Tetromino(prevHeldType);
         }
-        this.step = 'COMPLETED';
-        this.updateHudStats(250);
+        this.dropTimer = 0;
+        this.lockTimer = 0;
+        this.step = 'PIECE_5_DROP_SWAPPED';
         this.updateInstructionUi();
         this.render();
-        this.showConclusionModal();
       } else if (key === 'ArrowLeft') {
         this.tryMove(-1, 0);
         this.render();
@@ -512,6 +513,44 @@ export class TutorialManager {
         this.render();
       } else {
         this.restartStage('Now press C to replace the current block with your held block!');
+      }
+      return;
+    }
+
+    // ─── BLOCK 5 (Part 3): Land the Swapped Held Block to Complete Stage 1 ───
+    if (this.step === 'PIECE_5_DROP_SWAPPED') {
+      if (key === 'c' || key === 'C') {
+        this.restartStage('You already swapped your held block! Land this block on the grid to finish Stage 1.');
+        return;
+      }
+      if (key === ' ') {
+        while (this.tryMove(0, 1)) {
+          // drop to bottom
+        }
+        this.grid.lockTetromino(this.currentPiece);
+        this.currentPiece = null;
+        this.step = 'COMPLETED';
+        this.updateHudStats(250);
+        this.updateInstructionUi();
+        this.render();
+        this.showConclusionModal();
+      } else if (key === 'ArrowDown') {
+        if (this.tryMove(0, 1)) {
+          this.dropTimer = 0;
+        }
+        this.render();
+      } else if (key === 'ArrowLeft') {
+        this.tryMove(-1, 0);
+        this.render();
+      } else if (key === 'ArrowRight') {
+        this.tryMove(1, 0);
+        this.render();
+      } else if (key === 'ArrowUp' || key === 'x' || key === 'X') {
+        this.tryRotate(1);
+        this.render();
+      } else if (key === 'z' || key === 'Z') {
+        this.tryRotate(-1);
+        this.render();
       }
       return;
     }
@@ -606,6 +645,18 @@ export class TutorialManager {
       this.step = 'PIECE_5_SWAP_HOLD';
       this.spawnNextPiece();
       this.updateInstructionUi();
+      return;
+    }
+
+    // On Block 5 (Part 3), when the swapped block lands on the grid, Stage 1 is complete!
+    if (this.step === 'PIECE_5_DROP_SWAPPED') {
+      this.grid.lockTetromino(this.currentPiece);
+      this.currentPiece = null;
+      this.step = 'COMPLETED';
+      this.updateHudStats(250);
+      this.updateInstructionUi();
+      this.render();
+      this.showConclusionModal();
       return;
     }
 
@@ -724,10 +775,11 @@ export class TutorialManager {
           </div>
         </div>
       `;
-    } else if (this.step === 'PIECE_5_DROP_FIRST' || this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'COMPLETED') {
-      blockBadge.textContent = 'FIFTH BLOCK · DROP THEN SWAP HELD PIECE';
-      const dropDone = this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'COMPLETED';
-      const swapDone = this.step === 'COMPLETED';
+    } else if (this.step === 'PIECE_5_DROP_FIRST' || this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'PIECE_5_DROP_SWAPPED' || this.step === 'COMPLETED') {
+      blockBadge.textContent = 'FIFTH BLOCK · DROP, SWAP & LAND';
+      const dropDone = this.step === 'PIECE_5_SWAP_HOLD' || this.step === 'PIECE_5_DROP_SWAPPED' || this.step === 'COMPLETED';
+      const swapDone = this.step === 'PIECE_5_DROP_SWAPPED' || this.step === 'COMPLETED';
+      const landDone = this.step === 'COMPLETED';
       list.innerHTML = `
         <div class="p-3 rounded-lg border ${dropDone ? 'border-neon-green/50 bg-neon-green/10' : 'border-neon-cyan bg-neon-cyan/10'} flex items-start gap-3">
           <span class="text-sm font-bold ${dropDone ? 'text-neon-green' : 'text-neon-cyan'}">${dropDone ? '✓' : '1.'}</span>
@@ -741,6 +793,13 @@ export class TutorialManager {
           <div class="flex-1">
             <div class="text-xs font-bold text-white">Replace current block with held block</div>
             <div class="text-[11px] text-gray-300 mt-1">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">C</kbd> again to swap the new block with your held block</div>
+          </div>
+        </div>
+        <div class="p-3 rounded-lg border ${landDone ? 'border-neon-green/50 bg-neon-green/10' : swapDone ? 'border-neon-cyan bg-neon-cyan/10' : 'border-card-border bg-black/20 opacity-60'} flex items-start gap-3">
+          <span class="text-sm font-bold ${landDone ? 'text-neon-green' : swapDone ? 'text-neon-cyan' : 'text-gray-500'}">${landDone ? '✓' : '3.'}</span>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-white">Land the swapped block</div>
+            <div class="text-[11px] text-gray-300 mt-1">Drop and lock your swapped block onto the grid to complete Stage 1</div>
           </div>
         </div>
       `;
