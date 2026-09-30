@@ -1152,6 +1152,36 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.lineWidth = 4;
     tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
   }
+
+  // Pre-game countdown indicator: show "YOU" only on this player's own board
+  if (isMyPlayer && (gameManager.state === GameState.PREGAME || !preGameOverlay.classList.contains('hidden'))) {
+    const boardWidth = COLS * blockSize;
+    const boardHeight = ROWS * blockSize;
+    const centerX = offsetX + boardWidth / 2;
+    const centerY = offsetY + boardHeight * 0.35;
+
+    tCtx.save();
+    tCtx.strokeStyle = '#00FFFF';
+    tCtx.lineWidth = 4;
+    tCtx.shadowColor = '#00FFFF';
+    tCtx.shadowBlur = 16;
+    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardWidth - 4, boardHeight - 4);
+
+    const badgeW = Math.max(120, boardWidth * 0.5);
+    const badgeH = Math.max(48, blockSize * 1.8);
+    tCtx.fillStyle = 'rgba(13, 11, 26, 0.9)';
+    tCtx.fillRect(centerX - badgeW / 2, centerY - badgeH / 2, badgeW, badgeH);
+    tCtx.lineWidth = 2;
+    tCtx.strokeRect(centerX - badgeW / 2, centerY - badgeH / 2, badgeW, badgeH);
+
+    const fontSize = Math.max(18, Math.round(blockSize * 0.85));
+    tCtx.font = `bold ${fontSize}px "Press Start 2P"`;
+    tCtx.fillStyle = '#00FFFF';
+    tCtx.textAlign = 'center';
+    tCtx.textBaseline = 'middle';
+    tCtx.fillText('YOU', centerX, centerY + 2);
+    tCtx.restore();
+  }
 }
 
 function render() {
