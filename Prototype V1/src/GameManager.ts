@@ -469,9 +469,26 @@ export class GameManager {
       const player = this.players[i];
       if (player.isToppedOut) continue;
 
-      // In online mode, only update our own player's game logic and our own bots
-      if (this.isOnline && i !== this.myPlayerIndex && !(player as any).botId) {
-        continue; // Remote players are synced via network events
+      // 1. Tick spawn delay timer if active
+      if (player.spawnDelayTimer > 0) {
+        player.spawnDelayTimer = Math.max(0, player.spawnDelayTimer - dt);
+        continue; // DO NOT SPAWN OR CHECK TOP-OUT WHILE TIMER IS ACTIVE
+      }
+
+      // Spawning
+      if (!player.currentPiece) {
+        this.handleSpawning(player);
+        if (player.isToppedOut) {
+          if (this.isOnline) {
+            if ((player as any).botId) {
+              this.network?.sendEliminated(undefined, (player as any).botId);
+            } else {
+              this.network?.sendToppedOut();
+            }
+          }
+          this.checkGameOver();
+          continue;
+        }
       }
 
       player.timeSurvived += dt;
@@ -689,25 +706,29 @@ export class GameManager {
     }
   }
 
-  /**
-   * K.O. recovery (Battle Royale, at/below the player floor): instead of
-   * being eliminated, the board keeps only user-placed blocks, garbage is
-   * destroyed, survivors collapse down, and play resumes.
-   */
   public applyKoRecovery(koCount: number, authoritativeScore: number) {
     const me = this.players[this.myPlayerIndex];
     if (!me) return;
 
+    // 1. Fully clear matrix
     me.grid.clearGarbageOnlyAndCollapse();
+
+    // 2. Clear state flags
     me.isToppedOut = false;
     me.koCount = koCount;
     me.koStampTimer = 2500;
     me.scoreManager.score = authoritativeScore;
     me.scoreManager.combo = 0;
+
+    // 3. Reset piece and force 1.5 second delay before any piece spawns
     me.currentPiece = null;
     me.dropTimer = 0;
+    me.spawnDelayTimer = 1500; // <--- 1.5s freeze window to allow server to sync
     me.inputHandler.clear();
-    if (this.state === GameState.GAME_OVER) this.state = GameState.PLAYING;
+
+    if (this.state === GameState.GAME_OVER) {
+      this.state = GameState.PLAYING;
+    }
   }
 
   private handleSpawning(player: Player) {

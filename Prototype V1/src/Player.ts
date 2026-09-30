@@ -62,6 +62,7 @@ export class Player {
   public isToppedOut = false;
   public koCount = 0; // Battle Royale K.O. recoveries taken this match
   public koStampTimer = 0; // ms remaining on the visual K.O. stamp overlay
+  public spawnDelayTimer = 0;
   public kills = 0;
   public battleRoyalEliminated = false;
 
@@ -88,6 +89,7 @@ export class Player {
     this.timeSurvived = 0;
     this.dropTimer = 0;
     this.dropInterval = 1000;
+    this.spawnDelayTimer = 0;    
     this.isToppedOut = false;
     this.kills = 0;
     this.battleRoyalEliminated = false;

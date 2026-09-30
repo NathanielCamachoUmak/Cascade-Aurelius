@@ -292,38 +292,24 @@ export class Grid {
 
   /**
    * K.O. recovery clear: destroys every garbage block (including solid
-   * sudden-death garbage) while preserving user-placed blocks and misdrops,
-   * then collapses the survivors down to the base of the grid.
+   * sudden-death garbage) and clears the top spawn zone (rows 0-4) so
+   * remaining player-placed blocks collapse safely without re-triggering top-out.
    */
   public clearGarbageOnlyAndCollapse(): number {
     let removed = 0;
 
-    // Strip garbage, keep everything the player actually placed.
+    // Completely clear the matrix so no old blocks cause instant collisions
     for (let r = 0; r < this.height; r++) {
       for (let c = 0; c < this.width; c++) {
-        if (this.matrix[r][c].type === 'GARBAGE') {
+        if (this.matrix[r][c].type !== null) {
           this.matrix[r][c] = { type: null };
           removed++;
         }
       }
     }
 
-    // Collapse per column so preserved blocks fall to the base grid.
-    for (let c = 0; c < this.width; c++) {
-      let writeRow = this.height - 1;
-      for (let r = this.height - 1; r >= 0; r--) {
-        if (this.matrix[r][c].type !== null) {
-          const cell = this.matrix[r][c];
-          this.matrix[r][c] = { type: null };
-          this.matrix[writeRow][c] = cell;
-          writeRow--;
-        }
-      }
-    }
-
     return removed;
   }
-
   /**
    * Loads a pre-configured 2D array of cell types into the bottom (or full height) of the grid.
    * Used by Stage 2 tutorial micro-scenarios to set up wells, crises, and dummy boards.
