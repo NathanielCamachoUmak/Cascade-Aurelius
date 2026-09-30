@@ -521,7 +521,7 @@ function startMatch(roomId) {
     player.lastClearAt = Date.now();
     player.lastScoreEventAt = 0;
     player.eliminatedAt = null;
-    playerList.push({ id, name: player.name, index, team: player.team, kills: 0, isBot: !!player.isBot, ownerId: player.ownerId || null });
+    playerList.push({ id, name: player.name, index, team: player.team, kills: 0, isBot: !!player.isBot, ownerId: player.ownerId || null, classId: player.classId || 'SPEEDSTER' });
     index += 1;
   }
 

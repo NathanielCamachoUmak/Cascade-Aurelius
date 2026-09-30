@@ -63,7 +63,7 @@ export interface RoomState {
 }
 
 export interface GameStartData {
-  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number; isBot?: boolean; ownerId?: string | null }[];
+  players: { id: string; name: string; index: number; team: 'cyan' | 'magenta' | null; kills?: number; isBot?: boolean; ownerId?: string | null; classId?: string }[];
   myIndex: number;
   teamScores: { cyan: number; magenta: number };
   modeId: OnlineModeId;

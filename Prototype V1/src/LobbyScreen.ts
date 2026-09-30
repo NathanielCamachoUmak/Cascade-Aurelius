@@ -9,6 +9,7 @@ export interface LobbyScreenOptions {
   onLeaveToMenu: () => void;
   getSelectedMode: () => OnlineModeId;
   onNetworkReady: (network: NetworkManager) => void;
+  onClassChange?: (classId: string) => void;
   getGameState?: () => GameState;
   externalScreens?: { screenPostGame?: HTMLElement; };
 }
@@ -24,6 +25,7 @@ export interface LobbyScreenController {
   readonly container: HTMLElement;
   readonly teamScores: { cyan: number; magenta: number };
   readonly hostId: string | null;
+  readonly players: RoomState['players'];
 }
 
 export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenController {
@@ -102,6 +104,9 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         toggleReady.checked = myReady;
         const cInfo = getPlayerClassInfo(me.classId);
         yourClassDisplay.innerText = `${cInfo.name} - ${cInfo.tagline}`;
+        if (me.classId) {
+          options.onClassChange?.(me.classId);
+        }
       }
       
       renderLobbyPlayers(state);
@@ -316,6 +321,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     showClassSelectModal({
       initialClassId: classId,
       onConfirm: (finalClassId) => {
+        options.onClassChange?.(finalClassId);
         const roomId = inputRoom.value.trim() || 'test-room';
         const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
         ensureNetwork();
@@ -333,6 +339,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     showClassSelectModal({
       initialClassId: classId,
       onConfirm: (finalClassId) => {
+        options.onClassChange?.(finalClassId);
         const roomId = inputRoom.value.trim() || 'test-room';
         const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
         ensureNetwork();
@@ -364,6 +371,7 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     showClassSelectModal({
       initialClassId: me?.classId || 'SPEEDSTER',
       onConfirm: (finalClassId) => {
+        options.onClassChange?.(finalClassId);
         if (network) network.changeClass(finalClassId);
       }
     });
@@ -440,5 +448,6 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
     get container() { return screenLobby; },
     get teamScores() { return onlineTeamScores; },
     get hostId() { return currentLobbyHostId; },
+    get players() { return currentRoomState?.players ?? []; },
   };
 }

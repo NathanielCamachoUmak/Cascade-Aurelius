@@ -554,6 +554,9 @@ const lobby = mountLobbyScreen({
     screenPostGame,
   },
   onNetworkReady: (network) => wireGameCallbacks(network),
+  onClassChange: (classId) => {
+    selectedClass = classId as PlayerClass;
+  },
 });
 
 function wireGameCallbacks(network: NetworkManager) {
@@ -775,7 +778,16 @@ let onlinePlayerSpecs: any[] = [];
 
 function startOnlineGame(playerCount: number, myIndex: number, players?: any[], mode?: RoomMode) {
   if (players) {
-    onlinePlayerSpecs = players;
+    const lobbyPlayers = lobby.players;
+    onlinePlayerSpecs = players.map(spec => {
+      if (spec.classId) return spec;
+      const match = lobbyPlayers.find(lp => lp.id === spec.id);
+      return match?.classId ? { ...spec, classId: match.classId } : spec;
+    });
+    const myClassId = onlinePlayerSpecs[myIndex]?.classId as PlayerClass | undefined;
+    if (myClassId) {
+      selectedClass = myClassId;
+    }
   }
   // Hide lobby, show game
   AudioManager.playMusic('game');
