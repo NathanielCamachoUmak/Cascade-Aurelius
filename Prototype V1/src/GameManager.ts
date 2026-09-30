@@ -212,6 +212,10 @@ export class GameManager {
       }
     };
 
+    net.onKoRecover = (data: { koCount: number; score: number }) => {
+      this.applyKoRecovery(data.koCount, data.score);
+    };
+
     net.onOpponentPieceUpdate = (playerIndex: number, piece: any) => {
       if (playerIndex < this.players.length && playerIndex !== myIndex) {
         const player = this.players[playerIndex];
