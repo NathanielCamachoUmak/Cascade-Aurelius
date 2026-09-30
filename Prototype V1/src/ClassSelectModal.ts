@@ -1,9 +1,15 @@
 import { PLAYER_CLASSES, type PlayerClassInfo } from './PlayerClass';
+import { isClassCertified } from './TutorialManager';
 
 export interface ClassSelectModalOptions {
   onConfirm: (classId: string) => void;
   onCancel?: () => void;
   initialClassId?: string;
+  subtitle?: string;
+  title?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  isCertificationMode?: boolean;
 }
 
 const HOVER_DELAY_MS = 1000; // 1.5 seconds
@@ -23,6 +29,14 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
   const classCardList = document.getElementById('lobby-class-card-list')!;
   const btnCancel = document.getElementById('btn-lobby-class-cancel')!;
   const btnConfirm = document.getElementById('btn-lobby-class-confirm')!;
+  const headerSubtitle = modal.querySelector('h2');
+  const headerTitle = modal.querySelector('h1');
+  if (headerSubtitle) {
+    headerSubtitle.textContent = options.subtitle || 'Loadout Preparation';
+  }
+  if (headerTitle) {
+    headerTitle.textContent = options.title || 'Choose your class';
+  }
   
   let tempSelectedClassId = options.initialClassId || 'SPEEDSTER';
   let activeHoverTimeout: number | null = null;
@@ -196,14 +210,23 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
       const card = document.createElement('div');
       const color = ['#00FFFF', '#FFD700', '#FF1493', '#00FF00'][index % 4];
       const passiveText = playerClass.passiveDescription.replace(/^Passive:\s*/i, '');
+      const certified = isClassCertified(playerClass.id);
+
+      let badgeHtml = '';
+      if (certified) {
+        badgeHtml = `<span class="shrink-0 px-2 py-0.5 rounded border border-neon-green/50 bg-neon-green/15 text-neon-green text-[9px] font-black tracking-widest uppercase shadow-[0_0_10px_rgba(0,255,0,0.2)]">★ CERTIFIED</span>`;
+      } else if (options.isCertificationMode) {
+        badgeHtml = `<span class="shrink-0 px-2 py-0.5 rounded border border-white/15 bg-white/5 text-gray-400 text-[9px] font-bold tracking-widest uppercase">UNCERTIFIED</span>`;
+      }
 
       card.innerHTML = `
         <div class='flex flex-col h-full'>
-          <div class='flex justify-between items-start mb-3'>
+          <div class='flex justify-between items-start gap-2 mb-3'>
             <div>
               <h3 class='text-lg font-bold uppercase tracking-wider' style='color: ${color}'>${playerClass.name}</h3>
               <span class='text-[9px] text-gray-400 tracking-widest uppercase'>${playerClass.tagline}</span>
             </div>
+            ${badgeHtml}
           </div>
           <div class='text-xs text-gray-300 mb-4 flex-1'>
             <p class='mb-2'><b>Passive:</b> ${passiveText}</p>
@@ -261,9 +284,11 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
 
   // Cleanup old listeners to prevent memory leaks when re-opening
   const newBtnCancel = btnCancel.cloneNode(true) as HTMLButtonElement;
+  newBtnCancel.textContent = options.cancelLabel || 'CANCEL';
   btnCancel.parentNode?.replaceChild(newBtnCancel, btnCancel);
   
   const newBtnConfirm = btnConfirm.cloneNode(true) as HTMLButtonElement;
+  newBtnConfirm.textContent = options.confirmLabel || 'EQUIP CLASS';
   btnConfirm.parentNode?.replaceChild(newBtnConfirm, btnConfirm);
 
   newBtnCancel.addEventListener('click', () => {

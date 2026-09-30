@@ -5,7 +5,7 @@ import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './O
 import { mountProgression, type ProgressionController } from './Progression'
 import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
-import { isTutorialCompleted } from './TutorialManager'
+import { isTutorialCompleted, getCertifiedClasses } from './TutorialManager'
 import { attachHighScoreHoverPopup } from './HighScores'
 
 const uiLayer = document.getElementById('ui-layer')!;
@@ -90,20 +90,27 @@ function refreshTutorialMenuStatuses() {
     }
   }
 
-  const completed2 = isTutorialCompleted('basics-stage-2');
+  const certifiedClasses = getCertifiedClasses();
+  const certifiedCount = certifiedClasses.length;
+  const allCertified = certifiedCount >= 4 || isTutorialCompleted('basics-stage-2');
   if (btnStartBasicsStage2) {
-    btnStartBasicsStage2.textContent = completed2 ? 'REPLAY' : 'START';
+    btnStartBasicsStage2.textContent = allCertified ? 'REPLAY' : certifiedCount > 0 ? 'CONTINUE' : 'START';
   }
   if (statusBasicsStage2) {
-    if (completed2) {
-      statusBasicsStage2.textContent = '✓ COMPLETED';
+    if (allCertified) {
+      statusBasicsStage2.textContent = '✓ 4 / 4 CERTIFIED';
       statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+    } else if (certifiedCount > 0) {
+      statusBasicsStage2.textContent = `${certifiedCount} / 4 CERTIFIED`;
+      statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan text-[10px] font-bold tracking-widest uppercase';
     } else {
-      statusBasicsStage2.textContent = 'NOT COMPLETED';
+      statusBasicsStage2.textContent = '0 / 4 CERTIFIED';
       statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
     }
   }
 }
+
+window.addEventListener('tutorialProgressUpdated', refreshTutorialMenuStatuses);
 
 function openTutorialMenu() {
   refreshTutorialMenuStatuses();

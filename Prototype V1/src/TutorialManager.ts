@@ -4,6 +4,7 @@ import { AudioManager } from './AudioManager';
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass';
 import { SpecialBlockType } from './ItemManager';
 import { GameState } from './GameManager';
+import { supabase } from './supabase';
 
 type TutorialStep =
   | 'PIECE_1_MOVE'
@@ -16,25 +17,28 @@ type TutorialStep =
   | 'PIECE_5_DROP_SWAPPED'
   | 'COMPLETED';
 
-type Stage2Drill =
-  | 'PASSIVE_TETRIS_TRIGGER'
-  | 'PASSIVE_SPECIAL_CLEAR'
-  | 'CRISIS_SENTINEL_DEFENSE'
-  | 'CRISIS_SUPPORT_RESCUE'
-  | 'CRISIS_SABOTEUR_DISRUPT'
-  | 'CRISIS_SPEEDSTER_CLUTCH'
-  | 'SANDBOX_3_DUMMY_ULTIMATE'
-  | 'STAGE2_COMPLETED';
+type ClassCertStep =
+  | 'STEP_1_PASSIVE_TETRIS'
+  | 'STEP_1_PASSIVE_SPECIAL'
+  | 'STEP_2_ABILITY'
+  | 'STEP_3_ABILITY'
+  | 'STEP_4_ULTIMATE'
+  | 'STEP_4_BULLET_TIME_TETRIS'
+  | 'CERT_COMPLETED';
 
 interface DummyBoardState {
   id: string;
   label: string;
+  isAlly?: boolean;
   grid: Grid;
   activePiece: Tetromino | null;
+  previewQueue: ShapeType[];
   statusBadge: string | null;
   statusColor: string;
   frozenTimer: number;
   chaosTimer: number;
+  abilityFreezeTimer: number;
+  sprintTimer: number;
 }
 
 const COLS = 10;
@@ -42,28 +46,89 @@ const ROWS = 20;
 const BLOCK_SIZE = 30;
 const PLAYER_COLOR = '#00E5FF';
 const DUMMY_COLOR = '#FF1493';
+const ALLY_COLOR = '#00FF66';
 const TUTORIAL_STORAGE_KEY = 'cascade_completed_tutorials_v1';
 
-export function isTutorialCompleted(tutorialId: string): boolean {
+const ALL_CERT_CLASSES: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
+
+function readCompletedTutorialsMap(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(TUTORIAL_STORAGE_KEY);
-    if (!raw) return false;
+    if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return Boolean(parsed && parsed[tutorialId]);
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    return false;
+    return {};
   }
 }
 
-export function markTutorialCompleted(tutorialId: string): void {
+async function syncCompletedTutorialsToCloud(map: Record<string, boolean>) {
   try {
-    const raw = localStorage.getItem(TUTORIAL_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    parsed[tutorialId] = true;
-    localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(parsed));
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await supabase.auth.updateUser({
+        data: { completed_tutorials: map },
+      });
+    }
+  } catch {
+    // ignore offline / cloud errors
+  }
+}
+
+// Hydrate local tutorial completion map from Supabase user_metadata on login
+supabase.auth.onAuthStateChange((_event, session) => {
+  const cloudMap = session?.user?.user_metadata?.completed_tutorials;
+  if (cloudMap && typeof cloudMap === 'object') {
+    const merged = { ...readCompletedTutorialsMap(), ...cloudMap };
+    try {
+      localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
+    } catch {
+      // ignore storage errors
+    }
+  }
+});
+
+export function isTutorialCompleted(tutorialId: string): boolean {
+  const map = readCompletedTutorialsMap();
+  return Boolean(map[tutorialId]);
+}
+
+export function markTutorialCompleted(tutorialId: string): void {
+  const map = readCompletedTutorialsMap();
+  map[tutorialId] = true;
+  try {
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(map));
   } catch {
     // ignore storage errors
   }
+  void syncCompletedTutorialsToCloud(map);
+}
+
+export function getClassCertTutorialId(playerClass: PlayerClass): string {
+  return `basics-stage-2-${playerClass}`;
+}
+
+export function isClassCertified(playerClass: PlayerClass): boolean {
+  return isTutorialCompleted(getClassCertTutorialId(playerClass));
+}
+
+export function getCertifiedClasses(): PlayerClass[] {
+  return ALL_CERT_CLASSES.filter(cls => isClassCertified(cls));
+}
+
+export function markClassCertified(playerClass: PlayerClass): void {
+  const map = readCompletedTutorialsMap();
+  map[getClassCertTutorialId(playerClass)] = true;
+  if (ALL_CERT_CLASSES.every(cls => Boolean(map[getClassCertTutorialId(cls)]))) {
+    map['basics-stage-2'] = true;
+  }
+  try {
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+  void syncCompletedTutorialsToCloud(map);
 }
 
 // Deterministic sequence for Stage 1 so every run is predictable:
@@ -105,25 +170,29 @@ export class TutorialManager {
   private piece1SoftDropped = false;
   private piece3Rotated = false;
 
-  // Stage 2 state (eFSM + Dummy Boards + CQRS Garbage Queue + Class Mechanics)
-  private stage2Drill: Stage2Drill = 'PASSIVE_TETRIS_TRIGGER';
+  // Stage 2 Class Certification state
   private activeClass: PlayerClass = 'SPEEDSTER';
+  private certStep: ClassCertStep = 'STEP_1_PASSIVE_TETRIS';
+  private onOpenClassSelector: (() => void) | null = null;
+
   private classMeter = 0;
   private ultimateCost = 40;
   private qStatusText = 'READY';
   private eStatusText = 'READY';
   private rStatusText = '0 / 40 LINES';
   private incomingGarbageQueue = 0;
+  private fortifyCharges = 0;
   private reflectArmed = false;
   private gridShiftUsed = false;
   private timeWarpActive = false;
   private timeWarpTimer = 0;
+  private perfectClearWindowActive = false;
+  private perfectClearTimer = 0;
+  private recycleConvertedReady = false;
   private stage2TransitionLocked = false;
-  private stage2BannerMessage: string | null = null;
-  private stage2BannerColor: 'cyan' | 'green' | 'pink' | 'yellow' = 'cyan';
 
-  // Phase 1 & Phase 4: Dummy Board(s) & Locked O(1) Circular Linked List Target Pointer
-  private selectedTargetIndex: number = 1; // Locked exclusively onto Dummy Board
+  // Phase 1 & Phase 3: Dummy Board(s) & Locked O(1) Circular Linked List Target Pointer
+  private selectedTargetIndex: number = 1;
   private dummyBoards: DummyBoardState[] = [];
   private dummyCanvasContainer: HTMLElement | null = null;
   private singleDummyCanvas: HTMLCanvasElement | null = null;
@@ -178,11 +247,15 @@ export class TutorialManager {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE 2: CLASSES, PASSIVES, CRISIS SCENARIOS & ULTIMATES SANDBOX
+  // STAGE 2: CLASS-SPECIFIC CERTIFICATIONS (SPEEDSTER / SENTINEL / SABOTEUR / SUPPORT)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  public startStage2() {
+  public startStage2(playerClass: PlayerClass = 'SPEEDSTER', onOpenClassSelector?: () => void) {
     this.activeStage = 2;
+    this.activeClass = playerClass;
+    if (onOpenClassSelector) {
+      this.onOpenClassSelector = onOpenClassSelector;
+    }
     this.eFsmState = GameState.TUTORIAL;
     this.boardCanvas = document.getElementById('board-p1') as HTMLCanvasElement | null;
     this.holdCanvas = document.getElementById('hold-canvas-p1') as HTMLCanvasElement | null;
@@ -190,7 +263,7 @@ export class TutorialManager {
 
     this.prepareArenaDom(true);
     this.mountStage2Hud();
-    this.setupStage2Drill('PASSIVE_TETRIS_TRIGGER');
+    this.setupCertStep('STEP_1_PASSIVE_TETRIS');
 
     window.removeEventListener('keydown', this.keydownHandler);
     window.addEventListener('keydown', this.keydownHandler);
@@ -261,8 +334,21 @@ export class TutorialManager {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // STAGE 2 DOM & DUMMY BOARDS (Phase 1 & Phase 4)
+  // STAGE 2 DOM & DUMMY BOARDS (Phase 1 & Phase 3)
   // ─────────────────────────────────────────────────────────────────────────
+
+  private getActiveClassInfo() {
+    return PLAYER_CLASSES.find(c => c.id === this.activeClass) ?? PLAYER_CLASSES[0];
+  }
+
+  private getActiveClassAccent(): string {
+    switch (this.activeClass) {
+      case 'SPEEDSTER': return '#00FFFF';
+      case 'TANK': return '#FFD700';
+      case 'SABOTEUR': return '#FF1493';
+      case 'SUPPORT': return '#00FF00';
+    }
+  }
 
   private mountStage2Hud() {
     this.hudContainer?.remove();
@@ -272,6 +358,9 @@ export class TutorialManager {
     const duoLayoutContainer = document.getElementById('duo-layout-container');
     if (!duoLayoutContainer) return;
 
+    const info = this.getActiveClassInfo();
+    const certifiedCount = getCertifiedClasses().length;
+
     // Center Instruction Panel
     const panel = document.createElement('div');
     panel.id = 'tutorial-stage-panel';
@@ -279,15 +368,15 @@ export class TutorialManager {
     panel.innerHTML = `
       <div>
         <div class="flex items-center justify-between gap-2 mb-1">
-          <span class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-cyan">STAGE 2 · ABILITY TUTORIAL</span>
-          <span id="tut-step-counter" class="text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/40">Drill 1 / 7</span>
+          <span class="text-[10px] font-bold tracking-[0.22em] uppercase text-neon-cyan">STAGE 2 · CLASS CERTIFICATION</span>
+          <span id="tut-step-counter" class="text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/40">Step 1 / 4</span>
         </div>
-        <h2 id="tut-stage2-title" class="text-lg font-extrabold text-white tracking-wide">Passives &amp; Asymmetric Abilities</h2>
-        <div id="tut-progress-dots" class="grid grid-cols-7 gap-1.5 mt-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <h2 id="tut-stage2-title" class="text-lg font-extrabold text-white tracking-wide">${info.name} Certification</h2>
+          <span id="tut-cert-progress-pill" class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/10 text-neon-yellow">${certifiedCount} / 4 CERTIFIED</span>
+        </div>
+        <div id="tut-progress-dots" class="grid grid-cols-4 gap-1.5 mt-2.5">
           <div class="h-1.5 rounded-full bg-neon-cyan"></div>
-          <div class="h-1.5 rounded-full bg-gray-700"></div>
-          <div class="h-1.5 rounded-full bg-gray-700"></div>
-          <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
           <div class="h-1.5 rounded-full bg-gray-700"></div>
@@ -298,7 +387,7 @@ export class TutorialManager {
       <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-deep-purple/90 border border-card-border text-[10px]">
         <div>
           <span class="text-gray-400 uppercase tracking-wider">CLASS:</span>
-          <span id="tut-active-class-badge" class="ml-1 font-bold text-neon-yellow uppercase tracking-widest">SPEEDSTER</span>
+          <span id="tut-active-class-badge" class="ml-1 font-bold text-neon-yellow uppercase tracking-widest">${info.name.toUpperCase()}</span>
         </div>
         <div class="flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full bg-neon-pink animate-pulse"></span>
@@ -311,20 +400,23 @@ export class TutorialManager {
 
       <!-- Current Scenario Problem-Solution Box -->
       <div class="rounded-xl bg-deep-purple/90 border border-card-border p-4 flex flex-col gap-3">
-        <div id="tut-block-badge" class="text-[10px] font-bold uppercase tracking-[0.2em] text-neon-yellow">PHASE 2 · PASSIVES DRILL</div>
+        <div id="tut-block-badge" class="text-[10px] font-bold uppercase tracking-[0.2em] text-neon-yellow">STEP 1 · PASSIVES DRILL</div>
         <div id="tut-instructions-list" class="flex flex-col gap-2.5"></div>
       </div>
 
       <div id="tut-guard-footer" class="text-[11px] text-gray-400 leading-relaxed border-t border-card-border pt-2.5">
-        eFSM Guard Active: Follow the highlighted prompt to resolve each manufactured crisis.
+        eFSM Guard Active: Complete each scenario's prompted ability or line clear to earn your <span class="text-neon-yellow font-bold">★ ${info.name} Certification</span>.
       </div>
 
-      <div class="flex gap-2.5 pt-1">
-        <button id="tut-btn-restart" type="button" class="flex-1 px-3 py-2 text-xs font-bold tracking-wider uppercase rounded-lg border border-card-border bg-white/5 text-gray-300 hover:text-white hover:border-neon-cyan transition-all cursor-pointer">
-          Reset Drill
+      <div class="grid grid-cols-3 gap-2 pt-1">
+        <button id="tut-btn-restart" type="button" class="px-2.5 py-2 text-[10px] font-bold tracking-wider uppercase rounded-lg border border-card-border bg-white/5 text-gray-300 hover:text-white hover:border-neon-cyan transition-all cursor-pointer">
+          Reset Step
         </button>
-        <button id="tut-btn-exit" type="button" class="flex-1 px-3 py-2 text-xs font-bold tracking-wider uppercase rounded-lg border border-neon-pink/40 bg-neon-pink/10 text-neon-pink hover:bg-neon-pink hover:text-deep-purple transition-all cursor-pointer">
-          Exit Tutorial
+        <button id="tut-btn-switch-class" type="button" class="px-2.5 py-2 text-[10px] font-bold tracking-wider uppercase rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan hover:text-deep-purple transition-all cursor-pointer">
+          Switch Class
+        </button>
+        <button id="tut-btn-exit" type="button" class="px-2.5 py-2 text-[10px] font-bold tracking-wider uppercase rounded-lg border border-neon-pink/40 bg-neon-pink/10 text-neon-pink hover:bg-neon-pink hover:text-deep-purple transition-all cursor-pointer">
+          Exit
         </button>
       </div>
     `;
@@ -332,45 +424,49 @@ export class TutorialManager {
     duoLayoutContainer.appendChild(panel);
     this.hudContainer = panel;
 
-    // Right-hand Dummy Board Container (Single Dummy 10x20 Grid for Phases 1–3, and 3-Dummy Mini Lobby for Phase 4)
+    // Right-hand Dummy Board Container (Single Dummy 10x20 Grid for Steps 1–3 & Support Step 4, and 3-Dummy Mini Lobby for AoE Step 4)
     const dummyPod = document.createElement('div');
     dummyPod.id = 'tutorial-dummy-pod';
     dummyPod.className = 'flex flex-col items-center justify-center gap-3 self-center shrink-0 z-20 pointer-events-auto';
     dummyPod.innerHTML = `
-      <!-- Single 10x20 Dummy Board View (Phases 1-3) -->
+      <!-- Single 10x20 Dummy Board View -->
       <div id="tut-single-dummy-view" class="flex flex-col items-center gap-2 bg-card-bg/85 border-2 border-neon-pink rounded-xl p-3 shadow-[0_0_25px_rgba(255,20,147,0.25)]">
-        <div class="w-full flex items-center justify-between px-1">
+        <div class="w-full flex items-center justify-between px-1 gap-2">
           <div class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-neon-pink"></span>
-            <span class="text-[10px] font-bold tracking-widest uppercase text-neon-pink">DUMMY BOARD</span>
+            <span id="tut-dummy-dot" class="w-2 h-2 rounded-full bg-neon-pink"></span>
+            <span id="tut-dummy-header-label" class="text-[10px] font-bold tracking-widest uppercase text-neon-pink">DUMMY OPPONENT</span>
           </div>
           <span id="tut-dummy-target-tag" class="text-[9px] font-bold px-2 py-0.5 rounded bg-neon-pink/20 border border-neon-pink text-white uppercase tracking-wider">◎ TARGET LOCKED</span>
         </div>
+        <div id="tut-dummy-preview-strip" class="w-full flex items-center justify-between px-2 py-1 rounded bg-deep-purple/80 border border-card-border text-[9px] font-pixel text-gray-300">
+          <span class="text-gray-400">QUEUE:</span>
+          <span id="tut-dummy-preview-items" class="text-neon-cyan tracking-widest">I · T · O · L · J</span>
+        </div>
         <canvas id="tut-dummy-canvas-main" width="240" height="480" class="bg-black/60 rounded border border-card-border"></canvas>
-        <div id="tut-dummy-status-line" class="text-[10px] font-bold tracking-wider uppercase text-gray-300 min-h-[16px]">INPUT: NULL · SCRIPTED STATE</div>
+        <div id="tut-dummy-status-line" class="text-[10px] font-bold tracking-wider uppercase text-gray-300 min-h-[16px] text-center">INPUT: NULL · SCRIPTED STATE</div>
       </div>
 
-      <!-- 3-Dummy Lobby View (Phase 4: Ultimates Sandbox) -->
+      <!-- 3-Dummy Lobby View (Step 4 AoE Ultimates) -->
       <div id="tut-multi-dummy-view" class="hidden flex-col items-center gap-3 bg-card-bg/85 border-2 border-neon-pink rounded-xl p-4 shadow-[0_0_25px_rgba(255,20,147,0.25)]">
         <div class="w-full flex items-center justify-between">
-          <span class="text-[10px] font-bold tracking-widest uppercase text-neon-pink">3-DUMMY AoE SANDBOX LOBBY</span>
-          <span class="text-[9px] font-bold px-2 py-0.5 rounded bg-neon-yellow/20 border border-neon-yellow text-neon-yellow uppercase">ALL OPPONENTS</span>
+          <span class="text-[10px] font-bold tracking-widest uppercase text-neon-pink">3-DUMMY AoE LOBBY</span>
+          <span class="text-[9px] font-bold px-2 py-0.5 rounded bg-neon-yellow/20 border border-neon-yellow text-neon-yellow uppercase">ALL 3 OPPONENTS</span>
         </div>
         <div class="grid grid-cols-3 gap-3">
           <div class="flex flex-col items-center gap-1.5 bg-deep-purple/80 border border-card-border rounded-lg p-2">
             <span class="text-[9px] font-bold text-neon-cyan tracking-wider">DUMMY ALPHA</span>
             <canvas id="tut-dummy-mini-0" width="120" height="240" class="bg-black/60 rounded"></canvas>
-            <span id="tut-dummy-mini-status-0" class="text-[8px] font-bold text-gray-400 uppercase">ACTIVE</span>
+            <span id="tut-dummy-mini-status-0" class="text-[8px] font-bold text-gray-400 uppercase text-center">ACTIVE</span>
           </div>
           <div class="flex flex-col items-center gap-1.5 bg-deep-purple/80 border border-card-border rounded-lg p-2">
             <span class="text-[9px] font-bold text-neon-yellow tracking-wider">DUMMY BETA</span>
             <canvas id="tut-dummy-mini-1" width="120" height="240" class="bg-black/60 rounded"></canvas>
-            <span id="tut-dummy-mini-status-1" class="text-[8px] font-bold text-gray-400 uppercase">ACTIVE</span>
+            <span id="tut-dummy-mini-status-1" class="text-[8px] font-bold text-gray-400 uppercase text-center">ACTIVE</span>
           </div>
           <div class="flex flex-col items-center gap-1.5 bg-deep-purple/80 border border-card-border rounded-lg p-2">
             <span class="text-[9px] font-bold text-neon-pink tracking-wider">DUMMY GAMMA</span>
             <canvas id="tut-dummy-mini-2" width="120" height="240" class="bg-black/60 rounded"></canvas>
-            <span id="tut-dummy-mini-status-2" class="text-[8px] font-bold text-gray-400 uppercase">ACTIVE</span>
+            <span id="tut-dummy-mini-status-2" class="text-[8px] font-bold text-gray-400 uppercase text-center">ACTIVE</span>
           </div>
         </div>
       </div>
@@ -386,10 +482,16 @@ export class TutorialManager {
     ];
 
     panel.querySelector('#tut-btn-restart')?.addEventListener('click', () => {
-      if (this.stage2Drill === 'STAGE2_COMPLETED') {
-        this.setupStage2Drill('PASSIVE_TETRIS_TRIGGER');
+      if (this.certStep === 'CERT_COMPLETED') {
+        this.setupCertStep('STEP_1_PASSIVE_TETRIS');
       } else {
-        this.setupStage2Drill(this.stage2Drill);
+        this.setupCertStep(this.certStep);
+      }
+    });
+
+    panel.querySelector('#tut-btn-switch-class')?.addEventListener('click', () => {
+      if (this.onOpenClassSelector) {
+        this.onOpenClassSelector();
       }
     });
 
@@ -398,84 +500,29 @@ export class TutorialManager {
       window.location.href = 'modeselect.html?screen=tutorial';
     });
 
-    // Stage 2 Conclusion Modal
+    // Stage 2 Certification Conclusion Modal
     const modal = document.createElement('div');
     modal.id = 'tutorial-conclusion-modal';
     modal.className = 'hidden fixed inset-0 z-[120] bg-black/80 backdrop-blur-md items-center justify-center p-4';
-    modal.innerHTML = `
-      <div class="bg-card-bg border-2 border-neon-cyan rounded-2xl max-w-lg w-full p-8 text-center shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col items-center gap-5">
-        <div class="w-14 h-14 rounded-full bg-neon-cyan/15 border-2 border-neon-cyan flex items-center justify-center text-neon-cyan text-2xl font-bold shadow-[0_0_20px_rgba(0,229,255,0.4)]">
-          ✓
-        </div>
-        <div>
-          <p class="text-neon-cyan text-[10px] font-bold tracking-[0.3em] uppercase mb-2">STAGE 2 COMPLETE</p>
-          <h2 class="text-2xl font-extrabold text-white">Classes &amp; Abilities Mastered!</h2>
-          <p class="text-gray-400 text-xs mt-2 leading-relaxed">
-            You completed the Passives Drill, resolved all 4 Class Micro-Scenarios, and unleashed Area-of-Effect Ultimates across the 3-Dummy Lobby!
-          </p>
-        </div>
-
-        <div class="w-full rounded-xl bg-deep-purple/80 border border-card-border p-4 text-left text-xs flex flex-col gap-2">
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Phase 2 · Tetris Trigger &amp; Special Block</span>
-            <span class="text-neon-green font-bold">4-Line Clear → Special Block</span>
-          </div>
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Sentinel · Defense Scenario</span>
-            <span class="text-neon-green font-bold">[E] Counter Strike (Reflect 10)</span>
-          </div>
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Support · Rescue Scenario</span>
-            <span class="text-neon-green font-bold">[R] Guardian Angel (-4 Bottom)</span>
-          </div>
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Saboteur · Disruption Scenario</span>
-            <span class="text-neon-green font-bold">[E] Grid Shift (Break Tetris Well)</span>
-          </div>
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Speedster · Clutch Scenario</span>
-            <span class="text-neon-green font-bold">[E] Time Warp (-50% Gravity)</span>
-          </div>
-          <div class="flex justify-between items-center text-gray-300">
-            <span>Phase 4 · 3-Dummy AoE Sandbox</span>
-            <span class="text-neon-green font-bold">[R] Lobby-Wide Ultimate</span>
-          </div>
-        </div>
-
-        <div class="flex flex-col sm:flex-row gap-3 w-full pt-2">
-          <button id="tut-modal-replay" type="button" class="flex-1 px-4 py-3 rounded-lg border border-card-border bg-white/5 text-white text-xs font-bold tracking-widest uppercase hover:border-neon-cyan transition-all cursor-pointer">
-            Replay Stage 2
-          </button>
-          <button id="tut-modal-done" type="button" class="flex-1 px-4 py-3 rounded-lg bg-neon-cyan text-deep-purple text-xs font-bold tracking-widest uppercase hover:brightness-110 shadow-[0_0_20px_rgba(0,229,255,0.3)] transition-all cursor-pointer">
-            Back to Tutorials
-          </button>
-        </div>
-      </div>
-    `;
     document.body.appendChild(modal);
     this.conclusionModal = modal;
-
-    modal.querySelector('#tut-modal-replay')?.addEventListener('click', () => {
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
-      this.setupStage2Drill('PASSIVE_TETRIS_TRIGGER');
-    });
-    modal.querySelector('#tut-modal-done')?.addEventListener('click', () => {
-      this.stop();
-      window.location.href = 'modeselect.html?screen=tutorial';
-    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // STAGE 2 SCENARIO SETUPS (Phases 1, 2, 3, 4)
+  // STAGE 2 STEP SETUPS PER CLASS (SPEEDSTER / SENTINEL / SABOTEUR / SUPPORT)
   // ─────────────────────────────────────────────────────────────────────────
 
-  private createSingleDummyBoard(presetRows?: (string | null)[][], activePiece?: Tetromino | null, statusBadge: string | null = null): DummyBoardState {
+  private createSingleDummyBoard(options?: {
+    presetRows?: (string | null)[][];
+    activePiece?: Tetromino | null;
+    statusBadge?: string | null;
+    previewQueue?: ShapeType[];
+    isAlly?: boolean;
+  }): DummyBoardState {
     const g = new Grid();
-    if (presetRows) {
-      g.loadPresetMatrix(presetRows);
+    if (options?.presetRows) {
+      g.loadPresetMatrix(options.presetRows);
     } else {
-      // Restricted AI / baseline stack for dummy board
       g.loadPresetMatrix([
         ['T', 'T', 'T', null, 'L', 'L', 'L', null, 'O', 'O'],
         ['J', 'J', 'S', 'S', 'L', 'Z', 'Z', null, 'O', 'O'],
@@ -483,36 +530,61 @@ export class TutorialManager {
       ]);
     }
     return {
-      id: 'DUMMY-1',
-      label: 'DUMMY BOARD',
+      id: options?.isAlly ? 'ALLY-1' : 'DUMMY-1',
+      label: options?.isAlly ? 'ALLY BOARD (CRITICAL)' : 'DUMMY OPPONENT',
+      isAlly: Boolean(options?.isAlly),
       grid: g,
-      activePiece: activePiece ?? null,
-      statusBadge,
-      statusColor: '#00FFFF',
+      activePiece: options?.activePiece ?? null,
+      previewQueue: options?.previewQueue ?? ['I', 'T', 'O', 'L', 'J'],
+      statusBadge: options?.statusBadge ?? null,
+      statusColor: options?.isAlly ? ALLY_COLOR : '#00FFFF',
       frozenTimer: 0,
       chaosTimer: 0,
+      abilityFreezeTimer: 0,
+      sprintTimer: 0,
     };
   }
 
-  private setupStage2Drill(drill: Stage2Drill) {
-    this.stage2Drill = drill;
+  private loadStandardTetrisWellOnPlayerBoard() {
+    this.grid = new Grid();
+    this.grid.loadPresetMatrix([
+      ['J', 'J', 'L', 'L', 'O', 'O', 'T', 'T', 'S', null],
+      ['J', 'Z', 'Z', 'L', 'O', 'O', 'T', 'S', 'S', null],
+      ['I', 'I', 'I', 'I', 'J', 'J', 'J', 'L', 'L', null],
+      ['O', 'O', 'T', 'T', 'T', 'S', 'S', 'Z', 'Z', null],
+    ]);
+  }
+
+  private setupCertStep(step: ClassCertStep) {
+    this.certStep = step;
     this.stage2TransitionLocked = false;
     this.isRestarting = false;
-    this.selectedTargetIndex = 1; // Task 1.3: Force targeting pointer onto Dummy Board
+    this.selectedTargetIndex = 1;
     this.incomingGarbageQueue = 0;
+    this.fortifyCharges = 0;
     this.reflectArmed = false;
-    this.gridShiftUsed = false;
     this.timeWarpActive = false;
     this.timeWarpTimer = 0;
+    this.perfectClearWindowActive = false;
+    this.perfectClearTimer = 0;
+    this.recycleConvertedReady = false;
     this.holdPiece = null;
     this.dropTimer = 0;
     this.lockTimer = 0;
     this.dropInterval = 1000;
     this.hideStage2Banner();
 
+    const info = this.getActiveClassInfo();
+    this.ultimateCost = info.ultimateCost;
+
+    // Determine whether this step uses the Single Dummy Board or the 3-Dummy AoE Lobby
+    const isMultiDummyAoE =
+      (step === 'STEP_4_ULTIMATE' || step === 'STEP_4_BULLET_TIME_TETRIS') &&
+      this.activeClass !== 'SUPPORT';
+
     const singleView = document.getElementById('tut-single-dummy-view');
     const multiView = document.getElementById('tut-multi-dummy-view');
-    if (drill === 'SANDBOX_3_DUMMY_ULTIMATE') {
+    if (isMultiDummyAoE) {
       singleView?.classList.add('hidden');
       singleView?.classList.remove('flex');
       multiView?.classList.remove('hidden');
@@ -524,173 +596,328 @@ export class TutorialManager {
       multiView?.classList.remove('flex');
     }
 
-    // ─── TASK 2.1: The Tetris Trigger (Well pre-stacked, I-piece provided) ───
-    if (drill === 'PASSIVE_TETRIS_TRIGGER') {
-      this.activeClass = 'SPEEDSTER';
-      this.classMeter = 12;
-      this.ultimateCost = 40;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'LOCKED';
-      this.rStatusText = '12 / 40 LINES';
-
-      // Pre-stack a 4-row well with column 9 open
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['J', 'J', 'L', 'L', 'O', 'O', 'T', 'T', 'S', null],
-        ['J', 'Z', 'Z', 'L', 'O', 'O', 'T', 'S', 'S', null],
-        ['I', 'I', 'I', 'I', 'J', 'J', 'J', 'L', 'L', null],
-        ['O', 'O', 'T', 'T', 'T', 'S', 'S', 'Z', 'Z', null],
-      ]);
-
-      // Provide the I-piece
-      this.currentPiece = new Tetromino('I');
-      this.queue = ['I', 'T', 'O', 'L'];
-      this.dummyBoards = [this.createSingleDummyBoard()];
+    // ═══════════════════════════════════════════════════════════════════════
+    // 1. SPEEDSTER CERTIFICATION
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.activeClass === 'SPEEDSTER') {
+      if (step === 'STEP_1_PASSIVE_TETRIS') {
+        this.classMeter = 10;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '10 / 40 LINES';
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = new Tetromino('I');
+        this.queue = ['I', 'T', 'O', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'PASSIVES DRILL · TETRIS TRIGGER' })];
+      } else if (step === 'STEP_1_PASSIVE_SPECIAL') {
+        this.classMeter = 14;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '14 / 40 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['T', 'T', 'T', 'O', 'O', 'J', null, null, null, null],
+        ]);
+        const specialPiece = new Tetromino('I');
+        specialPiece.specialBlocks.set('1,1', SpecialBlockType.SPEED);
+        this.currentPiece = specialPiece;
+        this.queue = ['T', 'L', 'O', 'J'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'SPEED BLOCK [V] SPAWNED' })];
+      } else if (step === 'STEP_2_ABILITY') {
+        // Step 2 (Survival / The Clutch): Max gravity -> [E] Time Warp -> place piece
+        this.classMeter = 20;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'READY';
+        this.rStatusText = '20 / 40 LINES';
+        this.dropInterval = 55; // Extreme unmanageable gravity until [E] Time Warp is pressed
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['J', 'J', 'J', 'O', 'O', 'L', null, null, null, null],
+        ]);
+        this.currentPiece = new Tetromino('I');
+        this.queue = ['I', 'I', 'I', 'I'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: '⚠ MAX GRAVITY OVERRIDE' })];
+      } else if (step === 'STEP_3_ABILITY') {
+        // Step 3 (Offense): [Q] Sprint -> Dummy's current + next 3 pieces drop 50% faster
+        this.classMeter = 30;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'COOLDOWN';
+        this.rStatusText = '30 / 40 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
+          ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
+        ]);
+        this.currentPiece = null;
+        const dummyPiece = new Tetromino('T');
+        dummyPiece.x = 4;
+        dummyPiece.y = 2;
+        this.dummyBoards = [
+          this.createSingleDummyBoard({
+            activePiece: dummyPiece,
+            previewQueue: ['I', 'O', 'L', 'Z', 'S'],
+            statusBadge: 'NORMAL DROP SPEED (1.0x)',
+          }),
+        ];
+      } else if (step === 'STEP_4_ULTIMATE') {
+        // Step 4 (Ultimate / AoE): 3-Dummy Lobby + [R] Bullet Time -> Freeze all 3 + score free Tetris
+        this.classMeter = 40;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'READY';
+        this.rStatusText = 'READY (40/40)';
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = null; // Spawns I-piece once [R] Bullet Time freezes all 3 dummies!
+        this.queue = ['I', 'T', 'O', 'L'];
+        this.initThreeDummyLobby();
+      } else if (step === 'STEP_4_BULLET_TIME_TETRIS') {
+        // All 3 dummies are frozen — player now drops the I-piece to score the free Tetris!
+        this.classMeter = 0;
+        this.rStatusText = 'BULLET TIME (5.0s)';
+        this.currentPiece = new Tetromino('I');
+        this.dropInterval = 900;
+      }
     }
 
-    // ─── TASK 2.2: Forced Special Block Resolution ───
-    else if (drill === 'PASSIVE_SPECIAL_CLEAR') {
-      this.activeClass = 'SPEEDSTER';
-      this.classMeter = 16;
-      this.ultimateCost = 40;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'LOCKED';
-      this.rStatusText = '16 / 40 LINES';
-
-      // Pre-stack bottom row with columns 0..5 filled and 6..9 open for horizontal I-piece with Special Block
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['T', 'T', 'T', 'O', 'O', 'J', null, null, null, null],
-      ]);
-
-      // Intercept RNG and force the class Special Block (Speed Block 'V') onto the spawned piece
-      const specialPiece = new Tetromino('I');
-      specialPiece.specialBlocks.set('1,1', SpecialBlockType.SPEED);
-      this.currentPiece = specialPiece;
-      this.queue = ['T', 'L', 'O', 'J'];
-      this.dummyBoards = [this.createSingleDummyBoard()];
+    // ═══════════════════════════════════════════════════════════════════════
+    // 2. SENTINEL (TANK) CERTIFICATION
+    // ═══════════════════════════════════════════════════════════════════════
+    else if (this.activeClass === 'TANK') {
+      if (step === 'STEP_1_PASSIVE_TETRIS') {
+        this.classMeter = 12;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '12 / 50 LINES';
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = new Tetromino('I');
+        this.queue = ['I', 'O', 'T', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'PASSIVES DRILL · TETRIS TRIGGER' })];
+      } else if (step === 'STEP_1_PASSIVE_SPECIAL') {
+        this.classMeter = 16;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '16 / 50 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['T', 'T', 'T', 'O', 'O', 'J', null, null, null, null],
+        ]);
+        const specialPiece = new Tetromino('I');
+        specialPiece.specialBlocks.set('1,1', SpecialBlockType.SHIELD);
+        this.currentPiece = specialPiece;
+        this.queue = ['T', 'L', 'O', 'J'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'SHIELD BLOCK [S] SPAWNED' })];
+      } else if (step === 'STEP_2_ABILITY') {
+        // Step 2 (Survival / The Defense): Grid frozen + 10-line CQRS garbage queued -> [Q] Fortify (2 charges)
+        this.classMeter = 25;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '25 / 50 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
+          ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
+        ]);
+        this.currentPiece = null;
+        this.incomingGarbageQueue = 10;
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: '⚠ SENDING LETHAL 10-LINE ATTACK!' })];
+      } else if (step === 'STEP_3_ABILITY') {
+        // Step 3 (Offense): Subsequent 10-line attack queued -> [E] Counter Strike reflects it to Dummy
+        this.classMeter = 38;
+        this.qStatusText = 'COOLDOWN';
+        this.eStatusText = 'READY';
+        this.rStatusText = '38 / 50 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
+          ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
+        ]);
+        this.currentPiece = null;
+        this.incomingGarbageQueue = 10;
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: '⚠ SECOND 10-LINE SALVO INCOMING!' })];
+      } else if (step === 'STEP_4_ULTIMATE') {
+        // Step 4 (Ultimate / AoE): 3-Dummy Lobby + [R] Earthquake (+4 lines to all 3 dummies)
+        this.classMeter = 50;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'READY';
+        this.rStatusText = 'READY (50/50)';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
+          ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
+        ]);
+        this.currentPiece = null;
+        this.initThreeDummyLobby();
+      }
     }
 
-    // ─── TASK 3.1: Sentinel Scenario (The Defense — [E] Counter Strike) ───
-    else if (drill === 'CRISIS_SENTINEL_DEFENSE') {
-      this.activeClass = 'TANK'; // Sentinel
-      this.classMeter = 20;
-      this.ultimateCost = 50;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'READY';
-      this.rStatusText = '20 / 50 LINES';
-
-      // Freeze player's grid and queue an unavoidable 10-line garbage attack via CQRS queue
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
-        ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
-      ]);
-      this.currentPiece = null; // Grid frozen awaiting [E] Counter Strike
-      this.incomingGarbageQueue = 10;
-      this.queue = ['I', 'T', 'O', 'L'];
-      this.dummyBoards = [this.createSingleDummyBoard(undefined, null, 'ATTACKING: 10 LINES')];
+    // ═══════════════════════════════════════════════════════════════════════
+    // 3. SABOTEUR CERTIFICATION
+    // ═══════════════════════════════════════════════════════════════════════
+    else if (this.activeClass === 'SABOTEUR') {
+      if (step === 'STEP_1_PASSIVE_TETRIS') {
+        this.classMeter = 10;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '10 / 35 LINES';
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = new Tetromino('I');
+        this.queue = ['I', 'T', 'O', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'ABILITIES ACTIVE [Q/E/R]' })];
+      } else if (step === 'STEP_1_PASSIVE_SPECIAL') {
+        this.classMeter = 14;
+        this.qStatusText = 'LOCKED';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '14 / 35 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['T', 'T', 'T', 'O', 'O', 'J', null, null, null, null],
+        ]);
+        const specialPiece = new Tetromino('I');
+        specialPiece.specialBlocks.set('1,1', SpecialBlockType.FREEZE);
+        this.currentPiece = specialPiece;
+        this.queue = ['T', 'L', 'O', 'J'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'FREEZE BLOCK [F] SPAWNED' })];
+      } else if (step === 'STEP_2_ABILITY') {
+        // Step 2 (Interception): Dummy has a 4-line well + 'I' blocks queued -> [Q] Scramble ruins queue
+        this.classMeter = 22;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '22 / 35 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['J', 'J', 'J', null, 'O', 'O', 'T', 'T', 'T', null],
+          ['L', 'L', 'L', 'S', 'O', 'O', 'Z', 'Z', 'T', null],
+        ]);
+        this.currentPiece = null;
+        const dummyWell: (string | null)[][] = [
+          ['I', 'I', 'I', 'I', 'O', 'O', 'T', 'T', 'T', null],
+          ['J', 'J', 'J', 'L', 'O', 'O', 'S', 'S', 'T', null],
+          ['J', 'Z', 'Z', 'L', 'L', 'L', 'S', 'S', 'O', null],
+          ['Z', 'Z', 'T', 'T', 'T', 'I', 'I', 'I', 'I', null],
+        ];
+        this.dummyBoards = [
+          this.createSingleDummyBoard({
+            presetRows: dummyWell,
+            previewQueue: ['I', 'I', 'I', 'I', 'I'],
+            statusBadge: '⚠ I-PIECE QUEUED FOR TETRIS!',
+          }),
+        ];
+      } else if (step === 'STEP_3_ABILITY') {
+        // Step 3 (Offense / The Disruption): Dummy has active I-piece over well -> [E] Grid Shift shifts 2 cols
+        this.classMeter = 30;
+        this.qStatusText = 'COOLDOWN';
+        this.eStatusText = 'READY (1/MATCH)';
+        this.rStatusText = '30 / 35 LINES';
+        this.gridShiftUsed = false;
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['J', 'J', 'J', null, 'O', 'O', 'T', 'T', 'T', null],
+          ['L', 'L', 'L', 'S', 'O', 'O', 'Z', 'Z', 'T', null],
+        ]);
+        this.currentPiece = null;
+        const dummyWell: (string | null)[][] = [
+          ['I', 'I', 'I', 'I', 'O', 'O', 'T', 'T', 'T', null],
+          ['J', 'J', 'J', 'L', 'O', 'O', 'S', 'S', 'T', null],
+          ['J', 'Z', 'Z', 'L', 'L', 'L', 'S', 'S', 'O', null],
+          ['Z', 'Z', 'T', 'T', 'T', 'I', 'I', 'I', 'I', null],
+        ];
+        const dummyIPiece = new Tetromino('I');
+        dummyIPiece.rotate(1);
+        dummyIPiece.x = 7; // column 9 well
+        dummyIPiece.y = 2;
+        this.dummyBoards = [
+          this.createSingleDummyBoard({
+            presetRows: dummyWell,
+            activePiece: dummyIPiece,
+            previewQueue: ['T', 'L', 'O', 'J', 'S'],
+            statusBadge: '⚠ DROPPING FINAL I-PIECE!',
+          }),
+        ];
+      } else if (step === 'STEP_4_ULTIMATE') {
+        // Step 4 (Ultimate / AoE): 3-Dummy Lobby + [R] Chaos Mode reverses controls for 8s & resets Grid Shift
+        this.classMeter = 35;
+        this.gridShiftUsed = true;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'USED (1/MATCH)';
+        this.rStatusText = 'READY (35/35)';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['J', 'J', 'J', null, 'O', 'O', 'T', 'T', 'T', null],
+          ['L', 'L', 'L', 'S', 'O', 'O', 'Z', 'Z', 'T', null],
+        ]);
+        this.currentPiece = null;
+        this.initThreeDummyLobby();
+      }
     }
 
-    // ─── TASK 3.2: Support Scenario (The Rescue — [R] Guardian Angel) ───
-    else if (drill === 'CRISIS_SUPPORT_RESCUE') {
-      this.activeClass = 'SUPPORT';
-      this.classMeter = 45; // Pre-filled Ultimate Meter!
-      this.ultimateCost = 45;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'LOCKED';
-      this.rStatusText = 'READY (45/45)';
+    // ═══════════════════════════════════════════════════════════════════════
+    // 4. SUPPORT CERTIFICATION
+    // ═══════════════════════════════════════════════════════════════════════
+    else if (this.activeClass === 'SUPPORT') {
+      if (step === 'STEP_1_PASSIVE_TETRIS') {
+        // Support Step 1 & 2: Spawn onto 18 lines of raw garbage -> Press [Q] Recycle -> Convert top 4 garbage into Special Blocks & clear!
+        this.classMeter = 15;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '15 / 45 LINES';
+        this.grid = new Grid();
+        this.grid.addGarbageLines(14, 'HARD');
+        // Top row of stack has 6 garbage blocks + 4 empty cells on the right so once converted, an I-piece clears it!
+        const topGarbageRow = ROWS - 14;
+        for (let c = 0; c < COLS; c++) {
+          this.grid.matrix[topGarbageRow][c] = c < 6 ? { type: 'GARBAGE' } : { type: null };
+        }
+        this.currentPiece = null; // Unlocks after [Q] Recycle converts the garbage into Special Blocks
+        this.queue = ['I', 'O', 'T', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'CRITICAL GARBAGE PRESSURE' })];
+      } else if (step === 'STEP_1_PASSIVE_SPECIAL') {
+        // Support Passive Drill: Clear a 4-line Tetris -> arms supportPassiveConversion -> incoming garbage becomes Special Blocks
+        this.classMeter = 25;
+        this.qStatusText = 'COOLDOWN';
+        this.eStatusText = 'LOCKED';
+        this.rStatusText = '25 / 45 LINES';
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = new Tetromino('I');
+        this.queue = ['I', 'T', 'O', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'PASSIVE DRILL · TETRIS CONVERSION' })];
+      } else if (step === 'STEP_3_ABILITY') {
+        // Support Step 3 (Offense): [E] Perfect Clear Bonus (15s window) -> Clear board for massive FSM meter charge
+        this.classMeter = 30;
+        this.qStatusText = 'COOLDOWN';
+        this.eStatusText = 'READY';
+        this.rStatusText = '30 / 45 LINES';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['I', 'I', 'I', 'I', 'O', 'O', null, null, null, null],
+        ]);
+        this.currentPiece = null; // Spawns horizontal I-piece once [E] Perfect Clear Bonus is activated
+        this.queue = ['I', 'O', 'T', 'L'];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'ALL-CLEAR OPPORTUNITY' })];
+      } else if (step === 'STEP_4_ULTIMATE') {
+        // Support Step 4 (Ultimate / The Rescue): Ally Dummy Board spawns 18 lines high -> Target Ally & press [R] Guardian Angel!
+        this.classMeter = 45;
+        this.qStatusText = 'READY';
+        this.eStatusText = 'COOLDOWN';
+        this.rStatusText = 'READY (45/45)';
+        this.grid = new Grid();
+        this.grid.loadPresetMatrix([
+          ['O', 'O', null, 'T', 'T', 'T', null, 'L', 'L', 'L'],
+          ['O', 'O', 'J', 'J', 'J', 'S', 'S', 'L', 'Z', 'Z'],
+        ]);
+        this.currentPiece = null;
 
-      // Pre-fill player board with 18 lines of garbage (critical danger state!)
-      this.grid = new Grid();
-      this.grid.addGarbageLines(18, 'HARD');
-      this.currentPiece = null; // Paused in crisis state until [R] Guardian Angel is pressed
-      this.queue = ['I', 'O', 'T', 'S'];
-      this.dummyBoards = [this.createSingleDummyBoard(undefined, null, 'PRESSURING')];
-    }
-
-    // ─── TASK 3.3: Saboteur Scenario (The Disruption — [E] Grid Shift) ───
-    else if (drill === 'CRISIS_SABOTEUR_DISRUPT') {
-      this.activeClass = 'SABOTEUR';
-      this.classMeter = 15;
-      this.ultimateCost = 35;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'READY (1/MATCH)';
-      this.rStatusText = '15 / 35 LINES';
-
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['J', 'J', 'J', null, 'O', 'O', 'T', 'T', 'T', null],
-        ['L', 'L', 'L', 'S', 'O', 'O', 'Z', 'Z', 'T', null],
-      ]);
-      this.currentPiece = null;
-
-      // Static 2D array for Dummy Board showing a perfect 4-line Tetris setup with column 9 open
-      const dummyTetrisSetup: (string | null)[][] = [
-        ['I', 'I', 'I', 'I', 'O', 'O', 'T', 'T', 'T', null],
-        ['J', 'J', 'J', 'L', 'O', 'O', 'S', 'S', 'T', null],
-        ['J', 'Z', 'Z', 'L', 'L', 'L', 'S', 'S', 'O', null],
-        ['Z', 'Z', 'T', 'T', 'T', 'I', 'I', 'I', 'I', null],
-      ];
-      // Dummy is about to drop the final vertical I-piece into column 9!
-      const dummyFinalIPiece = new Tetromino('I');
-      dummyFinalIPiece.rotate(1); // vertical orientation (solid column at c=2)
-      dummyFinalIPiece.x = 7;     // x + 2 = column 9 (aligned right above the open well!)
-      dummyFinalIPiece.y = 2;
-
-      this.dummyBoards = [
-        this.createSingleDummyBoard(dummyTetrisSetup, dummyFinalIPiece, '⚠ TETRIS IMMINENT!'),
-      ];
-    }
-
-    // ─── TASK 3.4: Speedster Scenario (The Clutch — [E] Time Warp) ───
-    else if (drill === 'CRISIS_SPEEDSTER_CLUTCH') {
-      this.activeClass = 'SPEEDSTER';
-      this.classMeter = 25;
-      this.ultimateCost = 40;
-      this.qStatusText = 'LOCKED';
-      this.eStatusText = 'READY';
-      this.rStatusText = '25 / 40 LINES';
-
-      // Alter player's Dynamic Gravity System to maximum speed (55ms drop interval)
-      this.dropInterval = 55;
-      this.timeWarpActive = false;
-
-      // Single-line setup at row 19 with columns 6..9 open for horizontal I-piece
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['J', 'J', 'J', 'O', 'O', 'L', null, null, null, null],
-      ]);
-      this.currentPiece = new Tetromino('I');
-      this.queue = ['I', 'I', 'I', 'I'];
-      this.dummyBoards = [this.createSingleDummyBoard(undefined, null, 'MAX GRAVITY HAZARD')];
-    }
-
-    // ─── TASK 4.1 & 4.2: Ultimates Sandbox (3-Dummy Lobby AoE Execution) ───
-    else if (drill === 'SANDBOX_3_DUMMY_ULTIMATE') {
-      this.configureSandboxClass('TANK'); // Default to Sentinel (Earthquake), switchable with 1/2/3
-      this.grid = new Grid();
-      this.grid.loadPresetMatrix([
-        ['I', 'I', 'I', 'I', null, null, 'O', 'O', 'L', 'L'],
-        ['T', 'T', 'T', 'S', 'S', null, 'O', 'O', 'L', 'L'],
-      ]);
-      this.currentPiece = null;
-      this.initThreeDummyLobby();
+        const allyBoard = this.createSingleDummyBoard({
+          isAlly: true,
+          statusBadge: '⚠ ALLY TOPPING OUT (18 LINES)!',
+        });
+        allyBoard.grid = new Grid();
+        allyBoard.grid.addGarbageLines(18, 'HARD');
+        this.dummyBoards = [allyBoard];
+      }
     }
 
     this.updateClassAbilityHud();
     this.updateStage2InstructionUi();
     this.render();
-  }
-
-  private configureSandboxClass(playerClass: PlayerClass) {
-    this.activeClass = playerClass;
-    this.ultimateCost = playerClass === 'SPEEDSTER' ? 40 : playerClass === 'TANK' ? 50 : 35;
-    this.classMeter = this.ultimateCost; // Pre-filled Ultimate meter!
-    this.qStatusText = 'READY';
-    this.eStatusText = this.gridShiftUsed && playerClass === 'SABOTEUR' ? 'USED (RESET W/ R)' : 'READY';
-    this.rStatusText = `READY (${this.classMeter}/${this.ultimateCost})`;
-    this.updateClassAbilityHud();
   }
 
   private initThreeDummyLobby() {
@@ -721,10 +948,13 @@ export class TutorialManager {
         label,
         grid: g,
         activePiece: piece,
+        previewQueue: ['I', 'O', 'L', 'Z', 'S'],
         statusBadge: 'ACTIVE',
         statusColor: '#9CA3AF',
         frozenTimer: 0,
         chaosTimer: 0,
+        abilityFreezeTimer: 0,
+        sprintTimer: 0,
       };
     };
 
@@ -736,7 +966,7 @@ export class TutorialManager {
   }
 
   private updateClassAbilityHud() {
-    const info = PLAYER_CLASSES.find(c => c.id === this.activeClass) ?? PLAYER_CLASSES[0];
+    const info = this.getActiveClassInfo();
 
     const qLabel = document.getElementById('ability-q-label-p1');
     const qStatus = document.getElementById('ability-q-status-p1');
@@ -764,23 +994,58 @@ export class TutorialManager {
       }
     }
 
+    const titleEl = document.getElementById('tut-stage2-title');
+    if (titleEl) titleEl.textContent = `${info.name} Certification`;
+
     const activeClassBadge = document.getElementById('tut-active-class-badge');
     if (activeClassBadge) {
-      activeClassBadge.textContent = `${info.name.toUpperCase()}`;
+      activeClassBadge.textContent = info.name.toUpperCase();
+      activeClassBadge.style.color = this.getActiveClassAccent();
     }
+
+    const certPill = document.getElementById('tut-cert-progress-pill');
+    if (certPill) {
+      certPill.textContent = `${getCertifiedClasses().length} / 4 CERTIFIED`;
+    }
+
+    const isAllyStep = this.activeClass === 'SUPPORT' && this.certStep === 'STEP_4_ULTIMATE';
+    const isMultiDummy =
+      (this.certStep === 'STEP_4_ULTIMATE' || this.certStep === 'STEP_4_BULLET_TIME_TETRIS') &&
+      this.activeClass !== 'SUPPORT';
 
     const targetLockBadge = document.getElementById('tut-target-lock-badge');
     if (targetLockBadge) {
-      targetLockBadge.textContent =
-        this.stage2Drill === 'SANDBOX_3_DUMMY_ULTIMATE'
-          ? 'TARGET: ALL 3 DUMMIES [AoE]'
-          : `TARGET: DUMMY #${this.selectedTargetIndex} [LOCKED]`;
+      targetLockBadge.textContent = isMultiDummy
+        ? 'TARGET: ALL 3 DUMMIES [AoE]'
+        : isAllyStep
+          ? 'TARGET: ALLY BOARD [LOCKED]'
+          : 'TARGET: DUMMY [LOCKED]';
+      targetLockBadge.className = isAllyStep
+        ? 'font-bold text-neon-green uppercase tracking-wider'
+        : 'font-bold text-neon-pink uppercase tracking-wider';
+    }
+
+    // Update Single Dummy Card styling (Opponent vs Ally)
+    const dummyHeaderLabel = document.getElementById('tut-dummy-header-label');
+    const dummyTargetTag = document.getElementById('tut-dummy-target-tag');
+    const dummyPreviewItems = document.getElementById('tut-dummy-preview-items');
+    if (this.dummyBoards[0]) {
+      if (dummyHeaderLabel) {
+        dummyHeaderLabel.textContent = this.dummyBoards[0].label;
+        dummyHeaderLabel.className = this.dummyBoards[0].isAlly
+          ? 'text-[10px] font-bold tracking-widest uppercase text-neon-green'
+          : 'text-[10px] font-bold tracking-widest uppercase text-neon-pink';
+      }
+      if (dummyTargetTag) {
+        dummyTargetTag.textContent = this.dummyBoards[0].isAlly ? '◎ ALLY LOCKED' : '◎ TARGET LOCKED';
+      }
+      if (dummyPreviewItems) {
+        dummyPreviewItems.textContent = this.dummyBoards[0].previewQueue.join(' · ');
+      }
     }
   }
 
   private showStage2Banner(message: string, color: 'cyan' | 'green' | 'pink' | 'yellow' = 'cyan') {
-    this.stage2BannerMessage = message;
-    this.stage2BannerColor = color;
     const banner = document.getElementById('tut-restart-banner');
     if (!banner) return;
 
@@ -796,9 +1061,15 @@ export class TutorialManager {
   }
 
   private hideStage2Banner() {
-    this.stage2BannerMessage = null;
     const banner = document.getElementById('tut-restart-banner');
     banner?.classList.add('hidden');
+  }
+
+  private getStepNumber(): number {
+    if (this.certStep === 'STEP_1_PASSIVE_TETRIS' || this.certStep === 'STEP_1_PASSIVE_SPECIAL') return 1;
+    if (this.certStep === 'STEP_2_ABILITY') return 2;
+    if (this.certStep === 'STEP_3_ABILITY') return 3;
+    return 4;
   }
 
   private updateStage2InstructionUi() {
@@ -809,159 +1080,281 @@ export class TutorialManager {
     const dummyStatusLine = document.getElementById('tut-dummy-status-line');
     if (!stepCounter || !blockBadge || !list || !dots) return;
 
-    const drillOrder: Stage2Drill[] = [
-      'PASSIVE_TETRIS_TRIGGER',
-      'PASSIVE_SPECIAL_CLEAR',
-      'CRISIS_SENTINEL_DEFENSE',
-      'CRISIS_SUPPORT_RESCUE',
-      'CRISIS_SABOTEUR_DISRUPT',
-      'CRISIS_SPEEDSTER_CLUTCH',
-      'SANDBOX_3_DUMMY_ULTIMATE',
-    ];
-    const activeIdx = Math.max(1, drillOrder.indexOf(this.stage2Drill) + 1);
-    stepCounter.textContent = `Drill ${activeIdx} / 7`;
+    const activeStepNum = this.getStepNumber();
+    stepCounter.textContent = `Step ${activeStepNum} / 4`;
 
     Array.from(dots.children).forEach((dot, idx) => {
       const num = idx + 1;
       dot.className =
-        num < activeIdx || this.stage2Drill === 'STAGE2_COMPLETED'
+        num < activeStepNum || this.certStep === 'CERT_COMPLETED'
           ? 'h-1.5 rounded-full bg-neon-green shadow-[0_0_8px_rgba(0,255,102,0.6)]'
-          : num === activeIdx
+          : num === activeStepNum
             ? 'h-1.5 rounded-full bg-neon-cyan shadow-[0_0_8px_rgba(0,229,255,0.6)]'
             : 'h-1.5 rounded-full bg-gray-700';
     });
 
     if (dummyStatusLine && this.dummyBoards[0]) {
       dummyStatusLine.textContent = this.dummyBoards[0].statusBadge ?? 'INPUT: NULL · TARGET LOCKED';
+      dummyStatusLine.style.color = this.dummyBoards[0].statusColor;
     }
 
-    if (this.stage2Drill === 'PASSIVE_TETRIS_TRIGGER') {
-      blockBadge.textContent = 'PHASE 2 (TASK 2.1) · THE TETRIS TRIGGER';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">1. Clear a 4-Line Tetris in the Right Well</div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Your board is pre-stacked with a single open well on the far right (Column 10). Rotate the <strong class="text-neon-cyan">I-Piece</strong> with <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd> / <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">X</kbd>, move it all the way right with <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">→</kbd>, and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd>.
+    // ─── SPEEDSTER INSTRUCTIONS ───
+    if (this.activeClass === 'SPEEDSTER') {
+      if (this.certStep === 'STEP_1_PASSIVE_TETRIS') {
+        blockBadge.textContent = 'STEP 1A · PASSIVES DRILL (TETRIS TRIGGER)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear a 4-Line Tetris in Column 10</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Rotate the <strong class="text-neon-cyan">I-Piece</strong> with <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd>, move it into the open right-hand well (<kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">→</kbd>), and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd>.
+            </div>
           </div>
-          <div class="text-[10px] text-neon-yellow font-semibold mt-1">
-            Passive Rule: Every class guarantees its signature Special Block on your next piece after a Tetris!
+        `;
+      } else if (this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
+        blockBadge.textContent = 'STEP 1B · FORCED SPEED BLOCK [V]';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear the Line Containing Your Speed Block [V]</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Your Tetris guaranteed a <strong class="text-neon-yellow">Speed Block (V)</strong> on this piece! Slide it right into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to reduce baseline drop speed by 25%.
+            </div>
           </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'PASSIVE_SPECIAL_CLEAR') {
-      blockBadge.textContent = 'PHASE 2 (TASK 2.2) · FORCED SPECIAL BLOCK';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">2. Clear the Line Containing Your Special Block [V]</div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Your Tetris triggered the <strong class="text-neon-yellow">Speedster Passive</strong>, spawning an I-piece carrying a <strong class="text-neon-cyan">Speed Block (V)</strong>! Move it right into the open 4-cell gap and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to clear the line and trigger its effect.
+        `;
+      } else if (this.certStep === 'STEP_2_ABILITY') {
+        blockBadge.textContent = 'STEP 2 · SURVIVAL / THE CLUTCH ([E] TIME WARP)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: Unmanageable Gravity Speed!</div>
+            <div class="text-[11px] text-gray-200">Dynamic Gravity is accelerated to instant-drop speed.</div>
           </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'CRISIS_SENTINEL_DEFENSE') {
-      blockBadge.textContent = 'PHASE 3 (TASK 3.1) · SENTINEL DEFENSE CRISIS';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: Unavoidable 10-Line Garbage Queued!</div>
-          <div class="text-[11px] text-gray-200 leading-relaxed">
-            Your grid is frozen and 10 lines of garbage are about to slam into your board from the CQRS queue.
+          <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">
+              ${this.timeWarpActive ? '✓ Time Warp Active! Now Clear the Bottom Line' : 'Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Time Warp)'}
+            </div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              ${this.timeWarpActive
+                ? 'Drop speed is cut by 50% for 6 seconds! Slide the horizontal I-piece into the right-hand gap and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd>.'
+                : 'Cuts drop speed by 50% for 6 seconds so you can safely place the I-piece.'}
+            </div>
           </div>
-        </div>
-        <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">Solution: Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Counter Strike)</div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Intercepts the incoming 10-line garbage attack and bounces it directly onto the <strong class="text-neon-pink">Dummy Board</strong>!
+        `;
+      } else if (this.certStep === 'STEP_3_ABILITY') {
+        blockBadge.textContent = 'STEP 3 · OFFENSE ([Q] SPRINT)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[10px]">Q</kbd> (Sprint)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Weaponize tempo! Forces the <strong class="text-neon-pink">Dummy Opponent's</strong> current piece and next 3 pieces to slam down <strong>50% faster</strong>.
+            </div>
           </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'CRISIS_SUPPORT_RESCUE') {
-      blockBadge.textContent = 'PHASE 3 (TASK 3.2) · SUPPORT RESCUE CRISIS';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: 18 Lines of Garbage (Critical Danger!)</div>
-          <div class="text-[11px] text-gray-200 leading-relaxed">
-            Your board is buried under 18 rows of garbage at the top-out line, but your Ultimate meter is pre-filled (<strong class="text-neon-green">45 / 45</strong>).
+        `;
+      } else {
+        blockBadge.textContent = 'STEP 4 · ULTIMATE / AoE ([R] BULLET TIME)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">
+              ${this.certStep === 'STEP_4_BULLET_TIME_TETRIS' ? '✓ Dummies Frozen! Score Your Free Tetris!' : '1. Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-pink rounded text-neon-pink font-pixel text-[10px]">R</kbd> (Bullet Time)'}
+            </div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              ${this.certStep === 'STEP_4_BULLET_TIME_TETRIS'
+                ? 'All 3 Dummy Boards are frozen solid for 5 seconds! Rotate your I-piece and drop it into Column 10 to score a free Tetris!'
+                : 'Freezes all 3 Dummy Boards completely for 5 seconds while you score a free Tetris.'}
+            </div>
           </div>
-        </div>
-        <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">Solution: Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[10px]">R</kbd> (Guardian Angel)</div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Instantly erases the bottom 4 lines of your board, dropping your stack out of danger!
-          </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'CRISIS_SABOTEUR_DISRUPT') {
-      blockBadge.textContent = 'PHASE 3 (TASK 3.3) · SABOTEUR DISRUPTION CRISIS';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: Dummy Board Has a Perfect Tetris Setup!</div>
-          <div class="text-[11px] text-gray-200 leading-relaxed">
-            Look at the <strong class="text-neon-pink">Dummy Board</strong> on the right: they have a 4-row well in Column 10 and their vertical I-piece is about to drop!
-          </div>
-        </div>
-        <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">Solution: Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Grid Shift)</div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Shifts the Dummy's entire grid by 2 columns, misaligning their well so their I-piece misdrops!
-          </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'CRISIS_SPEEDSTER_CLUTCH') {
-      blockBadge.textContent = 'PHASE 3 (TASK 3.4) · SPEEDSTER CLUTCH CRISIS';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: Maximum Gravity Speed!</div>
-          <div class="text-[11px] text-gray-200 leading-relaxed">
-            Dynamic Gravity is cranked to extreme speed — pieces slam down before you can slide them into the right-hand gap!
-          </div>
-        </div>
-        <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
-          <div class="text-xs font-bold text-white">
-            ${this.timeWarpActive ? '✓ Step 1 Done! Now Place I-Piece in Right Gap' : 'Step 1: Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Time Warp)'}
-          </div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            ${this.timeWarpActive
-              ? 'Time Warp is active (-50% drop speed for 6s)! Move the horizontal I-piece right into columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to clear the line!'
-              : 'Press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[9px]">E</kbd> to cut drop speed by 50%, then slide the I-piece into the open right-side slot to clear the line.'}
-          </div>
-        </div>
-      `;
-    } else if (this.stage2Drill === 'SANDBOX_3_DUMMY_ULTIMATE' || this.stage2Drill === 'STAGE2_COMPLETED') {
-      blockBadge.textContent = 'PHASE 4 (TASK 4.1 & 4.2) · 3-DUMMY AoE SANDBOX';
-      list.innerHTML = `
-        <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-2">
-          <div class="text-xs font-bold text-white">Switch Class (<kbd class="px-1 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[9px]">1</kbd> <kbd class="px-1 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[9px]">2</kbd> <kbd class="px-1 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[9px]">3</kbd>) &amp; Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-pink rounded text-neon-pink font-pixel text-[10px]">R</kbd></div>
-          <div class="text-[11px] text-gray-300 leading-relaxed">
-            Your Ultimate meter is pre-filled. Unleash an Area-of-Effect Ultimate across all <strong class="text-neon-pink">3 Dummy Boards</strong> simultaneously:
-          </div>
-          <div class="grid grid-cols-3 gap-1.5 pt-1">
-            <button type="button" data-sandbox-class="TANK" class="px-2 py-1.5 rounded border text-[9px] font-bold uppercase cursor-pointer ${this.activeClass === 'TANK' ? 'border-neon-yellow bg-neon-yellow/20 text-neon-yellow' : 'border-card-border bg-black/40 text-gray-400'}">
-              [1] Sentinel<br/><span class="text-[8px] opacity-80">Earthquake</span>
-            </button>
-            <button type="button" data-sandbox-class="SPEEDSTER" class="px-2 py-1.5 rounded border text-[9px] font-bold uppercase cursor-pointer ${this.activeClass === 'SPEEDSTER' ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan' : 'border-card-border bg-black/40 text-gray-400'}">
-              [2] Speedster<br/><span class="text-[8px] opacity-80">Bullet Time</span>
-            </button>
-            <button type="button" data-sandbox-class="SABOTEUR" class="px-2 py-1.5 rounded border text-[9px] font-bold uppercase cursor-pointer ${this.activeClass === 'SABOTEUR' ? 'border-neon-pink bg-neon-pink/20 text-neon-pink' : 'border-card-border bg-black/40 text-gray-400'}">
-              [3] Saboteur<br/><span class="text-[8px] opacity-80">Chaos Mode</span>
-            </button>
-          </div>
-        </div>
-      `;
+        `;
+      }
+    }
 
-      list.querySelectorAll('[data-sandbox-class]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const cls = (btn as HTMLElement).getAttribute('data-sandbox-class') as PlayerClass;
-          if (cls) {
-            this.configureSandboxClass(cls);
-            this.updateStage2InstructionUi();
-          }
-        });
-      });
+    // ─── SENTINEL (TANK) INSTRUCTIONS ───
+    else if (this.activeClass === 'TANK') {
+      if (this.certStep === 'STEP_1_PASSIVE_TETRIS') {
+        blockBadge.textContent = 'STEP 1A · PASSIVES DRILL (TETRIS TRIGGER)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear a 4-Line Tetris in Column 10</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Rotate the <strong class="text-neon-cyan">I-Piece</strong> (<kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd>), move it right into Column 10, and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd>.
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
+        blockBadge.textContent = 'STEP 1B · FORCED SHIELD BLOCK [S]';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear the Line Containing Your Shield Block [S]</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Your Tetris guaranteed a <strong class="text-neon-yellow">Shield Block (S)</strong>! Slide the I-piece into the right-hand gap and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to absorb an incoming garbage attack.
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_2_ABILITY') {
+        blockBadge.textContent = 'STEP 2 · SURVIVAL / THE DEFENSE ([Q] FORTIFY)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Crisis: 10-Line Lethal Garbage Attack Queued!</div>
+            <div class="text-[11px] text-gray-200">Your grid is frozen and 2 garbage salvos (10 lines) are queued via CQRS.</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[10px]">Q</kbd> (Fortify)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Grants <strong>2 FSM immunity charges</strong>, completely blocking the lethal incoming garbage!
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_3_ABILITY') {
+        blockBadge.textContent = 'STEP 3 · OFFENSE ([E] COUNTER STRIKE)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Subsequent 10-Line Attack Incoming!</div>
+            <div class="text-[11px] text-gray-200">Fortify is on cooldown — turn defense into offense!</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Counter Strike)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Intercepts the garbage, arms your reflector, and bounces all 10 lines directly back onto the <strong class="text-neon-pink">Dummy Opponent</strong>!
+            </div>
+          </div>
+        `;
+      } else {
+        blockBadge.textContent = 'STEP 4 · ULTIMATE / AoE ([R] EARTHQUAKE)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-pink rounded text-neon-pink font-pixel text-[10px]">R</kbd> (Earthquake)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Drops <strong>4 raw lines of garbage</strong> onto all 3 miniature Dummy Boards simultaneously!
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // ─── SABOTEUR INSTRUCTIONS ───
+    else if (this.activeClass === 'SABOTEUR') {
+      if (this.certStep === 'STEP_1_PASSIVE_TETRIS') {
+        blockBadge.textContent = 'STEP 1A · PASSIVES DRILL (TETRIS TRIGGER)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear a 4-Line Tetris in Column 10</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Rotate the <strong class="text-neon-cyan">I-Piece</strong> (<kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd>), move it right into Column 10, and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd>.
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
+        blockBadge.textContent = 'STEP 1B · FORCED FREEZE BLOCK [F]';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear the Line Containing Your Freeze Block [F]</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Your Tetris guaranteed a <strong class="text-neon-yellow">Freeze Block (F)</strong>! Clear the bottom row to lock the Dummy's UI abilities for 3 seconds.
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_2_ABILITY') {
+        blockBadge.textContent = 'STEP 2 · INTERCEPTION ([Q] SCRAMBLE)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Dummy Has "I" Pieces Queued for a Tetris!</div>
+            <div class="text-[11px] text-gray-200">Check the Dummy's QUEUE strip above their board: <code>I · I · I · I · I</code>.</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[10px]">Q</kbd> (Scramble)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Shuffles the Dummy's next 5 upcoming pieces into awkward shapes, ruining their planned Tetris!
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_3_ABILITY') {
+        blockBadge.textContent = 'STEP 3 · OFFENSE / DISRUPTION ([E] GRID SHIFT)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Dummy Is Dropping Their Final I-Piece!</div>
+            <div class="text-[11px] text-gray-200">The Dummy set up a new 4-line well in Column 10 and is about to score.</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Grid Shift)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Physically shifts the Dummy's 2D grid <strong>2 columns over</strong>, misaligning their stack!
+            </div>
+          </div>
+        `;
+      } else {
+        blockBadge.textContent = 'STEP 4 · ULTIMATE / AoE ([R] CHAOS MODE)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-pink rounded text-neon-pink font-pixel text-[10px]">R</kbd> (Chaos Mode)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Reverses all 3 Dummy Boards' piece rotations &amp; movements for <strong>8 seconds</strong> AND resets your once-per-match <strong class="text-neon-yellow">[E] Grid Shift</strong>!
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // ─── SUPPORT INSTRUCTIONS ───
+    else if (this.activeClass === 'SUPPORT') {
+      if (this.certStep === 'STEP_1_PASSIVE_TETRIS') {
+        blockBadge.textContent = 'STEP 1 · SURVIVAL & CONVERSION ([Q] RECYCLE)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Critical Danger: Raw Garbage Stack!</div>
+            <div class="text-[11px] text-gray-200">Your board is buried under raw grey garbage lines.</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-cyan bg-neon-cyan/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">
+              ${this.recycleConvertedReady ? '✓ Converted! Drop I-Piece into Right Gap' : '1. Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-cyan rounded text-neon-cyan font-pixel text-[10px]">Q</kbd> (Recycle)'}
+            </div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              ${this.recycleConvertedReady
+                ? 'The top garbage blocks transformed into usable Special Blocks (B, W, X, G)! Slide the I-piece right and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to detonate them!'
+                : 'Instantly converts 4 garbage blocks into usable Special Blocks (Bombs, Multipliers, Heavy, Garbage Eater).'}
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
+        blockBadge.textContent = 'STEP 2 · PASSIVE DRILL (TETRIS CONVERSION)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Clear a 4-Line Tetris in Column 10</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Rotate the <strong class="text-neon-cyan">I-Piece</strong> (<kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">↑</kbd>) and drop it in Column 10. Clearing a Tetris arms Support's Passive to automatically convert the next incoming garbage attack into Special Blocks!
+            </div>
+          </div>
+        `;
+      } else if (this.certStep === 'STEP_3_ABILITY') {
+        blockBadge.textContent = 'STEP 3 · OFFENSE ([E] PERFECT CLEAR BONUS)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">
+              ${this.perfectClearWindowActive ? '✓ 15s Timer Active! Clear the Final Row!' : '1. Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Perfect Clear Bonus)'}
+            </div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              ${this.perfectClearWindowActive
+                ? 'Slide the I-piece into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to empty the entire grid and earn +4 Bonus Lines &amp; full Ultimate charge!'
+                : 'Starts a 15-second window where achieving an All-Clear grants +4 Bonus Lines and massive Ultimate meter charge.'}
+            </div>
+          </div>
+        `;
+      } else {
+        blockBadge.textContent = 'STEP 4 · ULTIMATE / THE RESCUE ([R] GUARDIAN ANGEL)';
+        list.innerHTML = `
+          <div class="p-3 rounded-lg border border-neon-pink bg-neon-pink/15 flex flex-col gap-1">
+            <div class="text-xs font-bold text-neon-pink uppercase">⚠ Ally Board Is 1 Block From Topping Out!</div>
+            <div class="text-[11px] text-gray-200">Your Ally Dummy Board on the right is buried at 18 lines.</div>
+          </div>
+          <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
+            <div class="text-xs font-bold text-white">Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-green rounded text-neon-green font-pixel text-[10px]">R</kbd> (Guardian Angel)</div>
+            <div class="text-[11px] text-gray-300 leading-relaxed">
+              Instantly clears the <strong class="text-neon-green">Ally Board's bottom 4 lines</strong>, saving your teammate from elimination!
+            </div>
+          </div>
+        `;
+      }
     }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // STAGE 2 INPUT & eFSM GUARD ENGINE (Phase 5)
+  // STAGE 2 INPUT & eFSM GUARD ENGINE
   // ─────────────────────────────────────────────────────────────────────────
 
   private handleStage2KeyDown(e: KeyboardEvent) {
@@ -969,157 +1362,353 @@ export class TutorialManager {
 
     const key = e.key;
 
-    //Task 1.3: Tab key attempts to cycle target, but targeting is locked onto Dummy Board during TUTORIAL
     if (key === 'Tab') {
       e.preventDefault();
       this.selectedTargetIndex = 1;
-      this.showStage2Banner('◎ Targeting Pointer is locked onto the Dummy Board during Stage 2.', 'cyan');
+      this.showStage2Banner('◎ Targeting pointer is locked onto the active Dummy Board during Certification.', 'cyan');
       return;
     }
 
-    // ─── DRILL 3: Sentinel Defense ([E] Counter Strike Guard) ───
-    if (this.stage2Drill === 'CRISIS_SENTINEL_DEFENSE') {
-      e.preventDefault();
-      if (key === 'e' || key === 'E') {
-        this.reflectArmed = true;
-        const reflectedAmount = this.incomingGarbageQueue;
-        this.incomingGarbageQueue = 0;
-        this.eStatusText = 'REFLECTED!';
-        if (this.dummyBoards[0]) {
-          this.dummyBoards[0].grid.addGarbageLines(reflectedAmount, 'HUMAN');
-          this.dummyBoards[0].statusBadge = `HIT BY ${reflectedAmount} REFLECTED LINES!`;
-          this.dummyBoards[0].statusColor = '#FF1493';
-        }
-        AudioManager.playSfx('lineClear');
-        this.updateClassAbilityHud();
-        this.render();
-        this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ COUNTER STRIKE! Intercepted & bounced 10 garbage lines to the Dummy Board!', 'green');
-        setTimeout(() => {
-          this.setupStage2Drill('CRISIS_SUPPORT_RESCUE');
-        }, 2100);
-      } else {
-        this.showStage2Banner('eFSM Guard: Press [E] to activate Counter Strike and reflect the 10-line attack!', 'pink');
-      }
-      return;
-    }
-
-    // ─── DRILL 4: Support Rescue ([R] Guardian Angel Guard) ───
-    if (this.stage2Drill === 'CRISIS_SUPPORT_RESCUE') {
-      e.preventDefault();
-      if (key === 'r' || key === 'R' || key === 'Shift') {
-        this.grid.clearBottomLines(4);
-        this.classMeter = 0;
-        this.rStatusText = '0 / 45 LINES';
-        if (this.dummyBoards[0]) {
-          this.dummyBoards[0].statusBadge = 'PRESSURE NULLIFIED';
-        }
-        AudioManager.playSfx('lineClear');
-        this.updateClassAbilityHud();
-        this.render();
-        this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ GUARDIAN ANGEL! Cleared the bottom 4 garbage lines — crisis averted!', 'green');
-        setTimeout(() => {
-          this.setupStage2Drill('CRISIS_SABOTEUR_DISRUPT');
-        }, 2100);
-      } else {
-        this.showStage2Banner('eFSM Guard: Press [R] to activate Guardian Angel and clear the bottom 4 lines!', 'pink');
-      }
-      return;
-    }
-
-    // ─── DRILL 5: Saboteur Disruption ([E] Grid Shift Guard) ───
-    if (this.stage2Drill === 'CRISIS_SABOTEUR_DISRUPT') {
-      e.preventDefault();
-      if (key === 'e' || key === 'E') {
-        this.gridShiftUsed = true;
-        this.eStatusText = 'USED (1/MATCH)';
-        const dummy = this.dummyBoards[0];
-        if (dummy) {
-          // Shift the Dummy's grid by 2 columns, misaligning their column 9 well!
-          dummy.grid.shiftHorizontally(2);
-          // Drop the Dummy's hovering I-piece onto the now-shifted stack so the player sees the ruined Tetris
-          if (dummy.activePiece) {
-            while (!dummy.grid.checkCollision(dummy.activePiece, dummy.activePiece.x, dummy.activePiece.y + 1)) {
-              dummy.activePiece.y++;
-            }
-            dummy.grid.lockTetromino(dummy.activePiece);
-            dummy.activePiece = null;
-          }
-          dummy.statusBadge = 'WELL SHIFTED +2 COLS · TETRIS DENIED!';
-          dummy.statusColor = '#00FF66';
-        }
-        AudioManager.playSfx('lineClear');
-        this.updateClassAbilityHud();
-        this.render();
-        this.stage2TransitionLocked = true;
-        this.showStage2Banner("✓ GRID SHIFT! Dummy's Tetris well shifted by 2 columns — threat nullified!", 'green');
-        setTimeout(() => {
-          this.setupStage2Drill('CRISIS_SPEEDSTER_CLUTCH');
-        }, 2200);
-      } else {
-        this.showStage2Banner("eFSM Guard: Press [E] to activate Grid Shift and ruin the Dummy's Tetris setup!", 'pink');
-      }
-      return;
-    }
-
-    // ─── DRILL 6: Speedster Clutch ([E] Time Warp + Piece Placement) ───
-    if (this.stage2Drill === 'CRISIS_SPEEDSTER_CLUTCH') {
-      if (key === 'e' || key === 'E') {
+    // ═══════════════════════════════════════════════════════════════════════
+    // 1. SPEEDSTER ABILITY GUARDS
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.activeClass === 'SPEEDSTER') {
+      if (this.certStep === 'STEP_2_ABILITY' && !this.timeWarpActive) {
         e.preventDefault();
-        if (!this.timeWarpActive) {
+        if (key === 'e' || key === 'E') {
           this.timeWarpActive = true;
           this.timeWarpTimer = 6000;
-          // Cut drop speed by 50% (slow down to a comfortable controllable interval)
           this.dropInterval = 750;
           this.eStatusText = 'ACTIVE (6.0s)';
-          // Reset piece to top so player has full runway to place it cleanly
           this.currentPiece = new Tetromino('I');
           this.dropTimer = 0;
           this.lockTimer = 0;
-          this.showStage2Banner('✓ TIME WARP ACTIVE! Gravity slowed by 50% — now drop the I-piece into the right gap!', 'cyan');
+          this.showStage2Banner('✓ TIME WARP ACTIVE! Drop speed cut by 50% — now slide the I-piece right and clear the line!', 'cyan');
           this.updateClassAbilityHud();
           this.updateStage2InstructionUi();
           this.render();
+        } else {
+          this.showStage2Banner('eFSM Guard: Gravity is unmanageable! Press [E] Time Warp first to slow drop speed by 50%!', 'pink');
         }
         return;
       }
 
-      if (!this.timeWarpActive) {
+      if (this.certStep === 'STEP_3_ABILITY') {
         e.preventDefault();
-        this.showStage2Banner('eFSM Guard: Gravity is at MAX SPEED! Press [E] Time Warp first to slow it down!', 'pink');
+        if (key === 'q' || key === 'Q') {
+          this.qStatusText = 'ACTIVE!';
+          const dummy = this.dummyBoards[0];
+          if (dummy) {
+            dummy.sprintTimer = 4000;
+            dummy.statusBadge = '⚡ SPRINTED! 4 PIECES SLAMMING +50% FASTER!';
+            dummy.statusColor = '#FFD700';
+            // Visually slam 3 pieces rapidly onto the dummy board
+            if (dummy.activePiece) {
+              while (!dummy.grid.checkCollision(dummy.activePiece, dummy.activePiece.x, dummy.activePiece.y + 1)) {
+                dummy.activePiece.y++;
+              }
+              dummy.grid.lockTetromino(dummy.activePiece);
+              dummy.activePiece = new Tetromino('O');
+              dummy.activePiece.x = 1;
+              dummy.activePiece.y = 14;
+            }
+          }
+          AudioManager.playSfx('lineClear');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner("✓ SPRINT ACTIVATED! Dummy's current & next 3 pieces forced to drop 50% faster!", 'green');
+          setTimeout(() => {
+            this.setupCertStep('STEP_4_ULTIMATE');
+          }, 2100);
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [Q] to activate Sprint on the Dummy Opponent!', 'pink');
+        }
         return;
       }
-      // Once Time Warp is active, fall through to piece movement controls below!
+
+      if (this.certStep === 'STEP_4_ULTIMATE') {
+        e.preventDefault();
+        if (key === 'r' || key === 'R' || key === 'Shift') {
+          AudioManager.playSfx('lineClear');
+          this.dummyBoards.forEach((d, idx) => {
+            d.frozenTimer = 5000;
+            d.statusBadge = '❄ FROZEN (5.0s)';
+            d.statusColor = '#00E5FF';
+            const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
+            if (el) {
+              el.textContent = '❄ FROZEN 5.0s!';
+              el.className = 'text-[8px] font-bold text-neon-cyan uppercase';
+            }
+          });
+          this.setupCertStep('STEP_4_BULLET_TIME_TETRIS');
+          this.showStage2Banner('✓ BULLET TIME! All 3 Dummies are frozen for 5s — now drop your I-piece in Column 10 for a free Tetris!', 'cyan');
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [R] to activate Bullet Time and freeze all 3 Dummy Boards!', 'pink');
+        }
+        return;
+      }
     }
 
-    // ─── DRILL 7: Phase 4 Ultimates Sandbox (3-Dummy Lobby AoE Execution) ───
-    if (this.stage2Drill === 'SANDBOX_3_DUMMY_ULTIMATE') {
-      e.preventDefault();
-      if (key === '1') {
-        this.configureSandboxClass('TANK');
-        this.updateStage2InstructionUi();
+    // ═══════════════════════════════════════════════════════════════════════
+    // 2. SENTINEL (TANK) ABILITY GUARDS
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.activeClass === 'TANK') {
+      if (this.certStep === 'STEP_2_ABILITY') {
+        e.preventDefault();
+        if (key === 'q' || key === 'Q') {
+          this.fortifyCharges = 2;
+          this.incomingGarbageQueue = 0;
+          this.qStatusText = '2 CHARGES USED';
+          if (this.dummyBoards[0]) {
+            this.dummyBoards[0].statusBadge = '10-LINE ATTACK BLOCKED BY FORTIFY!';
+            this.dummyBoards[0].statusColor = '#00FF66';
+          }
+          AudioManager.playSfx('lineClear');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner('✓ FORTIFY! Gained 2 FSM immunity charges and blocked all 10 incoming garbage lines!', 'green');
+          setTimeout(() => {
+            this.setupCertStep('STEP_3_ABILITY');
+          }, 2100);
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [Q] Fortify to gain 2 immunity charges and block the 10-line attack!', 'pink');
+        }
         return;
       }
-      if (key === '2') {
-        this.configureSandboxClass('SPEEDSTER');
-        this.updateStage2InstructionUi();
+
+      if (this.certStep === 'STEP_3_ABILITY') {
+        e.preventDefault();
+        if (key === 'e' || key === 'E') {
+          this.reflectArmed = true;
+          const bounced = this.incomingGarbageQueue;
+          this.incomingGarbageQueue = 0;
+          this.eStatusText = 'REFLECTED!';
+          if (this.dummyBoards[0]) {
+            this.dummyBoards[0].grid.addGarbageLines(bounced, 'HUMAN');
+            this.dummyBoards[0].statusBadge = `💥 HIT BY ${bounced} REFLECTED LINES!`;
+            this.dummyBoards[0].statusColor = '#FF1493';
+          }
+          AudioManager.playSfx('lineClear');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner('✓ COUNTER STRIKE! Intercepted and bounced all 10 garbage lines back onto the Dummy!', 'green');
+          setTimeout(() => {
+            this.setupCertStep('STEP_4_ULTIMATE');
+          }, 2100);
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [E] Counter Strike to reflect the incoming garbage attack!', 'pink');
+        }
         return;
       }
-      if (key === '3') {
-        this.configureSandboxClass('SABOTEUR');
-        this.updateStage2InstructionUi();
+
+      if (this.certStep === 'STEP_4_ULTIMATE') {
+        e.preventDefault();
+        if (key === 'r' || key === 'R' || key === 'Shift') {
+          AudioManager.playSfx('lineClear');
+          this.classMeter = 0;
+          this.rStatusText = 'UNLEASHED!';
+          this.dummyBoards.forEach((d, idx) => {
+            d.grid.addGarbageLines(4, 'HUMAN');
+            d.statusBadge = '💥 +4 GARBAGE LINES';
+            d.statusColor = '#FFD700';
+            const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
+            if (el) {
+              el.textContent = '💥 +4 GARBAGE LINES!';
+              el.className = 'text-[8px] font-bold text-neon-yellow uppercase';
+            }
+          });
+          this.updateClassAbilityHud();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner('✓ EARTHQUAKE! Dropped +4 raw garbage lines onto all 3 Dummy Boards simultaneously!', 'green');
+          this.completeCurrentClassCertification();
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [R] to trigger Earthquake across all 3 Dummy Boards!', 'pink');
+        }
         return;
       }
-      if (key === 'r' || key === 'R' || key === 'Shift') {
-        this.executeThreeDummyUltimate();
-        return;
-      }
-      this.showStage2Banner('Press [1], [2], or [3] to pick a class, then press [R] to unleash its AoE Ultimate!', 'cyan');
-      return;
     }
 
-    // ─── PIECE MOVEMENT CONTROLS FOR DRILLS 1, 2, AND 6 (AFTER TIME WARP) ───
+    // ═══════════════════════════════════════════════════════════════════════
+    // 3. SABOTEUR ABILITY GUARDS
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.activeClass === 'SABOTEUR') {
+      if (this.certStep === 'STEP_2_ABILITY') {
+        e.preventDefault();
+        if (key === 'q' || key === 'Q') {
+          this.qStatusText = 'SCRAMBLED!';
+          const dummy = this.dummyBoards[0];
+          if (dummy) {
+            dummy.previewQueue = ['Z', 'S', 'J', 'Z', 'S'];
+            dummy.statusBadge = '🌀 QUEUE SCRAMBLED: Z · S · J · Z · S!';
+            dummy.statusColor = '#00FF66';
+          }
+          AudioManager.playSfx('lineClear');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner("✓ SCRAMBLE! Shuffled the Dummy's next 5 pieces — their I-piece clear is ruined!", 'green');
+          setTimeout(() => {
+            this.setupCertStep('STEP_3_ABILITY');
+          }, 2100);
+        } else {
+          this.showStage2Banner("eFSM Guard: Press [Q] Scramble to shuffle the Dummy's upcoming I-piece queue!", 'pink');
+        }
+        return;
+      }
+
+      if (this.certStep === 'STEP_3_ABILITY') {
+        e.preventDefault();
+        if (key === 'e' || key === 'E') {
+          this.gridShiftUsed = true;
+          this.eStatusText = 'USED (1/MATCH)';
+          const dummy = this.dummyBoards[0];
+          if (dummy) {
+            dummy.grid.shiftHorizontally(2);
+            if (dummy.activePiece) {
+              while (!dummy.grid.checkCollision(dummy.activePiece, dummy.activePiece.x, dummy.activePiece.y + 1)) {
+                dummy.activePiece.y++;
+              }
+              dummy.grid.lockTetromino(dummy.activePiece);
+              dummy.activePiece = null;
+            }
+            dummy.statusBadge = '⇄ SHIFTED +2 COLS · STACK MISALIGNED!';
+            dummy.statusColor = '#00FF66';
+          }
+          AudioManager.playSfx('lineClear');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner("✓ GRID SHIFT! Shifted the Dummy's 2D array by 2 columns and forced a misdrop!", 'green');
+          setTimeout(() => {
+            this.setupCertStep('STEP_4_ULTIMATE');
+          }, 2100);
+        } else {
+          this.showStage2Banner("eFSM Guard: Press [E] Grid Shift to misalign the Dummy's Tetris well!", 'pink');
+        }
+        return;
+      }
+
+      if (this.certStep === 'STEP_4_ULTIMATE') {
+        e.preventDefault();
+        if (key === 'r' || key === 'R' || key === 'Shift') {
+          AudioManager.playSfx('lineClear');
+          this.classMeter = 0;
+          this.gridShiftUsed = false;
+          this.eStatusText = 'RESET & READY!';
+          this.rStatusText = 'CHAOS (8.0s)';
+          this.dummyBoards.forEach((d, idx) => {
+            d.chaosTimer = 8000;
+            d.grid.shiftHorizontally(idx % 2 === 0 ? 1 : -1);
+            if (d.activePiece) {
+              d.activePiece.rotate(-1);
+              d.activePiece.x = Math.max(0, Math.min(6, d.activePiece.x + (idx % 2 === 0 ? -2 : 2)));
+            }
+            d.statusBadge = '🌀 CONTROLS REVERSED (8.0s)';
+            d.statusColor = '#FF1493';
+            const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
+            if (el) {
+              el.textContent = '🌀 REVERSED 8.0s!';
+              el.className = 'text-[8px] font-bold text-neon-pink uppercase';
+            }
+          });
+          this.updateClassAbilityHud();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner('✓ CHAOS MODE! All 3 Dummies reversed for 8s & [E] Grid Shift reset!', 'green');
+          this.completeCurrentClassCertification();
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [R] to unleash Chaos Mode across all 3 Dummy Boards!', 'pink');
+        }
+        return;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 4. SUPPORT ABILITY GUARDS
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.activeClass === 'SUPPORT') {
+      if (this.certStep === 'STEP_1_PASSIVE_TETRIS' && !this.recycleConvertedReady) {
+        e.preventDefault();
+        if (key === 'q' || key === 'Q') {
+          this.recycleConvertedReady = true;
+          this.qStatusText = 'CONVERTED!';
+          // Convert the top garbage row's cells into Bomb / Heavy / Garbage Eater / Multiplier Special Blocks!
+          const topGarbageRow = ROWS - 14;
+          const specials = [SpecialBlockType.BOMB, SpecialBlockType.HEAVY, SpecialBlockType.MULTIPLIER, SpecialBlockType.GARBAGE_EATER];
+          for (let c = 0; c < 6; c++) {
+            this.grid.matrix[topGarbageRow][c] = {
+              type: 'I',
+              special: specials[c % specials.length],
+            };
+          }
+          this.currentPiece = new Tetromino('I');
+          this.dropTimer = 0;
+          this.lockTimer = 0;
+          AudioManager.playSfx('lineClear');
+          this.showStage2Banner('✓ RECYCLE! Top garbage converted into Special Blocks — now drop the I-piece in Columns 7–10!', 'cyan');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [Q] Recycle first to convert the top garbage row into Special Blocks!', 'pink');
+        }
+        return;
+      }
+
+      if (this.certStep === 'STEP_3_ABILITY' && !this.perfectClearWindowActive) {
+        e.preventDefault();
+        if (key === 'e' || key === 'E') {
+          this.perfectClearWindowActive = true;
+          this.perfectClearTimer = 15000;
+          this.eStatusText = 'WINDOW (15.0s)';
+          this.currentPiece = new Tetromino('I');
+          this.dropTimer = 0;
+          this.lockTimer = 0;
+          this.showStage2Banner('✓ 15s PERFECT CLEAR WINDOW ACTIVE! Drop the I-piece into Columns 7–10 for an All-Clear!', 'cyan');
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [E] Perfect Clear Bonus first to open the 15-second window!', 'pink');
+        }
+        return;
+      }
+
+      if (this.certStep === 'STEP_4_ULTIMATE') {
+        e.preventDefault();
+        if (key === 'r' || key === 'R' || key === 'Shift') {
+          AudioManager.playSfx('lineClear');
+          this.classMeter = 0;
+          this.rStatusText = 'ALLY SAVED!';
+          const ally = this.dummyBoards[0];
+          if (ally) {
+            ally.grid.clearBottomLines(4);
+            ally.statusBadge = '✓ RESCUED! -4 BOTTOM LINES CLEARED!';
+            ally.statusColor = '#00FF66';
+          }
+          this.updateClassAbilityHud();
+          this.updateStage2InstructionUi();
+          this.render();
+          this.stage2TransitionLocked = true;
+          this.showStage2Banner("✓ GUARDIAN ANGEL! Instantly cleared your Ally's bottom 4 lines to save them from top-out!", 'green');
+          this.completeCurrentClassCertification();
+        } else {
+          this.showStage2Banner('eFSM Guard: Press [R] Guardian Angel to clear the endangered Ally Board!', 'pink');
+        }
+        return;
+      }
+    }
+
+    // ─── PIECE MOVEMENT CONTROLS FOR ACTIVE PIECE STEPS ───
     if (!this.currentPiece) return;
 
     const isMoveKey =
@@ -1136,7 +1725,7 @@ export class TutorialManager {
     if (!isMoveKey) {
       if (key === 'q' || key === 'Q' || key === 'e' || key === 'E' || key === 'r' || key === 'R') {
         e.preventDefault();
-        this.showStage2Banner('Complete the current line-clear task first before using abilities!', 'yellow');
+        this.showStage2Banner('Complete the current block placement task first!', 'yellow');
       }
       return;
     }
@@ -1168,137 +1757,259 @@ export class TutorialManager {
 
     const { linesCleared, specialBlocksToTrigger } = this.grid.clearLines();
 
-    // Task 2.1 Resolution: Check if the player cleared the 4-line Tetris!
-    if (this.stage2Drill === 'PASSIVE_TETRIS_TRIGGER') {
+    // ─── SUPPORT STEP 1 (RECYCLE LINE CLEAR) ───
+    if (this.activeClass === 'SUPPORT' && this.certStep === 'STEP_1_PASSIVE_TETRIS') {
+      if (linesCleared >= 1) {
+        // Trigger Garbage Eater / Heavy / Bomb cleanup so the player sees the stack drop!
+        this.grid.clearBottomLines(3);
+        AudioManager.playSfx('lineClear');
+        this.updateHudStats(600, 4);
+        this.stage2TransitionLocked = true;
+        this.showStage2Banner('✓ CONVERTED SPECIAL BLOCKS TRIGGERED! Garbage crushed & board stabilized!', 'green');
+        setTimeout(() => {
+          this.setupCertStep('STEP_1_PASSIVE_SPECIAL');
+        }, 1900);
+      } else {
+        this.setupCertStep('STEP_1_PASSIVE_TETRIS');
+        this.showStage2Banner('Press [Q] Recycle and drop the horizontal I-piece into Columns 7–10!', 'pink');
+      }
+      return;
+    }
+
+    // ─── SUPPORT STEP 2 (TETRIS PASSIVE CONVERSION) ───
+    if (this.activeClass === 'SUPPORT' && this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
+      if (linesCleared >= 4) {
+        AudioManager.playSfx('lineClear');
+        // Demonstrate incoming 3-line garbage attack automatically converting into Special Blocks!
+        this.grid.addGarbageLines(3, 'HUMAN');
+        this.grid.convertGarbageToSpecialBlocks(12);
+        this.updateHudStats(1400, 8);
+        this.stage2TransitionLocked = true;
+        this.showStage2Banner('✓ TETRIS PASSIVE! Incoming garbage lines automatically converted into Special Blocks!', 'green');
+        setTimeout(() => {
+          this.setupCertStep('STEP_3_ABILITY');
+        }, 2100);
+      } else {
+        this.setupCertStep('STEP_1_PASSIVE_SPECIAL');
+        this.showStage2Banner('Rotate the I-piece and drop it into Column 10 to clear the 4-line Tetris!', 'pink');
+      }
+      return;
+    }
+
+    // ─── SUPPORT STEP 3 (PERFECT CLEAR BONUS) ───
+    if (this.activeClass === 'SUPPORT' && this.certStep === 'STEP_3_ABILITY') {
+      if (this.perfectClearWindowActive && linesCleared >= 1 && this.grid.isEmpty()) {
+        AudioManager.playSfx('lineClear');
+        this.classMeter = 45;
+        this.rStatusText = 'READY (45/45)';
+        this.updateHudStats(2600, 13);
+        this.updateClassAbilityHud();
+        this.stage2TransitionLocked = true;
+        this.showStage2Banner('✓ PERFECT CLEAR BONUS! +4 Bonus Lines awarded & Ultimate Meter charged to 45/45!', 'green');
+        setTimeout(() => {
+          this.setupCertStep('STEP_4_ULTIMATE');
+        }, 2100);
+      } else {
+        this.setupCertStep('STEP_3_ABILITY');
+        this.showStage2Banner('Press [E] first, then slide the horizontal I-piece into Columns 7–10 for an All-Clear!', 'pink');
+      }
+      return;
+    }
+
+    // ─── STEP 1A: PASSIVES DRILL (TETRIS TRIGGER FOR SPEEDSTER, SENTINEL, SABOTEUR) ───
+    if (this.certStep === 'STEP_1_PASSIVE_TETRIS') {
       if (linesCleared >= 4) {
         AudioManager.playSfx('lineClear');
         this.updateHudStats(800, 4);
         this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ TETRIS CLEARED! Passive triggered — Special Block [V] forced onto your next piece!', 'green');
+        const blockLabel =
+          this.activeClass === 'SPEEDSTER'
+            ? 'Speed Block [V]'
+            : this.activeClass === 'TANK'
+              ? 'Shield Block [S]'
+              : 'Freeze Block [F]';
+        this.showStage2Banner(`✓ TETRIS CLEARED! Passive triggered — ${blockLabel} forced onto your next piece!`, 'green');
         setTimeout(() => {
-          this.setupStage2Drill('PASSIVE_SPECIAL_CLEAR');
-        }, 1800);
+          this.setupCertStep('STEP_1_PASSIVE_SPECIAL');
+        }, 1700);
       } else {
-        this.showStage2Banner('Missed the 4-line Tetris well! Resetting the well — rotate the I-piece and drop it in Column 10.', 'pink');
+        this.showStage2Banner('Missed the Column 10 well! Rotate the I-piece and drop it in the open right column.', 'pink');
         setTimeout(() => {
-          this.setupStage2Drill('PASSIVE_TETRIS_TRIGGER');
-        }, 1200);
+          this.setupCertStep('STEP_1_PASSIVE_TETRIS');
+        }, 1100);
       }
       return;
     }
 
-    // Task 2.2 Resolution: Check if the player cleared the line containing the forced Special Block!
-    if (this.stage2Drill === 'PASSIVE_SPECIAL_CLEAR') {
+    // ─── STEP 1B: FORCED SPECIAL BLOCK CLEAR (SPEEDSTER, SENTINEL, SABOTEUR) ───
+    if (this.certStep === 'STEP_1_PASSIVE_SPECIAL') {
       if (linesCleared >= 1 && specialBlocksToTrigger.length > 0) {
         AudioManager.playSfx('lineClear');
         this.updateHudStats(1200, 5);
-        if (this.dummyBoards[0]) {
-          this.dummyBoards[0].statusBadge = 'PASSIVE VERIFIED · READY FOR CRISIS DRILLS';
-          this.dummyBoards[0].statusColor = '#00FF66';
-        }
         this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ SPECIAL BLOCK [V] TRIGGERED! Drop speed slowed by 25%! Advancing to Phase 3 Crises...', 'green');
+
+        if (this.activeClass === 'SPEEDSTER') {
+          this.showStage2Banner('✓ SPEED BLOCK [V] TRIGGERED! Baseline drop speed reduced by 25%!', 'green');
+        } else if (this.activeClass === 'TANK') {
+          if (this.dummyBoards[0]) {
+            this.dummyBoards[0].statusBadge = '🛡 ATTACK ABSORBED BY SHIELD BLOCK!';
+            this.dummyBoards[0].statusColor = '#00FF66';
+          }
+          this.showStage2Banner('✓ SHIELD BLOCK [S] TRIGGERED! Absorbed the Dummy’s incoming garbage attack!', 'green');
+        } else if (this.activeClass === 'SABOTEUR') {
+          if (this.dummyBoards[0]) {
+            this.dummyBoards[0].abilityFreezeTimer = 3000;
+            this.dummyBoards[0].statusBadge = '❄ ABILITIES LOCKED FOR 3.0s!';
+            this.dummyBoards[0].statusColor = '#00E5FF';
+          }
+          this.showStage2Banner("✓ FREEZE BLOCK [F] TRIGGERED! Locked the Dummy's UI abilities for 3 seconds!", 'green');
+        }
+
         setTimeout(() => {
-          this.setupStage2Drill('CRISIS_SENTINEL_DEFENSE');
+          this.setupCertStep('STEP_2_ABILITY');
         }, 2000);
       } else {
-        this.showStage2Banner('Move the Special Block I-piece into the open right-hand gap to clear the bottom row!', 'pink');
+        this.showStage2Banner('Slide the horizontal I-piece into Columns 7–10 to clear the Special Block line!', 'pink');
         setTimeout(() => {
-          this.setupStage2Drill('PASSIVE_SPECIAL_CLEAR');
-        }, 1200);
+          this.setupCertStep('STEP_1_PASSIVE_SPECIAL');
+        }, 1100);
       }
       return;
     }
 
-    // Task 3.4 Resolution: Speedster Time Warp Clutch line clear
-    if (this.stage2Drill === 'CRISIS_SPEEDSTER_CLUTCH') {
+    // ─── SPEEDSTER STEP 2 (TIME WARP CLUTCH CLEAR) ───
+    if (this.activeClass === 'SPEEDSTER' && this.certStep === 'STEP_2_ABILITY') {
       if (this.timeWarpActive && linesCleared >= 1) {
         AudioManager.playSfx('lineClear');
-        this.updateHudStats(2000, 6);
+        this.updateHudStats(1800, 6);
         this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ CLUTCH CLEAR! Time Warp tamed maximum gravity! Entering 3-Dummy Ultimate Sandbox...', 'green');
+        this.showStage2Banner('✓ CLUTCH CLEAR! Time Warp cut gravity by 50% so you could land the piece safely!', 'green');
         setTimeout(() => {
-          this.setupStage2Drill('SANDBOX_3_DUMMY_ULTIMATE');
-        }, 2000);
-      } else if (!this.timeWarpActive) {
-        // Piece slammed down due to max gravity before [E] was pressed — respawn piece at top to keep crisis going
-        this.setupStage2Drill('CRISIS_SPEEDSTER_CLUTCH');
-        this.showStage2Banner('⚠ Too fast! Press [E] Time Warp first to cut gravity by 50%!', 'pink');
+          this.setupCertStep('STEP_3_ABILITY');
+        }, 1900);
       } else {
-        this.setupStage2Drill('CRISIS_SPEEDSTER_CLUTCH');
-        this.timeWarpActive = true;
-        this.timeWarpTimer = 6000;
-        this.dropInterval = 750;
-        this.showStage2Banner('Slide the horizontal I-piece into the right-hand gap (Columns 7–10) to clear the row!', 'yellow');
+        this.setupCertStep('STEP_2_ABILITY');
+        this.showStage2Banner('Press [E] Time Warp first, then slide the I-piece into Columns 7–10!', 'pink');
+      }
+      return;
+    }
+
+    // ─── SPEEDSTER STEP 4B (BULLET TIME FREE TETRIS) ───
+    if (this.activeClass === 'SPEEDSTER' && this.certStep === 'STEP_4_BULLET_TIME_TETRIS') {
+      if (linesCleared >= 4) {
+        AudioManager.playSfx('lineClear');
+        this.updateHudStats(3000, 10);
+        this.stage2TransitionLocked = true;
+        this.showStage2Banner('✓ FREE TETRIS SCORED WHILE ALL 3 DUMMIES WERE FROZEN!', 'green');
+        this.completeCurrentClassCertification();
+      } else {
+        this.loadStandardTetrisWellOnPlayerBoard();
+        this.currentPiece = new Tetromino('I');
+        this.showStage2Banner('Rotate the I-piece and drop it into Column 10 while the 3 Dummies are frozen!', 'yellow');
       }
     }
   }
 
-  private executeThreeDummyUltimate() {
-    AudioManager.playSfx('lineClear');
-    this.classMeter = 0;
-
-    if (this.activeClass === 'TANK') {
-      // Sentinel — Earthquake: +4 garbage lines on ALL 3 Dummy Boards simultaneously
-      this.dummyBoards.forEach((d, idx) => {
-        d.grid.addGarbageLines(4, 'HUMAN');
-        d.statusBadge = '+4 GARBAGE (EARTHQUAKE)';
-        d.statusColor = '#FFD700';
-        const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
-        if (el) {
-          el.textContent = '💥 +4 GARBAGE LINES!';
-          el.className = 'text-[8px] font-bold text-neon-yellow uppercase';
-        }
-      });
-      this.showStage2Banner('✓ EARTHQUAKE UNLEASHED! Sent +4 Garbage Lines to all 3 Dummy Boards simultaneously!', 'green');
-    } else if (this.activeClass === 'SPEEDSTER') {
-      // Speedster — Bullet Time: Freeze ALL 3 Dummy Boards for 5 seconds
-      this.dummyBoards.forEach((d, idx) => {
-        d.frozenTimer = 5000;
-        d.statusBadge = '❄ FROZEN (5.0s)';
-        d.statusColor = '#00E5FF';
-        const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
-        if (el) {
-          el.textContent = '❄ FROZEN 5.0s!';
-          el.className = 'text-[8px] font-bold text-neon-cyan uppercase';
-        }
-      });
-      this.showStage2Banner('✓ BULLET TIME UNLEASHED! All 3 Dummy Boards frozen in place for 5 seconds!', 'green');
-    } else {
-      // Saboteur — Chaos Mode: Reverse controls on ALL 3 Dummy Boards for 8s + Reset Grid Shift
-      this.gridShiftUsed = false;
-      this.eStatusText = 'RESET & READY!';
-      this.dummyBoards.forEach((d, idx) => {
-        d.chaosTimer = 8000;
-        d.grid.shiftHorizontally(idx % 2 === 0 ? 1 : -1);
-        d.statusBadge = '🌀 CHAOS REVERSED (8.0s)';
-        d.statusColor = '#FF1493';
-        const el = document.getElementById(`tut-dummy-mini-status-${idx}`);
-        if (el) {
-          el.textContent = '🌀 CONTROLS REVERSED!';
-          el.className = 'text-[8px] font-bold text-neon-pink uppercase';
-        }
-      });
-      this.showStage2Banner('✓ CHAOS MODE UNLEASHED! Reversed all 3 Dummy Boards for 8s & reset [E] Grid Shift!', 'green');
-    }
-
-    this.rStatusText = 'UNLEASHED!';
+  private completeCurrentClassCertification() {
+    markClassCertified(this.activeClass);
     this.updateClassAbilityHud();
-    this.render();
 
-    this.stage2TransitionLocked = true;
-    markTutorialCompleted('basics-stage-2');
     setTimeout(() => {
-      this.stage2Drill = 'STAGE2_COMPLETED';
+      this.certStep = 'CERT_COMPLETED';
       this.stage2TransitionLocked = false;
-      this.configureSandboxClass(this.activeClass);
-      this.updateStage2InstructionUi();
-      this.showConclusionModal();
-    }, 2200);
+      this.showStage2ConclusionModal();
+    }, 2000);
+  }
+
+  private showStage2ConclusionModal() {
+    if (!this.conclusionModal) return;
+
+    const info = this.getActiveClassInfo();
+    const certified = getCertifiedClasses();
+    const uncertified = ALL_CERT_CLASSES.filter(cls => !certified.includes(cls));
+    const nextClass = uncertified[0] ?? null;
+    const nextClassInfo = nextClass ? PLAYER_CLASSES.find(c => c.id === nextClass) : null;
+
+    const classBadgesHtml = PLAYER_CLASSES.map(cls => {
+      const done = certified.includes(cls.id);
+      return `
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg border ${done ? 'border-neon-green/50 bg-neon-green/10 text-neon-green' : 'border-card-border bg-black/30 text-gray-400'}">
+          <span class="font-bold uppercase tracking-wider text-xs">${cls.name}</span>
+          <span class="text-[10px] font-bold tracking-widest uppercase">${done ? '★ CERTIFIED' : 'PENDING'}</span>
+        </div>
+      `;
+    }).join('');
+
+    this.conclusionModal.innerHTML = `
+      <div class="bg-card-bg border-2 border-neon-cyan rounded-2xl max-w-lg w-full p-8 text-center shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col items-center gap-5">
+        <div class="px-4 py-1.5 rounded-full bg-neon-yellow/15 border border-neon-yellow text-neon-yellow text-xs font-extrabold tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(255,215,0,0.3)]">
+          ★ ${info.name.toUpperCase()} CERTIFIED
+        </div>
+        <div>
+          <p class="text-neon-cyan text-[10px] font-bold tracking-[0.3em] uppercase mb-1">STAGE 2 PROGRESS: ${certified.length} / 4 CLASSES</p>
+          <h2 class="text-2xl font-extrabold text-white">${info.name} Kit Mastered!</h2>
+          <p class="text-gray-400 text-xs mt-2 leading-relaxed">
+            You have unlocked the <strong class="text-neon-yellow">★ CERTIFIED</strong> badge for <strong>${info.name}</strong>! Your progress is saved to your profile.
+          </p>
+        </div>
+
+        <div class="w-full grid grid-cols-2 gap-2 text-left">
+          ${classBadgesHtml}
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 w-full pt-2">
+          <button id="tut-modal-replay" type="button" class="flex-1 px-4 py-3 rounded-lg border border-card-border bg-white/5 text-white text-xs font-bold tracking-widest uppercase hover:border-neon-cyan transition-all cursor-pointer">
+            Replay ${info.name}
+          </button>
+          ${nextClassInfo ? `
+            <button id="tut-modal-next-class" type="button" class="flex-1 px-4 py-3 rounded-lg bg-neon-yellow text-deep-purple text-xs font-bold tracking-widest uppercase hover:brightness-110 shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all cursor-pointer">
+              Certify ${nextClassInfo.name} →
+            </button>
+          ` : `
+            <button id="tut-modal-choose-class" type="button" class="flex-1 px-4 py-3 rounded-lg border border-neon-cyan bg-neon-cyan/15 text-neon-cyan text-xs font-bold tracking-widest uppercase hover:bg-neon-cyan hover:text-deep-purple transition-all cursor-pointer">
+              Switch Class
+            </button>
+          `}
+          <button id="tut-modal-done" type="button" class="flex-1 px-4 py-3 rounded-lg bg-neon-cyan text-deep-purple text-xs font-bold tracking-widest uppercase hover:brightness-110 shadow-[0_0_20px_rgba(0,229,255,0.3)] transition-all cursor-pointer">
+            Tutorials Menu
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.conclusionModal.classList.remove('hidden');
+    this.conclusionModal.classList.add('flex');
+
+    this.conclusionModal.querySelector('#tut-modal-replay')?.addEventListener('click', () => {
+      this.conclusionModal?.classList.add('hidden');
+      this.conclusionModal?.classList.remove('flex');
+      this.setupCertStep('STEP_1_PASSIVE_TETRIS');
+    });
+
+    this.conclusionModal.querySelector('#tut-modal-next-class')?.addEventListener('click', () => {
+      if (nextClass) {
+        this.conclusionModal?.classList.add('hidden');
+        this.conclusionModal?.classList.remove('flex');
+        this.startStage2(nextClass, this.onOpenClassSelector ?? undefined);
+      }
+    });
+
+    this.conclusionModal.querySelector('#tut-modal-choose-class')?.addEventListener('click', () => {
+      this.conclusionModal?.classList.add('hidden');
+      this.conclusionModal?.classList.remove('flex');
+      if (this.onOpenClassSelector) {
+        this.onOpenClassSelector();
+      }
+    });
+
+    this.conclusionModal.querySelector('#tut-modal-done')?.addEventListener('click', () => {
+      this.stop();
+      window.location.href = 'modeselect.html?screen=tutorial';
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE 1 HUD & LOGIC (UNCHANGED BEHAVIOR)
+  // STAGE 1 HUD & LOGIC
   // ═══════════════════════════════════════════════════════════════════════════
 
   private mountTutorialHud() {
@@ -1309,7 +2020,6 @@ export class TutorialManager {
     const duoLayoutContainer = document.getElementById('duo-layout-container');
     if (!duoLayoutContainer) return;
 
-    // Create the side instruction panel inside the duo layout container
     const panel = document.createElement('div');
     panel.id = 'tutorial-stage-panel';
     panel.className = 'w-80 sm:w-96 shrink-0 bg-card-bg/90 backdrop-blur-md border-2 border-neon-cyan rounded-xl p-6 shadow-[0_0_30px_rgba(0,229,255,0.2)] flex flex-col gap-5 self-center z-30 pointer-events-auto';
@@ -1329,10 +2039,8 @@ export class TutorialManager {
         </div>
       </div>
 
-      <!-- Alert banner when restarting stage -->
       <div id="tut-restart-banner" class="hidden rounded-lg border border-neon-pink bg-neon-pink/15 px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_0_15px_rgba(255,20,147,0.3)]"></div>
 
-      <!-- Current Block Task Box -->
       <div class="rounded-xl bg-deep-purple/90 border border-card-border p-4 flex flex-col gap-3">
         <div id="tut-block-badge" class="text-[10px] font-bold uppercase tracking-[0.2em] text-neon-yellow">FIRST BLOCK</div>
         <div id="tut-instructions-list" class="flex flex-col gap-3"></div>
@@ -1363,7 +2071,6 @@ export class TutorialManager {
       window.location.href = 'modeselect.html?screen=tutorial';
     });
 
-    // Conclusion Modal
     const modal = document.createElement('div');
     modal.id = 'tutorial-conclusion-modal';
     modal.className = 'hidden fixed inset-0 z-[120] bg-black/80 backdrop-blur-md items-center justify-center p-4';
@@ -1498,7 +2205,6 @@ export class TutorialManager {
     if (!isHandledKey) return;
     e.preventDefault();
 
-    // ─── BLOCK 1: Move Left/Right, then Soft Drop (Down Arrow) ───
     if (this.step === 'PIECE_1_MOVE') {
       if (key === 'ArrowLeft') {
         this.tryMove(-1, 0);
@@ -1538,7 +2244,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 2: Press Spacebar to Hard Drop ───
     if (this.step === 'PIECE_2_HARD_DROP') {
       if (key === ' ') {
         while (this.tryMove(0, 1)) {
@@ -1563,7 +2268,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 3: Rotate the Block (Up Arrow / X / Z), then Drop to Lock ───
     if (this.step === 'PIECE_3_ROTATE') {
       if (key === 'ArrowUp' || key === 'x' || key === 'X') {
         this.tryRotate(1);
@@ -1604,7 +2308,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 4: Press C to Hold the Current Block ───
     if (this.step === 'PIECE_4_HOLD') {
       if (key === 'c' || key === 'C') {
         this.holdPiece = new Tetromino(this.currentPiece.type);
@@ -1624,7 +2327,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 5 (Part 1): Drop the 5th Block First ───
     if (this.step === 'PIECE_5_DROP_FIRST') {
       if (key === 'c' || key === 'C') {
         this.restartStage('This block must drop first before you can swap your held block!');
@@ -1661,7 +2363,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 5 (Part 2): Press C Again to Replace Current Block with Held Block ───
     if (this.step === 'PIECE_5_SWAP_HOLD') {
       if (key === 'c' || key === 'C') {
         if (this.holdPiece) {
@@ -1686,7 +2387,6 @@ export class TutorialManager {
       return;
     }
 
-    // ─── BLOCK 5 (Part 3): Land the Swapped Held Block to Complete Stage 1 ───
     if (this.step === 'PIECE_5_DROP_SWAPPED') {
       if (key === 'c' || key === 'C') {
         this.restartStage('You already swapped your held block! Land this block on the grid to finish Stage 1.');
@@ -1790,11 +2490,17 @@ export class TutorialManager {
   }
 
   private updateStage2(dt: number) {
-    if (this.stage2TransitionLocked || this.stage2Drill === 'STAGE2_COMPLETED') return;
+    if (this.stage2TransitionLocked || this.certStep === 'CERT_COMPLETED') return;
 
     if (this.timeWarpActive && this.timeWarpTimer > 0) {
       this.timeWarpTimer = Math.max(0, this.timeWarpTimer - dt);
       this.eStatusText = `ACTIVE (${(this.timeWarpTimer / 1000).toFixed(1)}s)`;
+      this.updateClassAbilityHud();
+    }
+
+    if (this.perfectClearWindowActive && this.perfectClearTimer > 0) {
+      this.perfectClearTimer = Math.max(0, this.perfectClearTimer - dt);
+      this.eStatusText = `WINDOW (${(this.perfectClearTimer / 1000).toFixed(1)}s)`;
       this.updateClassAbilityHud();
     }
 
@@ -1808,7 +2514,10 @@ export class TutorialManager {
 
     if (grounded) {
       this.lockTimer += dt;
-      const effectiveLockDelay = this.stage2Drill === 'CRISIS_SPEEDSTER_CLUTCH' && !this.timeWarpActive ? 120 : this.LOCK_DELAY;
+      const effectiveLockDelay =
+        this.activeClass === 'SPEEDSTER' && this.certStep === 'STEP_2_ABILITY' && !this.timeWarpActive
+          ? 120
+          : this.LOCK_DELAY;
       if (this.lockTimer >= effectiveLockDelay) {
         this.lockStage2Piece();
         return;
@@ -2011,18 +2720,14 @@ export class TutorialManager {
   }
 
   private showConclusionModal() {
-    if (this.activeStage === 1) {
-      markTutorialCompleted('basics-stage-1');
-    } else {
-      markTutorialCompleted('basics-stage-2');
-    }
+    markTutorialCompleted('basics-stage-1');
     if (!this.conclusionModal) return;
     this.conclusionModal.classList.remove('hidden');
     this.conclusionModal.classList.add('flex');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDERING (PLAYER BOARD + DUMMY BOARD(S) + CQRS QUEUE & SPECIAL BADGES)
+  // RENDERING
   // ═══════════════════════════════════════════════════════════════════════════
 
   private render() {
@@ -2030,7 +2735,6 @@ export class TutorialManager {
     const ctx = this.boardCanvas.getContext('2d')!;
     ctx.clearRect(0, 0, this.boardCanvas.width, this.boardCanvas.height);
 
-    // Draw subtle grid lines
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
@@ -2039,16 +2743,26 @@ export class TutorialManager {
       }
     }
 
-    // Highlight target well / slot in Stage 2 drills for visual clarity
+    // Highlight target well / slot in Stage 2 drills
     if (this.activeStage === 2) {
-      if (this.stage2Drill === 'PASSIVE_TETRIS_TRIGGER') {
+      const isTetrisWellStep =
+        (this.certStep === 'STEP_1_PASSIVE_TETRIS' && this.activeClass !== 'SUPPORT') ||
+        (this.certStep === 'STEP_1_PASSIVE_SPECIAL' && this.activeClass === 'SUPPORT') ||
+        this.certStep === 'STEP_4_BULLET_TIME_TETRIS';
+
+      const isRightFourCellGapStep =
+        (this.certStep === 'STEP_1_PASSIVE_SPECIAL' && this.activeClass !== 'SUPPORT') ||
+        (this.certStep === 'STEP_2_ABILITY' && this.activeClass === 'SPEEDSTER') ||
+        (this.certStep === 'STEP_3_ABILITY' && this.activeClass === 'SUPPORT');
+
+      if (isTetrisWellStep) {
         ctx.fillStyle = 'rgba(0, 229, 255, 0.12)';
         ctx.fillRect(9 * BLOCK_SIZE, 16 * BLOCK_SIZE, BLOCK_SIZE, 4 * BLOCK_SIZE);
         ctx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
         ctx.setLineDash([4, 3]);
         ctx.strokeRect(9 * BLOCK_SIZE + 1, 16 * BLOCK_SIZE + 1, BLOCK_SIZE - 2, 4 * BLOCK_SIZE - 2);
         ctx.setLineDash([]);
-      } else if (this.stage2Drill === 'PASSIVE_SPECIAL_CLEAR' || this.stage2Drill === 'CRISIS_SPEEDSTER_CLUTCH') {
+      } else if (isRightFourCellGapStep) {
         ctx.fillStyle = 'rgba(0, 255, 102, 0.14)';
         ctx.fillRect(6 * BLOCK_SIZE, 19 * BLOCK_SIZE, 4 * BLOCK_SIZE, BLOCK_SIZE);
         ctx.strokeStyle = 'rgba(0, 255, 102, 0.75)';
@@ -2058,12 +2772,10 @@ export class TutorialManager {
       }
     }
 
-    // Draw border
     ctx.strokeStyle = PLAYER_COLOR;
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
 
-    // Draw locked blocks
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const cell = this.grid.matrix[r][c];
@@ -2074,7 +2786,6 @@ export class TutorialManager {
       }
     }
 
-    // Draw Ghost piece & Current piece
     if (this.currentPiece) {
       let ghostY = this.currentPiece.y;
       while (!this.grid.checkCollision(this.currentPiece, this.currentPiece.x, ghostY + 1)) {
@@ -2101,7 +2812,7 @@ export class TutorialManager {
       }
     }
 
-    // Draw CQRS Incoming Garbage Warning Overlay (Task 3.1: Sentinel Scenario)
+    // CQRS Incoming Garbage Warning Overlay (Sentinel Step 2 & Step 3)
     if (this.activeStage === 2 && this.incomingGarbageQueue > 0) {
       const barHeight = Math.min(ROWS, this.incomingGarbageQueue) * BLOCK_SIZE;
       ctx.fillStyle = 'rgba(255, 20, 147, 0.22)';
@@ -2109,7 +2820,8 @@ export class TutorialManager {
       ctx.fillStyle = '#FF1493';
       ctx.fillRect(0, (ROWS * BLOCK_SIZE) - barHeight, 6, barHeight);
 
-      ctx.fillStyle = 'rgba(13, 11, 26, 0.88)';
+      const promptAction = this.certStep === 'STEP_2_ABILITY' ? 'PRESS [Q] FORTIFY' : 'PRESS [E] COUNTER STRIKE';
+      ctx.fillStyle = 'rgba(13, 11, 26, 0.9)';
       ctx.fillRect(20, 220, 260, 72);
       ctx.strokeStyle = '#FF1493';
       ctx.lineWidth = 2;
@@ -2117,29 +2829,12 @@ export class TutorialManager {
       ctx.fillStyle = '#FF1493';
       ctx.font = 'bold 12px Inter, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('⚠ INCOMING: 10 GARBAGE LINES', 150, 248);
+      ctx.fillText('⚠ CQRS QUEUE: 10 GARBAGE LINES', 150, 248);
       ctx.fillStyle = '#FFD700';
       ctx.font = 'bold 13px Inter, sans-serif';
-      ctx.fillText('PRESS [E] COUNTER STRIKE', 150, 274);
+      ctx.fillText(promptAction, 150, 274);
     }
 
-    // Draw Support Rescue Overlay Prompt (Task 3.2)
-    if (this.activeStage === 2 && this.stage2Drill === 'CRISIS_SUPPORT_RESCUE' && this.classMeter >= this.ultimateCost) {
-      ctx.fillStyle = 'rgba(13, 11, 26, 0.88)';
-      ctx.fillRect(20, 220, 260, 72);
-      ctx.strokeStyle = '#00E5FF';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(20, 220, 260, 72);
-      ctx.fillStyle = '#FF1493';
-      ctx.font = 'bold 12px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('⚠ CRITICAL: 18 GARBAGE LINES', 150, 248);
-      ctx.fillStyle = '#00E5FF';
-      ctx.font = 'bold 13px Inter, sans-serif';
-      ctx.fillText('PRESS [R] GUARDIAN ANGEL', 150, 274);
-    }
-
-    // Render Hold & Next Queue Canvases
     if (this.holdCanvas) {
       this.renderMiniPiece(this.holdCanvas, this.holdPiece);
     }
@@ -2147,9 +2842,12 @@ export class TutorialManager {
       this.renderNextQueue(this.nextCanvas, this.queue.slice(0, 4));
     }
 
-    // Render Stage 2 Dummy Board(s)
     if (this.activeStage === 2) {
-      if (this.stage2Drill === 'SANDBOX_3_DUMMY_ULTIMATE' || this.stage2Drill === 'STAGE2_COMPLETED') {
+      const isMultiDummy =
+        (this.certStep === 'STEP_4_ULTIMATE' || this.certStep === 'STEP_4_BULLET_TIME_TETRIS' || this.certStep === 'CERT_COMPLETED') &&
+        this.activeClass !== 'SUPPORT';
+
+      if (isMultiDummy) {
         this.dummyBoards.forEach((dummy, idx) => {
           const canvasEl = this.miniDummyCanvases[idx];
           if (canvasEl) {
@@ -2174,18 +2872,18 @@ export class TutorialManager {
       }
     }
 
-    // Draw locked cells on Dummy Board
+    const baseColor = dummy.isAlly ? ALLY_COLOR : DUMMY_COLOR;
+
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const cell = dummy.grid.matrix[r][c];
         if (cell.type !== null) {
-          const blockColor = cell.type === 'GARBAGE' ? '#6B7280' : DUMMY_COLOR;
+          const blockColor = cell.type === 'GARBAGE' ? '#6B7280' : baseColor;
           this.drawBlock(dCtx, c, r, blockColor, false, cellSize, cell.type, cell.special);
         }
       }
     }
 
-    // Draw Dummy's active piece (e.g. Saboteur scenario where Dummy is about to score a Tetris)
     if (dummy.activePiece) {
       let ghostY = dummy.activePiece.y;
       while (!dummy.grid.checkCollision(dummy.activePiece, dummy.activePiece.x, ghostY + 1)) {
@@ -2196,15 +2894,14 @@ export class TutorialManager {
       for (let r = 0; r < size; r++) {
         for (let c = 0; c < size; c++) {
           if (shape[r][c] !== 0) {
-            this.drawBlock(dCtx, dummy.activePiece.x + c, ghostY + r, DUMMY_COLOR, true, cellSize, dummy.activePiece.type);
-            this.drawBlock(dCtx, dummy.activePiece.x + c, dummy.activePiece.y + r, DUMMY_COLOR, false, cellSize, dummy.activePiece.type);
+            this.drawBlock(dCtx, dummy.activePiece.x + c, ghostY + r, baseColor, true, cellSize, dummy.activePiece.type);
+            this.drawBlock(dCtx, dummy.activePiece.x + c, dummy.activePiece.y + r, baseColor, false, cellSize, dummy.activePiece.type);
           }
         }
       }
     }
 
-    // Visual overlays for Bullet Time Freeze / Chaos Mode on Dummy Boards
-    if (dummy.frozenTimer > 0) {
+    if (dummy.frozenTimer > 0 || dummy.abilityFreezeTimer > 0) {
       dCtx.fillStyle = 'rgba(0, 229, 255, 0.25)';
       dCtx.fillRect(0, 0, canvasEl.width, canvasEl.height);
       dCtx.strokeStyle = '#00E5FF';

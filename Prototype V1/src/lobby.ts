@@ -1654,6 +1654,28 @@ function returnToMenu() {
 // ---- BOOT SEQUENCE ----
 let activeTutorialManager: TutorialManager | null = null;
 
+function openStage2ClassSelector(initialClassId?: string) {
+  showClassSelectModal({
+    initialClassId: initialClassId || selectedClass,
+    subtitle: 'Stage 2 · Class Certifications',
+    title: 'Choose a Class to Certify',
+    confirmLabel: 'START CERTIFICATION',
+    cancelLabel: 'BACK TO TUTORIALS',
+    isCertificationMode: true,
+    onConfirm: (classId) => {
+      selectedClass = classId as PlayerClass;
+      activeTutorialManager?.stop();
+      activeTutorialManager = new TutorialManager();
+      activeTutorialManager.startStage2(selectedClass, () => {
+        openStage2ClassSelector(selectedClass);
+      });
+    },
+    onCancel: () => {
+      window.location.href = 'modeselect.html?screen=tutorial';
+    }
+  });
+}
+
 function bootFromSessionConfig() {
   const bootConfigStr = sessionStorage.getItem('cascade_boot_config');
   if (bootConfigStr) {
@@ -1661,10 +1683,11 @@ function bootFromSessionConfig() {
     
     if (config.mode === 'TUTORIAL') {
       activeTutorialManager?.stop();
-      activeTutorialManager = new TutorialManager();
       if (config.stage === 2) {
-        activeTutorialManager.startStage2();
+        const initialClassId = config.selectedClass?.id || selectedClass;
+        openStage2ClassSelector(initialClassId);
       } else {
+        activeTutorialManager = new TutorialManager();
         activeTutorialManager.startStage1();
       }
     } else if (config.mode === 'SOLO' || config.mode === 'VS_BOT') {
