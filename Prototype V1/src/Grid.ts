@@ -306,4 +306,26 @@ export class Grid {
 
     return removed;
   }
+
+  /**
+   * Loads a pre-configured 2D array of cell types into the bottom (or full height) of the grid.
+   * Used by Stage 2 tutorial micro-scenarios to set up wells, crises, and dummy boards.
+   */
+  public loadPresetMatrix(rows: (string | null)[][], specials?: Record<string, string>): void {
+    this.matrix = this.createEmptyMatrix();
+    const startRow = Math.max(0, this.height - rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const targetRow = startRow + i;
+      if (targetRow >= this.height) break;
+      const sourceRow = rows[i];
+      for (let c = 0; c < Math.min(this.width, sourceRow.length); c++) {
+        const cellType = sourceRow[c];
+        const specialKey = `${targetRow},${c}`;
+        this.matrix[targetRow][c] = {
+          type: cellType,
+          ...(specials && specials[specialKey] ? { special: specials[specialKey] } : {}),
+        };
+      }
+    }
+  }
 }

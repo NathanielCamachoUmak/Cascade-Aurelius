@@ -1654,7 +1654,7 @@ function returnToMenu() {
 // ---- BOOT SEQUENCE ----
 let activeTutorialManager: TutorialManager | null = null;
 
-window.addEventListener('DOMContentLoaded', () => {
+function bootFromSessionConfig() {
   const bootConfigStr = sessionStorage.getItem('cascade_boot_config');
   if (bootConfigStr) {
     const config = JSON.parse(bootConfigStr);
@@ -1662,7 +1662,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if (config.mode === 'TUTORIAL') {
       activeTutorialManager?.stop();
       activeTutorialManager = new TutorialManager();
-      activeTutorialManager.startStage1();
+      if (config.stage === 2) {
+        activeTutorialManager.startStage2();
+      } else {
+        activeTutorialManager.startStage1();
+      }
     } else if (config.mode === 'SOLO' || config.mode === 'VS_BOT') {
       const initialClassId = config.selectedClass?.id || selectedClass;
       // Show loadout menu for single-player modes before starting
@@ -1686,5 +1690,12 @@ window.addEventListener('DOMContentLoaded', () => {
       lobby.show();
     }
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', bootFromSessionConfig);
+} else {
+  bootFromSessionConfig();
+}
+
 

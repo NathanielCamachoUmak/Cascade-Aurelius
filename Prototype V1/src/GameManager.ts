@@ -8,6 +8,7 @@ import { NetworkManager, type ScoreData } from "./NetworkManager";
 import { type Cell } from "./Grid";
 import { type PlayerClass } from "./PlayerClass";
 import { AudioManager } from "./AudioManager";
+import { getUniqueBotName } from "./BotNames";
 
 // Visual Effects System
 export interface Particle {
@@ -43,6 +44,7 @@ export const GameState = {
   READY: "READY",
   PREGAME: "PREGAME",
   PLAYING: "PLAYING",
+  TUTORIAL: "TUTORIAL",
   GAME_OVER: "GAME_OVER",
   POST_GAME: "POST_GAME"
 } as const;
@@ -58,6 +60,7 @@ const PERFECT_CLEAR_WINDOW_MS = 15_000;
 export class GameManager {
   public state: GameState = GameState.MAIN_MENU;
   public players: Player[] = [];
+  public tutorialAbilityGuard: ((slot: 'Q' | 'E' | 'R', player: Player) => boolean) | null = null;
   
   private lastTime: number = 0;
   private renderFn: () => void;
@@ -106,15 +109,33 @@ export class GameManager {
   public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK', preGameDelayMs: number = 5000) {
     this.isOnline = false;
     this.network = null;
-    const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR'];
+    const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
-    import('./BotNames').then(({ getUniqueBotName }) => {
-      this.players = [
-        new Player("P1", false, 'HARD', true, humanClass),
-        new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass)
-      ];
-      this.start(preGameDelayMs);
-    });
+    this.players = [
+      new Player("P1", false, 'HARD', true, humanClass),
+      new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass)
+    ];
+    this.start(preGameDelayMs);
+  }
+
+  /**
+   * Phase 1 & Phase 5: Instantiate a localized TUTORIAL session with a secondary,
+   * non-playable 10x20 Dummy Grid (or 3 Dummy Grids for Phase 4 AoE sandbox).
+   * Disables keyboard input on Dummy Boards and locks the player's O(1) targeting pointer to the Dummy Board.
+   */
+  public initTutorialWithDummy(humanClass: PlayerClass = 'TANK', dummyCount: number = 1, useRestrictedAi: boolean = false) {
+    this.isOnline = false;
+    this.network = null;
+    const human = new Player("P1", false, 'HARD', true, humanClass);
+    human.selectedTargetIndex = 1; // Task 1.3: Force targeting pointer onto the Dummy Board
+    const dummies: Player[] = [];
+    for (let i = 0; i < Math.max(1, dummyCount); i++) {
+      const dummy = new Player(`DUMMY-${i + 1}`, useRestrictedAi, 'EASY', false, 'TANK');
+      dummy.inputHandler.freeze();
+      dummies.push(dummy);
+    }
+    this.players = [human, ...dummies];
+    this.state = GameState.TUTORIAL;
   }
 
   /**
@@ -389,7 +410,7 @@ export class GameManager {
     this.update(dt);
     this.renderFn();
 
-    if (this.state === GameState.PLAYING || this.state === GameState.PREGAME) {
+    if (this.state === GameState.PLAYING || this.state === GameState.PREGAME || this.state === GameState.TUTORIAL) {
       this.animationFrameId = requestAnimationFrame(this.loop.bind(this));
     } else if (this.state === GameState.GAME_OVER) {
       this.renderFn(); // one last render
@@ -404,7 +425,7 @@ export class GameManager {
       }
       return;
     }
-    if (this.state !== GameState.PLAYING) return;
+    if (this.state !== GameState.PLAYING && this.state !== GameState.TUTORIAL) return;
 
     this.gameTime += dt;
 
@@ -780,6 +801,9 @@ export class GameManager {
   }
 
   private tryUseClassAbility(player: Player, slot: 'Q' | 'E' | 'R') {
+    if (this.state === GameState.TUTORIAL && this.tutorialAbilityGuard && !this.tutorialAbilityGuard(slot, player)) {
+      return;
+    }
     if (player.abilityFreezeTimer > 0) return;
     if (slot !== 'R' && player.abilityCooldowns[slot] > 0) return;
     const level = Math.floor(player.scoreManager.totalLinesCleared / 10);
@@ -844,6 +868,11 @@ export class GameManager {
   }
 
   private cycleClassTarget(player: Player) {
+    if (this.state === GameState.TUTORIAL) {
+      // Task 1.3: Force targeting pointer to stay locked exclusively onto the Dummy Board during tutorial
+      player.selectedTargetIndex = this.players.length > 1 ? 1 : null;
+      return;
+    }
     const candidates = this.players
       .map((target, index) => ({ target, index }))
       .filter(({ target }) => !target.isToppedOut)
@@ -857,7 +886,7 @@ export class GameManager {
   }
 
   private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE' | 'SPRINT' | 'RECYCLE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
-    if (this.isOnline) {
+    if (this.isOnline && this.state !== GameState.TUTORIAL) {
       this.network?.sendClassAbility(effect);
       return;
     }
@@ -904,7 +933,7 @@ export class GameManager {
 
   /** Freezes all opponents' abilities (Q/E/R) for the specified duration. Triggered by the Freeze special block. */
   private applyAbilityFreeze(source: Player, durationMs: number) {
-    if (this.isOnline) {
+    if (this.isOnline && this.state !== GameState.TUTORIAL) {
       this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs });
       return;
     }
@@ -926,6 +955,9 @@ export class GameManager {
       // Restore held piece WITH its preserved specials
       player.currentPiece = new Tetromino(temp.type);
       player.currentPiece.specialBlocks = new Map(temp.specialBlocks);
+      if (player.grid.checkCollision(player.currentPiece)) {
+        player.isToppedOut = true;
+      }
     } else {
       player.holdPiece = new Tetromino(player.currentPiece.type);
       player.holdPiece.specialBlocks = new Map(player.currentPiece.specialBlocks);
@@ -934,6 +966,9 @@ export class GameManager {
     
     player.hasHeld = true;
     player.dropTimer = 0;
+    if (player.isToppedOut) {
+      this.checkGameOver();
+    }
   }
 
   private movePiece(player: Player, dx: number, dy: number): boolean {
@@ -1068,7 +1103,7 @@ export class GameManager {
     }
 
     // After locking, send immediate grid + score sync for responsiveness
-    if (this.isOnline && this.network) {
+    if (this.isOnline && this.network && this.state !== GameState.TUTORIAL) {
       this.network.sendGridUpdate(player.grid.matrix);
       this.network.sendScoreUpdate({
         score: player.scoreManager.score,
@@ -1076,6 +1111,21 @@ export class GameManager {
         combo: player.scoreManager.combo,
         multiplier: player.scoreManager.scoreMultiplier,
       });
+    }
+
+    // Immediately spawn the next piece so top-out is detected on the locking frame
+    if (this.state === GameState.PLAYING && !player.currentPiece) {
+      this.handleSpawning(player);
+      if (player.isToppedOut) {
+        if (this.isOnline) {
+          if ((player as any).botId) {
+            this.network?.sendEliminated(undefined, (player as any).botId);
+          } else {
+            this.network?.sendToppedOut();
+          }
+        }
+        this.checkGameOver();
+      }
     }
   }
 
@@ -1305,8 +1355,8 @@ export class GameManager {
   private checkGameOver() {
     // Game is over if any player tops out (for now, or maybe only if all humans top out)
     // For 1v1, if one tops out, the other wins. Let's just end the game if anyone tops out.
-    // In online mode, the server handles game-over detection
-    if (this.isOnline) return;
+    // In online mode, the server handles game-over detection. In TUTORIAL state, game-over is disabled.
+    if (this.isOnline || this.state === GameState.TUTORIAL) return;
 
     let anyToppedOut = false;
     for (const p of this.players) {

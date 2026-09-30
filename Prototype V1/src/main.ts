@@ -33,6 +33,8 @@ const btnHowToPlay = document.getElementById('btn-how-to-play')!;
 const btnSoloHowToPlay = document.getElementById('btn-solo-how-to-play');
 const btnStartBasicsStage1 = document.getElementById('btn-start-basics-stage-1');
 const statusBasicsStage1 = document.getElementById('status-basics-stage-1');
+const btnStartBasicsStage2 = document.getElementById('btn-start-basics-stage-2');
+const statusBasicsStage2 = document.getElementById('status-basics-stage-2');
 const btnTutorialMenuBack = document.getElementById('btn-tutorial-menu-back');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
@@ -74,17 +76,31 @@ function bootGame(config: any) {
 }
 
 function refreshTutorialMenuStatuses() {
-  const completed = isTutorialCompleted('basics-stage-1') || isTutorialCompleted('cascade-basics');
+  const completed1 = isTutorialCompleted('basics-stage-1') || isTutorialCompleted('cascade-basics');
   if (btnStartBasicsStage1) {
-    btnStartBasicsStage1.textContent = completed ? 'REPLAY' : 'START';
+    btnStartBasicsStage1.textContent = completed1 ? 'REPLAY' : 'START';
   }
   if (statusBasicsStage1) {
-    if (completed) {
+    if (completed1) {
       statusBasicsStage1.textContent = '✓ COMPLETED';
       statusBasicsStage1.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
     } else {
       statusBasicsStage1.textContent = 'NOT COMPLETED';
       statusBasicsStage1.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
+    }
+  }
+
+  const completed2 = isTutorialCompleted('basics-stage-2');
+  if (btnStartBasicsStage2) {
+    btnStartBasicsStage2.textContent = completed2 ? 'REPLAY' : 'START';
+  }
+  if (statusBasicsStage2) {
+    if (completed2) {
+      statusBasicsStage2.textContent = '✓ COMPLETED';
+      statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+    } else {
+      statusBasicsStage2.textContent = 'NOT COMPLETED';
+      statusBasicsStage2.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
     }
   }
 }
@@ -127,6 +143,12 @@ btnSoloTutorial.addEventListener('click', () => {
 if (btnStartBasicsStage1) {
   btnStartBasicsStage1.addEventListener('click', () => {
     bootGame({ mode: 'TUTORIAL', stage: 1 });
+  });
+}
+
+if (btnStartBasicsStage2) {
+  btnStartBasicsStage2.addEventListener('click', () => {
+    bootGame({ mode: 'TUTORIAL', stage: 2 });
   });
 }
 
