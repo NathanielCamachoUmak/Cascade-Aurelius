@@ -13,6 +13,7 @@ import { mountSettings } from './Settings'
 import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
 import { TutorialManager } from './TutorialManager'
+import { recordModeScore } from './HighScores'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -592,14 +593,19 @@ function wireGameCallbacks(network: NetworkManager) {
       postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
       postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
     }
-        postGameVotes.innerText = `0 voted for rematch`;
+    postGameVotes.innerText = `0 voted for rematch`;
+    setPostGameButtonLabels('VOTE REMATCH', 'LEAVE LOBBY');
     btnPostRematch.classList.remove('hidden');
+
+    const me = gameManager.players[gameManager.myPlayerIndex];
+    if (me) {
+      recordModeScore(activeOnlineMode, me.scoreManager.score ?? 0, me.scoreManager.totalLinesCleared ?? 0);
+    }
 
     // Record this match's result toward profile progression (points,
     // achievements, unlockables). Only meaningful for online matches, which
     // is the only place onPostGameStart ever fires.
     if (progression) {
-      const me = gameManager.players[gameManager.myPlayerIndex];
       const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] ?? null;
       const won = data.winnerTeam
         ? data.winnerTeam === myTeam
@@ -710,6 +716,19 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 }
 
+let currentOfflineMode: 'SOLO' | 'EASY' | 'HARD' | null = null;
+let offlineCountdownInterval: number | null = null;
+
+function setPostGameButtonLabels(rematchText: string, leaveText: string) {
+  const rematchSpan = btnPostRematch.querySelector('span:last-child');
+  if (rematchSpan) {
+    rematchSpan.textContent = rematchText;
+  } else {
+    btnPostRematch.textContent = rematchText;
+  }
+  btnPostLeave.textContent = leaveText;
+}
+
 // --- Button Listeners ---
 
 btnPlayOnline.addEventListener('click', () => {
@@ -722,17 +741,25 @@ btnPlayOnline.addEventListener('click', () => {
 });
 
 btnPostRematch.addEventListener('click', () => {
+  if (!gameManager.isOnline && currentOfflineMode) {
+    startGame(currentOfflineMode);
+    return;
+  }
   btnPostRematch.classList.add('hidden');
   lobby.network?.voteRematch();
 });
 
 btnPostLeave.addEventListener('click', () => {
-    if (activeOnlineMode) {
-      returnToLobbyAuth();
-    } else {
-      returnToMenu();
-    }
-  });
+  if (!gameManager.isOnline) {
+    window.location.href = 'modeselect.html?screen=solo';
+    return;
+  }
+  if (activeOnlineMode) {
+    returnToLobbyAuth();
+  } else {
+    returnToMenu();
+  }
+});
 
 /**
  * Start an online multiplayer game.
@@ -748,6 +775,8 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   AudioManager.playMusic('game');
   updateNavHighlight('nav-game');
   uiLayer.classList.add('hidden');
+  screenPostGame.classList.remove('flex');
+  screenPostGame.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
   spectatorBanner.classList.add('hidden');
@@ -792,8 +821,15 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
+  currentOfflineMode = mode;
+  if (offlineCountdownInterval !== null) {
+    clearInterval(offlineCountdownInterval);
+    offlineCountdownInterval = null;
+  }
   AudioManager.playMusic('game');
   updateNavHighlight('nav-game');
+  screenPostGame.classList.remove('flex');
+  screenPostGame.classList.add('hidden');
   uiLayer.classList.add('hidden');
   gameHud.classList.remove('hidden');
   gameHud.classList.add('flex');
@@ -816,15 +852,18 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   let seconds = 5;
   preGameText.innerText = seconds.toString();
   
-  const interval = setInterval(() => {
+  offlineCountdownInterval = window.setInterval(() => {
     seconds--;
     if (seconds > 0) {
       preGameText.innerText = seconds.toString();
     } else if (seconds === 0) {
       preGameText.innerText = "GO!";
-      gameManager.players[0].inputHandler.unfreeze();
+      gameManager.players[0]?.inputHandler.unfreeze();
     } else {
-      clearInterval(interval);
+      if (offlineCountdownInterval !== null) {
+        clearInterval(offlineCountdownInterval);
+        offlineCountdownInterval = null;
+      }
       preGameOverlay.classList.add('hidden');
     }
   }, 1000);
@@ -1486,35 +1525,64 @@ function render() {
     }
   }
 
-  // Draw Game Over global overlay (only for offline games now)
-  if (gameManager.state === GameState.GAME_OVER) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#00E5FF';
-    ctx.font = '30px "Press Start 2P"';
-    ctx.textAlign = 'center';
-    
-    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
-    ctx.font = '12px "Press Start 2P"';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('PRESS ENTER TO RESTART OR ESC FOR MENU', canvas.width / 2, canvas.height / 2 + 30);
+  // Handle offline (Solo / VS Bot) Game Over using the Post-Game screen
+  if (gameManager.state === GameState.GAME_OVER && !gameManager.isOnline) {
+    handleOfflineGameOver();
   }
 }
 
+function handleOfflineGameOver() {
+  gameManager.state = GameState.POST_GAME;
+  if (offlineCountdownInterval !== null) {
+    clearInterval(offlineCountdownInterval);
+    offlineCountdownInterval = null;
+  }
+  AudioManager.playMusic('menu');
+  updateNavHighlight('nav-modes');
+  preGameOverlay.classList.add('hidden');
+  gameHud.classList.add('hidden');
+  gameHud.classList.remove('flex');
+  lobby.hide();
+  uiLayer.classList.remove('hidden');
+  screenPostGame.classList.remove('hidden');
+  screenPostGame.classList.add('flex');
+
+  const p1 = gameManager.players[0];
+  const finalScore = Math.round(p1?.scoreManager.score ?? 0);
+  const finalLines = p1?.scoreManager.totalLinesCleared ?? 0;
+  const modeKey = currentOfflineMode ?? 'SOLO';
+  const { rank, topScores } = recordModeScore(modeKey, finalScore, finalLines);
+  const bestScore = topScores[0]?.score ?? finalScore;
+
+  if (modeKey === 'SOLO' || gameManager.players.length === 1) {
+    postGameWinner.innerText = `FINAL SCORE: ${finalScore.toLocaleString()}`;
+    postGameTeamScores.innerHTML = `<span class="text-neon-green">SOLO ENDLESS</span> <span class="text-gray-500">·</span> <span class="text-neon-cyan">${finalLines} LINES CLEARED</span>`;
+  } else {
+    const p2 = gameManager.players[1];
+    const botScore = Math.round(p2?.scoreManager.score ?? 0);
+    const playerWon = !p1?.isToppedOut && Boolean(p2?.isToppedOut);
+    postGameWinner.innerText = playerWon ? 'YOU WIN!' : 'BOT WINS';
+    postGameTeamScores.innerHTML = `<span class="text-neon-cyan">YOUR SCORE: ${finalScore.toLocaleString()} (${finalLines} LINES)</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">${modeKey} BOT: ${botScore.toLocaleString()}</span>`;
+  }
+
+  if (rank === 1) {
+    postGameVotes.innerHTML = `<span class="text-neon-yellow font-bold">★ NEW HIGH SCORE! ★</span> <span class="text-gray-400">· BEST: ${bestScore.toLocaleString()}</span>`;
+  } else if (rank !== null) {
+    postGameVotes.innerHTML = `<span class="text-neon-cyan font-bold">NEW #${rank} PERSONAL RECORD!</span> <span class="text-gray-400">· BEST: ${bestScore.toLocaleString()}</span>`;
+  } else {
+    postGameVotes.innerHTML = `<span class="text-gray-400">PERSONAL BEST: <strong class="text-white">${bestScore.toLocaleString()}</strong></span>`;
+  }
+
+  setPostGameButtonLabels('PLAY AGAIN', 'MODE SELECT');
+  btnPostRematch.classList.remove('hidden');
+}
+
 window.addEventListener('keydown', (e: any) => {
-  if (gameManager.state === GameState.GAME_OVER) {
-    if (e.key === 'Enter') {
-      if (gameManager.isOnline) {
-        // Handled by UI buttons in POST_GAME state instead
-      } else if (gameManager.players.length === 1) {
-        gameManager.initSolo(selectedClass);
-      } else {
-        const botDiff = gameManager.players[1].bot!.difficulty;
-        gameManager.init1v1(botDiff, selectedClass);
-      }
+  if ((gameManager.state === GameState.GAME_OVER || gameManager.state === GameState.POST_GAME) && !gameManager.isOnline) {
+    if (e.key === 'Enter' && currentOfflineMode) {
+      startGame(currentOfflineMode);
     } else if (e.key === 'Escape') {
-      returnToMenu();
+      window.location.href = 'modeselect.html?screen=solo';
     }
   }
 });
@@ -1607,6 +1675,9 @@ window.addEventListener('DOMContentLoaded', () => {
           } else {
             startGame(config.botDifficulty === 'HARD' ? 'HARD' : 'EASY');
           }
+        },
+        onCancel: () => {
+          window.location.href = 'modeselect.html?screen=solo';
         }
       });
     } else if (config.mode === 'ONLINE') {

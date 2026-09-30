@@ -18,6 +18,8 @@
  * layout to a single-column layout on narrow screens. It has no dependencies.
  */
 
+import { attachHighScoreHoverPopup } from './HighScores';
+
 export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
 
 export interface OnlineGameMode {
@@ -312,6 +314,8 @@ export function mountOnlineModeSelect(options: OnlineModeSelectOptions): OnlineM
     note.className = 'bq-mode-select__note';
 
     card.append(format, title, description, rule, note);
+    const accentHex = mode.accent === 'yellow' ? '#FFD700' : mode.accent === 'magenta' ? '#FF1493' : '#00FFFF';
+    attachHighScoreHoverPopup(card, mode.id, mode.title, accentHex);
     grid.appendChild(card);
     cards.set(mode.id, card);
     notes.set(mode.id, note);

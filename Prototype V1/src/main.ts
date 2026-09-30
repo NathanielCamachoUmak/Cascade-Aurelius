@@ -6,6 +6,7 @@ import { mountProgression, type ProgressionController } from './Progression'
 import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
 import { isTutorialCompleted } from './TutorialManager'
+import { attachHighScoreHoverPopup } from './HighScores'
 
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
@@ -42,6 +43,11 @@ const navSettings = document.getElementById('nav-settings');
 mountAuth();
 if (navProfile) mountProgression(navProfile);
 if (navSettings) mountSettings(navSettings);
+
+// Attach Top 3 Highest Score hover popups to Solo & Bot mode cards
+attachHighScoreHoverPopup(btnSoloGame, 'SOLO', 'Solo Endless', '#00FF00');
+attachHighScoreHoverPopup(btnEasyBot, 'EASY', 'Easy Bot', '#FFD700');
+attachHighScoreHoverPopup(btnHardBot, 'HARD', 'Hard Bot', '#FF1493');
 
 type ModeType = 'SOLO' | 'VS_BOT' | 'ONLINE' | null;
 let pendingMode: ModeType = null;
@@ -95,11 +101,19 @@ function openTutorialMenu() {
   }
 }
 
-btnSolo.addEventListener('click', () => {
+function openSoloOptionsMenu() {
   screenMain.classList.remove('flex');
   screenMain.classList.add('hidden');
+  if (screenTutorialMenu) {
+    screenTutorialMenu.classList.remove('flex');
+    screenTutorialMenu.classList.add('hidden');
+  }
   screenSoloOptions.classList.remove('hidden');
   screenSoloOptions.classList.add('flex');
+}
+
+btnSolo.addEventListener('click', () => {
+  openSoloOptionsMenu();
 });
 
 btnSoloGame.addEventListener('click', () => {
@@ -127,9 +141,12 @@ if (btnTutorialMenuBack) {
   });
 }
 
-// Automatically open the Tutorial Menu if navigated back with ?screen=tutorial
-if (new URLSearchParams(window.location.search).get('screen') === 'tutorial') {
+// Automatically open the requested sub-screen if navigated back with ?screen=tutorial or ?screen=solo
+const initialScreenParam = new URLSearchParams(window.location.search).get('screen');
+if (initialScreenParam === 'tutorial') {
   openTutorialMenu();
+} else if (initialScreenParam === 'solo') {
+  openSoloOptionsMenu();
 }
 
 btnEasyBot.addEventListener('click', () => {
