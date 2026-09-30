@@ -169,14 +169,15 @@ export class GameManager {
     for (let i = 0; i < playerCount; i++) {
       const spec = playerSpecs[i] || {};
       const pName = spec.name || `P${i + 1}`;
+      const pClass: PlayerClass = (spec.classId as PlayerClass) || (i === myIndex ? humanClass : 'TANK');
       
       let createdPlayer: Player;
       if (i === myIndex) {
         // Our local player — listens to keyboard, uses our chosen class.
-        createdPlayer = new Player(pName, false, 'HARD', true, humanClass);
+        createdPlayer = new Player(pName, false, 'HARD', true, pClass);
       } else if (spec.isBot && spec.ownerId === net.mySocketId) {
         // A bot owned by us! We need to simulate it locally and broadcast its state.
-        const botPlayer = new Player(pName, true, 'EASY', false);
+        const botPlayer = new Player(pName, true, 'EASY', false, pClass);
         // We'll attach the botId to the player object so we know how to broadcast for it
         (botPlayer as any).botId = spec.id;
         
@@ -191,7 +192,7 @@ export class GameManager {
         createdPlayer = botPlayer;
       } else {
         // Remote player (or remote bot) — no keyboard, no bot. Grid/piece will be synced from server.
-        createdPlayer = new Player(pName, false, 'HARD', false);
+        createdPlayer = new Player(pName, false, 'HARD', false, pClass);
       }
       (createdPlayer as any).socketId = spec.id;
       this.players.push(createdPlayer);

@@ -12,12 +12,44 @@
 // Track definitions
 // ---------------------------------------------------------------------------
 
+export type OstCode = 'SF' | 'SC' | string;
+
+export interface OstTrackDef {
+  code: OstCode;
+  name: string;
+  src: string;
+  cost: number;
+  description: string;
+  accent: string;
+}
+
+/**
+ * Purchasable / unlockable in-game OST catalog keyed by compact song initials:
+ * - SF = SpaceFriends (Default unlocked, 0 pts)
+ * - SC = Stracchino (Purchasable cosmetic, 250 pts)
+ */
+export const OST_TRACKS: Record<string, OstTrackDef> = {
+  SF: {
+    code: 'SF',
+    name: 'SpaceFriends',
+    src: '/audio/ost/SpaceFriends.m4a',
+    cost: 0,
+    description: 'Default cosmic synthwave soundtrack (SF). Included for all players.',
+    accent: '#00e5ff',
+  },
+  SC: {
+    code: 'SC',
+    name: 'Stracchino',
+    src: '/audio/ost/Stracchino.wav',
+    cost: 250,
+    description: 'High-tempo arcade soundtrack (SC). Unlockable with match points.',
+    accent: '#ffd700',
+  },
+};
+
 const MUSIC_TRACKS = {
-  menu:  ['/audio/ost/Menu.wav'],
-  game:  [
-    '/audio/ost/SpaceFriends.m4a',
-    '/audio/ost/Stracchino.wav'
-  ],
+  menu: ['/audio/ost/Menu.wav'],
+  game: Object.values(OST_TRACKS).map(t => t.src),
   // finalRound: ['/audio/ost/FinalRound.m4a'],  // reserved for future use
 } as const;
 
@@ -28,6 +60,43 @@ const SFX_CLIPS = {
 
 type MusicTrack = keyof typeof MUSIC_TRACKS;
 type SfxClip   = keyof typeof SFX_CLIPS;
+
+const PROGRESSION_STORAGE_KEY = 'cascade-aurelius-progression-v1';
+
+/**
+ * Returns the candidate in-game OST file path(s) based on the player's
+ * unlocked and equipped music initials in localStorage (defaults to 'SF').
+ */
+function getAllowedGameMusicSources(): string[] {
+  try {
+    const raw = localStorage.getItem(PROGRESSION_STORAGE_KEY);
+    if (!raw) return [OST_TRACKS.SF.src];
+    const parsed = JSON.parse(raw);
+    const unlockedCodes: string[] = Array.isArray(parsed?.unlockedMusic)
+      ? Array.from(new Set(['SF', ...parsed.unlockedMusic]))
+      : ['SF'];
+    // Also check legacy/cosmetics map for unlocked/equipped music codes
+    if (parsed?.cosmetics && typeof parsed.cosmetics === 'object') {
+      for (const code of Object.keys(OST_TRACKS)) {
+        if (parsed.cosmetics[code]?.unlocked && !unlockedCodes.includes(code)) {
+          unlockedCodes.push(code);
+        }
+      }
+    }
+
+    const equippedCode: string | undefined = parsed?.equippedMusic;
+    if (equippedCode && unlockedCodes.includes(equippedCode) && OST_TRACKS[equippedCode]) {
+      return [OST_TRACKS[equippedCode].src];
+    }
+
+    const validSources = unlockedCodes
+      .map(code => OST_TRACKS[code]?.src)
+      .filter((src): src is string => Boolean(src));
+    return validSources.length > 0 ? validSources : [OST_TRACKS.SF.src];
+  } catch {
+    return [OST_TRACKS.SF.src];
+  }
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -98,7 +167,11 @@ export const AudioManager = {
    * it will be stopped and replaced.
    */
   playMusic(track: MusicTrack) {
-    if (currentTrack === track && currentMusic && !currentMusic.paused) return;
+    const group: readonly string[] = track === 'game' ? getAllowedGameMusicSources() : MUSIC_TRACKS[track];
+    if (currentTrack === track && currentMusic && !currentMusic.paused) {
+      const isCurrentAllowed = group.some(src => currentMusic === audioCache.get(src));
+      if (isCurrentAllowed) return;
+    }
 
     // Stop previous
     if (currentMusic) {
@@ -106,7 +179,6 @@ export const AudioManager = {
       currentMusic.currentTime = 0;
     }
 
-    const group = MUSIC_TRACKS[track];
     const src = group[Math.floor(Math.random() * group.length)];
     const audio = getOrCreate(src);
     audio.loop = true;
@@ -159,4 +231,7 @@ export const AudioManager = {
 
   /** Current SFX volume. */
   get sfxVolume() { return sfxVolume; },
+
+  /** Currently queued or playing track category. */
+  get currentTrack() { return currentTrack; },
 };

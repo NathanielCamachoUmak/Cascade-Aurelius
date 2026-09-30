@@ -81,6 +81,11 @@ export const DENSITY_BRACKETS = Object.freeze([
   },
 ]);
 
+export const DYNAMIC_RULES = Object.freeze([
+  { id: 'double-points', label: 'Double Points', scoreMultiplier: 2 },
+  { id: 'garbage-surge', label: 'Garbage Surge', garbageRate: 1.5 },
+]);
+
 const numeric = value => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
 
 export function getBattleRoyalPhase(elapsedMs) {

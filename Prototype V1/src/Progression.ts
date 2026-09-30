@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
 import { showToast } from './Toast';
+import { AudioManager, OST_TRACKS } from './AudioManager';
 
 export type ProgressionMode = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
-export type CosmeticKind = 'block-skin' | 'special-effect' | 'profile-style';
+export type CosmeticKind = 'block-skin' | 'special-effect' | 'profile-style' | 'music';
 
 export interface MatchProgressionInput {
   mode: ProgressionMode;
@@ -38,6 +39,10 @@ interface SaveData {
   matches: number;
   achievements: Record<string, { unlocked: boolean; unlockedAt?: number }>;
   cosmetics: Record<string, { unlocked: boolean; equipped: boolean }>;
+  /** Compact array of unlocked song initials (e.g. ['SF', 'SC']) */
+  unlockedMusic: string[];
+  /** Currently equipped song initial (e.g. 'SF' or 'SC') */
+  equippedMusic: string;
 }
 
 const STORAGE_KEY = 'cascade-aurelius-progression-v1';
@@ -60,6 +65,15 @@ const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked' | 'unlockedAt'>[] = [
   { id: 'triple-threat', title: 'Triple Threat', description: 'Win in Classic, FFA, and 3v3 Deathmatch.', reward: 500 },
 ];
 
+const MUSIC_COSMETIC_DEFS: Omit<Cosmetic, 'unlocked' | 'equipped'>[] = Object.values(OST_TRACKS).map(track => ({
+  id: track.code,
+  name: `${track.name} (${track.code})`,
+  kind: 'music' as const,
+  description: track.description,
+  cost: track.cost,
+  accent: track.accent,
+}));
+
 const COSMETIC_DEFS: Omit<Cosmetic, 'unlocked' | 'equipped'>[] = [
   { id: 'cyan-circuit', name: 'Cyan Circuit', kind: 'block-skin', description: 'Electric cyan blocks with a bright edge highlight.', cost: 0, accent: '#00e5ff' },
   { id: 'solar-gold', name: 'Solar Gold', kind: 'block-skin', description: 'Warm gold blocks for a championship look.', cost: 250, accent: '#ffd700' },
@@ -67,15 +81,43 @@ const COSMETIC_DEFS: Omit<Cosmetic, 'unlocked' | 'equipped'>[] = [
   { id: 'profile-operator', name: 'Operator Profile', kind: 'profile-style', description: 'A premium profile frame and rank accent.', cost: 350, accent: '#a78bfa' },
   { id: 'spark-burst', name: 'Spark Burst', kind: 'special-effect', description: 'A gold burst when a reward or achievement unlocks.', cost: 300, accent: '#ffc107' },
   { id: 'void-pulse', name: 'Void Pulse', kind: 'special-effect', description: 'A purple pulse for elite match results.', cost: 650, accent: '#8b5cf6' },
+  ...MUSIC_COSMETIC_DEFS,
 ];
 
+function normalizeUnlockedMusic(codes?: string[], cosmetics?: Record<string, { unlocked: boolean; equipped: boolean }>): string[] {
+  const set = new Set<string>(['SF']);
+  if (Array.isArray(codes)) {
+    for (const code of codes) {
+      if (typeof code === 'string' && code.trim()) set.add(code.trim().toUpperCase());
+    }
+  }
+  if (cosmetics && typeof cosmetics === 'object') {
+    for (const code of Object.keys(OST_TRACKS)) {
+      if (cosmetics[code]?.unlocked) set.add(code);
+    }
+  }
+  return Array.from(set);
+}
+
 function freshSave(): SaveData {
-  return { points: 0, wins: 0, matches: 0, achievements: {}, cosmetics: {} };
+  return { points: 0, wins: 0, matches: 0, achievements: {}, cosmetics: {}, unlockedMusic: ['SF'], equippedMusic: 'SF' };
 }
 function readSave(): SaveData {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') as Partial<SaveData> | null;
-    return { ...freshSave(), ...parsed, achievements: parsed?.achievements || {}, cosmetics: parsed?.cosmetics || {} };
+    const cosmetics = parsed?.cosmetics || {};
+    const unlockedMusic = normalizeUnlockedMusic(parsed?.unlockedMusic, cosmetics);
+    const equippedMusic = parsed?.equippedMusic && unlockedMusic.includes(parsed.equippedMusic)
+      ? parsed.equippedMusic
+      : 'SF';
+    return {
+      ...freshSave(),
+      ...parsed,
+      achievements: parsed?.achievements || {},
+      cosmetics,
+      unlockedMusic,
+      equippedMusic,
+    };
   } catch { return freshSave(); }
 }
 
@@ -89,11 +131,11 @@ export class ProgressionStore {
     supabase.auth.onAuthStateChange(async (_event, session) => {
       this.currentUserId = session?.user?.id || null;
       if (this.currentUserId) {
-        // Fetch progression from cloud (supports dedicated progression_data column + settings_and_hotkeys fallback)
+        // Fetch progression + unlocked_music from cloud (with fallback if columns aren't added yet)
         let data: any = null;
         const res = await supabase
           .from('profiles')
-          .select('wins, games_played, progression_data, settings_and_hotkeys')
+          .select('wins, games_played, unlocked_music, equipped_music, progression_data, settings_and_hotkeys')
           .eq('id', this.currentUserId)
           .single();
         if (!res.error && res.data) {
@@ -101,10 +143,19 @@ export class ProgressionStore {
         } else {
           const fallback = await supabase
             .from('profiles')
-            .select('wins, games_played, settings_and_hotkeys')
+            .select('wins, games_played, progression_data, settings_and_hotkeys')
             .eq('id', this.currentUserId)
             .single();
-          data = fallback.data;
+          if (!fallback.error && fallback.data) {
+            data = fallback.data;
+          } else {
+            const legacyFallback = await supabase
+              .from('profiles')
+              .select('wins, games_played, settings_and_hotkeys')
+              .eq('id', this.currentUserId)
+              .single();
+            data = legacyFallback.data;
+          }
         }
         if (data) {
           this.save.wins = data.wins ?? this.save.wins;
@@ -116,6 +167,18 @@ export class ProgressionStore {
             this.save.achievements = progSource.achievements ?? this.save.achievements;
             this.save.cosmetics = progSource.cosmetics ?? this.save.cosmetics;
           }
+          const cloudMusicCodes = Array.isArray(data.unlocked_music)
+            ? data.unlocked_music
+            : Array.isArray(progSource?.u_music)
+              ? progSource.u_music
+              : this.save.unlockedMusic;
+          this.save.unlockedMusic = normalizeUnlockedMusic(
+            [...this.save.unlockedMusic, ...cloudMusicCodes],
+            this.save.cosmetics
+          );
+          const cloudEquippedMusic = data.equipped_music || progSource?.e_music || this.save.equippedMusic || 'SF';
+          this.save.equippedMusic = this.save.unlockedMusic.includes(cloudEquippedMusic) ? cloudEquippedMusic : 'SF';
+
           localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save));
           if (this.onRefreshNeeded) this.onRefreshNeeded();
           window.dispatchEvent(new CustomEvent('progressionUpdated'));
@@ -127,17 +190,42 @@ export class ProgressionStore {
   public get points() { return this.save.points; }
   public get wins() { return this.save.wins; }
   public get matches() { return this.save.matches; }
+  public get unlockedMusic(): string[] { return [...this.save.unlockedMusic]; }
+  public get equippedMusic(): string { return this.save.equippedMusic || 'SF'; }
   public getAchievements(): Achievement[] { return ACHIEVEMENT_DEFS.map(def => ({ ...def, ...(this.save.achievements[def.id] || {}), unlocked: Boolean(this.save.achievements[def.id]?.unlocked) })); }
-  public getCosmetics(): Cosmetic[] { return COSMETIC_DEFS.map(def => ({ ...def, ...(this.save.cosmetics[def.id] || {}), unlocked: def.cost === 0 || Boolean(this.save.cosmetics[def.id]?.unlocked), equipped: Boolean(this.save.cosmetics[def.id]?.equipped) })); }
+  public getCosmetics(): Cosmetic[] {
+    return COSMETIC_DEFS.map(def => {
+      if (def.kind === 'music') {
+        const unlocked = def.cost === 0 || this.save.unlockedMusic.includes(def.id) || Boolean(this.save.cosmetics[def.id]?.unlocked);
+        const equipped = (this.save.equippedMusic || 'SF') === def.id;
+        return { ...def, unlocked, equipped };
+      }
+      return {
+        ...def,
+        ...(this.save.cosmetics[def.id] || {}),
+        unlocked: def.cost === 0 || Boolean(this.save.cosmetics[def.id]?.unlocked),
+        equipped: Boolean(this.save.cosmetics[def.id]?.equipped),
+      };
+    });
+  }
   
   private async persist() { 
+    this.save.unlockedMusic = normalizeUnlockedMusic(this.save.unlockedMusic, this.save.cosmetics);
+    if (!this.save.unlockedMusic.includes(this.save.equippedMusic)) {
+      this.save.equippedMusic = 'SF';
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save)); 
     window.dispatchEvent(new CustomEvent('progressionUpdated'));
+    if (AudioManager.currentTrack === 'game') {
+      AudioManager.playMusic('game');
+    }
     if (this.currentUserId) {
       const progPayload = {
         points: this.save.points,
         achievements: this.save.achievements,
         cosmetics: this.save.cosmetics,
+        u_music: this.save.unlockedMusic,
+        e_music: this.save.equippedMusic,
       };
       const { data: existingRow } = await supabase
         .from('profiles')
@@ -151,6 +239,8 @@ export class ProgressionStore {
       const { error } = await supabase.from('profiles').update({
         wins: this.save.wins,
         games_played: this.save.matches,
+        unlocked_music: this.save.unlockedMusic,
+        equipped_music: this.save.equippedMusic,
         progression_data: progPayload,
         settings_and_hotkeys: mergedJsonb,
       }).eq('id', this.currentUserId);
@@ -179,9 +269,61 @@ export class ProgressionStore {
     for (const id of ids) { const item = this.unlock(id); if (item) { unlocked.push(item); earned += item.reward; } }
     this.persist(); return { earned, achievements: unlocked };
   }
-  public purchase(id: string): { ok: boolean; message: string } { const item = this.getCosmetics().find(cosmetic => cosmetic.id === id); if (!item) return { ok: false, message: 'Cosmetic not found.' }; if (item.unlocked) return { ok: false, message: 'Already unlocked.' }; if (this.save.points < item.cost) return { ok: false, message: `You need ${item.cost - this.save.points} more points.` }; this.save.points -= item.cost; this.save.cosmetics[id] = { unlocked: true, equipped: false }; this.persist(); return { ok: true, message: `${item.name} unlocked.` }; }
-  public equip(id: string) { const item = this.getCosmetics().find(cosmetic => cosmetic.id === id); if (!item || !item.unlocked) return; for (const cosmetic of COSMETIC_DEFS) if (cosmetic.kind === item.kind) this.save.cosmetics[cosmetic.id] = { ...(this.save.cosmetics[cosmetic.id] || {}), equipped: cosmetic.id === id, unlocked: cosmetic.cost === 0 || Boolean(this.save.cosmetics[cosmetic.id]?.unlocked) }; this.persist(); }
-  public unequip(id: string) { const item = this.getCosmetics().find(cosmetic => cosmetic.id === id); if (!item || !item.equipped) return; this.save.cosmetics[id] = { ...(this.save.cosmetics[id] || {}), equipped: false, unlocked: item.unlocked }; this.persist(); }
+  public purchase(id: string): { ok: boolean; message: string } {
+    const item = this.getCosmetics().find(cosmetic => cosmetic.id === id);
+    if (!item) return { ok: false, message: 'Cosmetic not found.' };
+    if (item.unlocked) return { ok: false, message: 'Already unlocked.' };
+    if (this.save.points < item.cost) return { ok: false, message: `You need ${item.cost - this.save.points} more points.` };
+    this.save.points -= item.cost;
+    if (item.kind === 'music') {
+      this.save.unlockedMusic = normalizeUnlockedMusic([...this.save.unlockedMusic, id], this.save.cosmetics);
+      this.save.equippedMusic = id;
+      for (const cosmetic of COSMETIC_DEFS) {
+        if (cosmetic.kind === 'music') {
+          this.save.cosmetics[cosmetic.id] = {
+            unlocked: cosmetic.cost === 0 || this.save.unlockedMusic.includes(cosmetic.id),
+            equipped: cosmetic.id === id,
+          };
+        }
+      }
+      this.persist();
+      return { ok: true, message: `${item.name} unlocked and equipped.` };
+    }
+    this.save.cosmetics[id] = { unlocked: true, equipped: false };
+    this.persist();
+    return { ok: true, message: `${item.name} unlocked.` };
+  }
+  public equip(id: string) {
+    const item = this.getCosmetics().find(cosmetic => cosmetic.id === id);
+    if (!item || !item.unlocked) return;
+    if (item.kind === 'music') {
+      this.save.equippedMusic = id;
+    }
+    for (const cosmetic of COSMETIC_DEFS) {
+      if (cosmetic.kind === item.kind) {
+        this.save.cosmetics[cosmetic.id] = {
+          ...(this.save.cosmetics[cosmetic.id] || {}),
+          equipped: cosmetic.id === id,
+          unlocked: cosmetic.cost === 0 || (cosmetic.kind === 'music' ? this.save.unlockedMusic.includes(cosmetic.id) : Boolean(this.save.cosmetics[cosmetic.id]?.unlocked)),
+        };
+      }
+    }
+    this.persist();
+  }
+  public unequip(id: string) {
+    const item = this.getCosmetics().find(cosmetic => cosmetic.id === id);
+    if (!item || !item.equipped) return;
+    if (item.kind === 'music') {
+      // Revert to default SpaceFriends ('SF') when unequipping a custom music track
+      this.save.equippedMusic = 'SF';
+      this.save.cosmetics[id] = { ...(this.save.cosmetics[id] || {}), equipped: false, unlocked: true };
+      this.save.cosmetics['SF'] = { unlocked: true, equipped: true };
+      this.persist();
+      return;
+    }
+    this.save.cosmetics[id] = { ...(this.save.cosmetics[id] || {}), equipped: false, unlocked: item.unlocked };
+    this.persist();
+  }
 }
 
 const STYLE_ID = 'bq-progression-style';
@@ -211,6 +353,10 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
           <div class="bq-progress-grid" data-achievements></div>
         </div>
         <div class="bq-progress-section">
+          <h3>In-Game Music (OST)</h3>
+          <div class="bq-progress-grid" data-music-cosmetics></div>
+        </div>
+        <div class="bq-progress-section">
           <h3>Block skins &amp; special effects</h3>
           <div class="bq-progress-grid" data-cosmetics></div>
         </div>
@@ -218,6 +364,16 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
     </div>
   `;
   document.body.appendChild(overlay);
+
+  const renderCosmeticCard = (item: Cosmetic) => {
+    const isDefaultMusic = item.kind === 'music' && item.id === 'SF';
+    const buttonLabel = item.unlocked
+      ? item.equipped
+        ? (isDefaultMusic ? 'DEFAULT EQUIPPED' : 'UNEQUIP')
+        : 'EQUIP'
+      : 'UNLOCK';
+    return `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4 style="color:${item.accent}">${item.name}</h4><p>${item.description}</p><small>${item.unlocked ? (item.equipped ? 'EQUIPPED' : 'UNLOCKED') : `${item.cost} PTS`}</small><br><button class="bq-progress-btn" data-cosmetic="${item.id}" ${isDefaultMusic && item.equipped ? 'disabled style="opacity:0.6;cursor:default;"' : ''}>${buttonLabel}</button></article>`;
+  };
 
   const refresh = () => {
     const allAchievements = store.getAchievements();
@@ -230,13 +386,20 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
 
     const achievements = overlay.querySelector<HTMLElement>('[data-achievements]')!;
     achievements.innerHTML = allAchievements.map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4>${item.unlocked ? '◆ ' : '◇ '}${item.title}</h4><p>${item.description}</p><small>${item.unlocked ? `UNLOCKED · +${item.reward} PTS` : `REWARD · +${item.reward} PTS`}</small></article>`).join('');
+
+    const allCosmetics = store.getCosmetics();
+    const musicCosmeticsEl = overlay.querySelector<HTMLElement>('[data-music-cosmetics]')!;
+    musicCosmeticsEl.innerHTML = allCosmetics.filter(item => item.kind === 'music').map(renderCosmeticCard).join('');
+
     const cosmetics = overlay.querySelector<HTMLElement>('[data-cosmetics]')!;
-    cosmetics.innerHTML = store.getCosmetics().map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4 style="color:${item.accent}">${item.name}</h4><p>${item.description}</p><small>${item.unlocked ? (item.equipped ? 'EQUIPPED' : 'UNLOCKED') : `${item.cost} PTS`}</small><br><button class="bq-progress-btn" data-cosmetic="${item.id}">${item.unlocked ? (item.equipped ? 'UNEQUIP' : 'EQUIP') : 'UNLOCK'}</button></article>`).join('');
-    cosmetics.querySelectorAll<HTMLButtonElement>('[data-cosmetic]').forEach(button => button.addEventListener('click', () => {
+    cosmetics.innerHTML = allCosmetics.filter(item => item.kind !== 'music').map(renderCosmeticCard).join('');
+
+    overlay.querySelectorAll<HTMLButtonElement>('[data-cosmetic]').forEach(button => button.addEventListener('click', () => {
       const id = button.dataset.cosmetic!;
       const item = store.getCosmetics().find(cosmetic => cosmetic.id === id)!;
       let result: { ok: boolean; message: string };
       if (item.unlocked && item.equipped) {
+        if (item.kind === 'music' && item.id === 'SF') return;
         store.unequip(id);
         result = { ok: true, message: `${item.name} unequipped.` };
       } else if (item.unlocked) {

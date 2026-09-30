@@ -421,6 +421,15 @@ function startBattleRoyalSchedule(roomId) {
   room.battleRoyalCullTimers = timers;
 }
 
+function startTeamMatchTimer(roomId) {
+  const room = rooms.get(roomId);
+  if (!room || room.phase !== 'in-game' || !room.mode.isTeamMode) return;
+  room.matchEndsAt = Date.now() + MATCH_DURATION_MS;
+  io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: MATCH_DURATION_MS });
+  room.matchTimer = setTimeout(() => finishTeamMatch(roomId, 'time'), MATCH_DURATION_MS);
+  emitRoomState(roomId);
+}
+
 function startMatch(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'countdown' || room.players.size < 1) return;
@@ -439,11 +448,20 @@ function startMatch(roomId) {
     player.lastClearAt = Date.now();
     player.lastScoreEventAt = 0;
     player.eliminatedAt = null;
-    playerList.push({ id, name: player.name, index, team: player.team, kills: 0, isBot: !!player.isBot, ownerId: player.ownerId || null, classId: player.classId || 'SPEEDSTER' });
-    playerList.push({ id, name: player.name, index, team: player.team, kills: 0, isBot: !!player.isBot, ownerId: player.ownerId || null, classId: player.classId });
+    playerList.push({
+      id,
+      name: player.name,
+      index,
+      team: player.team,
+      kills: 0,
+      isBot: !!player.isBot,
+      ownerId: player.ownerId || null,
+      classId: player.classId || 'SPEEDSTER',
+    });
     index += 1;
   }
 
+  console.log(`[game-start] ${room.mode.id} room "${roomId}" (${room.mode.capacity} players)`);
   for (const [socketId, player] of room.players) {
     io.to(socketId).emit('game-start', {
       players: playerList,
@@ -455,6 +473,7 @@ function startMatch(roomId) {
     });
   }
   io.to(roomId).emit('pre-game-countdown', 5);
+  if (room.mode.isTeamMode) io.to(roomId).emit('team-score-update', { teamScores: calculateTeamScores(room) });
   emitRoomState(roomId);
 
   room.pregameTimer = setTimeout(() => {
@@ -464,6 +483,8 @@ function startMatch(roomId) {
       room.matchTimer = setTimeout(() => finishBattleRoyalMatch(roomId, 'time'), BATTLE_ROYALE_RULES.durationMs);
       startBattleRoyalSchedule(roomId);
       emitRoomState(roomId);
+    } else {
+      startTeamMatchTimer(roomId);
     }
   }, 5000);
 }
@@ -497,6 +518,20 @@ function cancelCountdown(roomId) {
   room.phase = 'lobby';
   io.to(roomId).emit('countdown-cancel');
   emitRoomState(roomId);
+}
+
+function updateRematchVotes(roomId) {
+  const room = rooms.get(roomId);
+  if (!room || room.phase !== 'post-game') return;
+  const required = room.players.size;
+  io.to(roomId).emit('rematch-update', { votes: room.rematchVotes.size, required });
+  if (room.rematchVotes.size >= required && required >= 1) {
+    room.phase = 'lobby';
+    room.rematchVotes.clear();
+    for (const player of room.players.values()) player.ready = true;
+    emitRoomState(roomId);
+    checkAllReady(roomId);
+  }
 }
 
 function removePlayer(socket, { announceDisconnect = false } = {}) {
@@ -542,17 +577,18 @@ function removePlayer(socket, { announceDisconnect = false } = {}) {
   if (room.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
   else checkEliminationGameOver(roomId);
   emitRoomState(roomId);
+  if (room.phase === 'post-game') updateRematchVotes(roomId);
 }
 
 function addPlayer(socket, roomId, name, requestedModeId, classId, { create = false } = {}) {
   if (!rooms.has(roomId) && !create) {
-    socket.emit('join-error', { message: 'Room not found.' });
+    socket.emit('join-error', { message: 'Room not found. Host this room first or enter an existing room code.' });
     return;
   }
   const room = getOrCreateRoom(roomId, requestedModeId);
   const requestedMode = getMode(requestedModeId);
   if (room.mode.id !== requestedMode.id) {
-    socket.emit('join-error', { message: `Room uses ${room.mode.title}.` });
+    socket.emit('join-error', { message: `Room uses ${room.mode.title}. Choose the same mode to join it.` });
     return;
   }
   if (room.phase === 'in-game' || room.phase === 'countdown') {
@@ -560,7 +596,7 @@ function addPlayer(socket, roomId, name, requestedModeId, classId, { create = fa
     return;
   }
   if (room.players.size >= room.mode.capacity) {
-    socket.emit('join-error', { message: `${room.mode.title} room is full.` });
+    socket.emit('join-error', { message: `${room.mode.title} room is full (${room.mode.capacity} players).` });
     return;
   }
 
@@ -580,24 +616,179 @@ function addPlayer(socket, roomId, name, requestedModeId, classId, { create = fa
   if (!room.hostId) room.hostId = socket.id;
   socket.join(roomId);
   socket.data.roomId = roomId;
+  console.log(`[join-room] ${socket.id} -> ${roomId} (${room.mode.id}, ${room.players.size}/${room.mode.capacity})`);
   emitRoomState(roomId);
 }
 
 io.on('connection', socket => {
+  console.log(`[connect] ${socket.id}`);
+
   socket.on('host-room', ({ roomId, name, modeId, classId }) => {
+    if (socket.data.roomId) {
+      socket.emit('join-error', { message: 'Leave your current room before hosting another lobby.' });
+      return;
+    }
     addPlayer(socket, roomId, name, modeId, classId, { create: true });
   });
 
   socket.on('join-room', ({ roomId, name, modeId, classId }) => {
-    addPlayer(socket, roomId, name, modeId, classId, { create: false });
+    if (socket.data.roomId && socket.data.roomId !== roomId && rooms.has(socket.data.roomId)) {
+      socket.emit('confirm-join', { currentRoom: socket.data.roomId, newRoom: roomId, newModeId: modeId });
+      return;
+    }
+    if (!socket.data.roomId) addPlayer(socket, roomId, name, modeId, classId, { create: false });
   });
+
+  socket.on('confirm-join', ({ newRoomId, name, modeId, classId }) => {
+    if (socket.data.roomId) removePlayer(socket);
+    addPlayer(socket, newRoomId, name, modeId, classId, { create: false });
+  });
+
+  socket.on('leave-lobby', () => removePlayer(socket));
 
   socket.on('host-start-now', () => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
+    if (!room || room.hostId !== socket.id) {
+      socket.emit('join-error', { message: 'Only the host can start this lobby.' });
+      return;
+    }
+    if (room.phase !== 'lobby' || room.players.size < 1) return;
     for (const player of room.players.values()) player.ready = true;
     beginRoomCountdown(roomId, socket.id);
+  });
+
+  socket.on('kick-player', (targetId) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    
+    if (room.players.has(targetId)) {
+      const target = room.players.get(targetId);
+      room.players.delete(targetId);
+      
+      if (!target.isBot) {
+        io.to(targetId).emit('kicked');
+        const targetSocket = io.sockets.sockets.get(targetId);
+        if (targetSocket) {
+          targetSocket.leave(roomId);
+          targetSocket.data.roomId = null;
+        }
+      }
+      emitRoomState(roomId);
+    }
+  });
+
+  socket.on('add-bot', (payload) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.phase !== 'lobby') return;
+    if (room.players.size >= room.mode.capacity) return;
+
+    const botId = 'bot-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    let team = payload?.team;
+    if (!team) team = room.mode.isTeamMode ? teamForOpenSlot(room) : null;
+    const requestedName = payload?.name || 'AI Bot';
+    const classes = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
+    const randomClass = classes[Math.floor(Math.random() * classes.length)];
+    
+    room.players.set(botId, {
+      name: requestedName,
+      ready: true,
+      index: -1,
+      state: 'lobby',
+      team,
+      score: 0,
+      lines: 0,
+      kills: 0,
+      eliminatedAt: null,
+      isBot: true,
+      ownerId: socket.id,
+      classId: randomClass,
+    });
+    emitRoomState(roomId);
+  });
+
+  socket.on('remove-bot', ({ botId }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.phase !== 'lobby') return;
+    
+    const bot = room.players.get(botId);
+    if (bot && bot.isBot) {
+      room.players.delete(botId);
+      emitRoomState(roomId);
+    }
+  });
+
+  socket.on('switch-team', () => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    const player = room?.players.get(socket.id);
+    if (!room || !player || !room.mode.isTeamMode) return;
+    if (room.phase !== 'lobby') return;
+
+    const targetTeam = player.team === 'cyan' ? 'magenta' : 'cyan';
+    const targetTeamCount = Array.from(room.players.values()).filter(p => p.team === targetTeam).length;
+    if (targetTeamCount >= room.mode.teamSize) {
+      socket.emit('join-error', { message: `${teams[targetTeam].label} is full (${room.mode.teamSize} players).` });
+      return;
+    }
+
+    player.team = targetTeam;
+    player.ready = false;
+    emitRoomState(roomId);
+  });
+
+  socket.on('player-ready', ({ ready }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    const player = room?.players.get(socket.id);
+    if (!room || !player || (room.phase !== 'lobby' && room.phase !== 'countdown')) return;
+    if (room.phase === 'countdown' && !ready) {
+      player.ready = false;
+      cancelCountdown(roomId);
+      return;
+    }
+    if (room.phase !== 'lobby') return;
+    player.ready = Boolean(ready);
+    emitRoomState(roomId);
+    checkAllReady(roomId);
+  });
+
+  socket.on('vote-rematch', () => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.phase !== 'post-game') return;
+    room.rematchVotes.add(socket.id);
+    
+    for (const [id, player] of room.players) {
+      if (player.isBot) {
+        room.rematchVotes.add(id);
+      }
+    }
+
+    updateRematchVotes(roomId);
+  });
+
+  socket.on('grid-update', ({ grid, botId }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.phase !== 'in-game') return;
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
+    socket.to(roomId).emit('opponent-grid-update', { playerIndex: player.index, grid });
+  });
+
+  socket.on('piece-update', ({ piece, botId }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.phase !== 'in-game') return;
+    const player = botId ? room.players.get(botId) : room.players.get(socket.id);
+    if (!player || (botId && player.ownerId !== socket.id)) return;
+    socket.to(roomId).emit('opponent-piece-update', { playerIndex: player.index, piece });
   });
 
   socket.on('score-event', payload => {
@@ -605,17 +796,33 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     if (!room || room.phase !== 'in-game') return;
 
-    const { botId, type, lines, combo, multiplier } = payload || {};
+    const { botId, type, lines, combo, multiplier, clientTs } = payload || {};
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
-    if (!player) return;
+    if (!player || (botId && player.ownerId !== socket.id)) return;
+
+    const now = Date.now();
+    if (!botId && typeof clientTs === 'number') {
+      const drift = now - clientTs;
+      if (drift < -2000 || drift > 30_000) return;
+    }
+    if (player.lastScoreEventAt && now - player.lastScoreEventAt < 40) return;
+    player.lastScoreEventAt = now;
 
     const points = computeScoreEvent(room, player, { type, lines, combo, multiplier });
-    player.score = Math.max(0, Math.min(5_000_000, Math.floor((player.score || 0) + points)));
+    if (points <= 0 && type !== 'lines') return;
+
+    const scoreCap = room.mode.id === 'battle-royale' ? 5_000_000 : 999_999;
+    player.score = Math.max(0, Math.min(scoreCap, Math.floor((player.score || 0) + points)));
     
     if (type === 'lines') {
       const cleared = Math.max(0, Math.min(5, Math.floor(Number(lines) || 0)));
-      player.lines = (player.lines || 0) + cleared;
-      player.lastClearAt = Date.now();
+      player.lines = Math.max(0, Math.min(9999, (player.lines || 0) + cleared));
+      player.lastClearAt = now;
+    }
+
+    if (room.mode.id === 'battle-royale' && hasReachedTarget(player.score)) {
+      finishBattleRoyalMatch(roomId, 'target-score', player);
+      return;
     }
 
     io.to(roomId).emit('opponent-score-update', {
@@ -624,6 +831,17 @@ io.on('connection', socket => {
       lines: player.lines,
       combo: Math.max(0, Math.floor(Number(combo) || 0)),
     });
+
+    if (room.mode.isTeamMode) {
+      io.to(roomId).emit('team-score-update', {
+        playerIndex: player.index,
+        playerId: botId || socket.id,
+        team: player.team,
+        score: player.score,
+        lines: player.lines,
+        teamScores: calculateTeamScores(room),
+      });
+    }
   });
 
   const handlePlayerToppedOut = ({ killerIndex, botId } = {}) => {
@@ -631,7 +849,8 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     if (!room || room.phase !== 'in-game') return;
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
-    if (!player || player.state !== 'playing') return;
+    if (!player || (botId && player.ownerId !== socket.id)) return;
+    if (player.state !== 'playing') return;
 
     const currentAlive = activePlayerCount(room);
 
@@ -667,6 +886,8 @@ io.on('connection', socket => {
 
     if (room.mode.id === 'battle-royale') {
       checkBattleRoyalGameOver(roomId);
+    } else if (room.mode.isTeamMode) {
+      if (activePlayerCount(room) === 0) finishTeamMatch(roomId, 'elimination');
     } else {
       checkEliminationGameOver(roomId);
     }
@@ -675,6 +896,13 @@ io.on('connection', socket => {
 
   socket.on('player-eliminated', handlePlayerToppedOut);
   socket.on('player-topped-out', (payload) => handlePlayerToppedOut(payload || {}));
+
+  socket.on('game-over', () => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    if (room?.mode.id === 'battle-royale') checkBattleRoyalGameOver(roomId);
+    else if (room && !room.mode.isTeamMode) checkEliminationGameOver(roomId);
+  });
 
   // Direct Return to Lobby Request from Spectator Prompt
   socket.on('return-to-lobby', () => {
@@ -731,6 +959,20 @@ io.on('connection', socket => {
     io.to(socketTargetId).emit('receive-garbage', { count: scaled, fromIndex: sender.index, targetIndex: targetPlayer.index });
   });
 
+  socket.on('reflect-garbage', ({ targetIndex, count }) => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms.get(roomId);
+    const sender = room?.players.get(socket.id);
+    if (!room || !sender || room.phase !== 'in-game') return;
+    const targetEntry = Array.from(room.players.entries()).find(([, player]) => player.index === targetIndex && player.state === 'playing');
+    if (!targetEntry) return;
+    const [targetId, target] = targetEntry;
+    const isOpponent = room.mode.isTeamMode ? target.team !== sender.team : targetId !== socket.id;
+    if (!isOpponent) return;
+    const socketTargetId = target.isBot ? target.ownerId : targetId;
+    io.to(socketTargetId).emit('receive-garbage', { count: Math.max(1, Math.min(20, Number(count) || 0)), fromIndex: sender.index, targetIndex: target.index });
+  });
+
   socket.on('class-ability', ({ type, durationMs, amount, direction, targetIndex, strategy }) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
@@ -748,8 +990,7 @@ io.on('connection', socket => {
     } else if (strategy === 'LOWEST_SCORE') {
       selectedOpponent = [...opponents].sort((a, b) => (a[1].score || 0) - (b[1].score || 0))[0];
     }
-
-    if (!selectedOpponent && targetIndex !== undefined) {
+    if (!selectedOpponent && targetIndex !== undefined && targetIndex !== null) {
       selectedOpponent = opponents.find(([, player]) => player.index === targetIndex);
     }
     if (!selectedOpponent) selectedOpponent = opponents[0];
@@ -757,19 +998,98 @@ io.on('connection', socket => {
     const safeDuration = Math.max(0, Math.min(10_000, Number(durationMs) || 0));
     const safeAmount = Math.max(0, Math.min(20, Number(amount) || 0));
 
-    if (selectedOpponent) {
+    const emitToOpponents = (eventName, dataFactory) => {
+      opponents.forEach(([id, player]) => {
+        const socketId = player.isBot ? player.ownerId : id;
+        const payload = dataFactory(player);
+        if (typeof payload === 'object' && payload !== null) payload.targetIndex = player.index;
+        io.to(socketId).emit(eventName, payload);
+      });
+    };
+
+    if (type === 'QUICKSILVER' || type === 'CHAOS') {
+      emitToOpponents('class-effect', () => ({ type, durationMs: safeDuration }));
+    } else if (type === 'ABILITY_FREEZE') {
+      emitToOpponents('class-effect', () => ({ type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 }));
+    } else if (type === 'SPRINT' && selectedOpponent) {
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'SPRINT', amount: Math.max(1, Math.min(5, safeAmount || 3)), targetIndex: selectedOpponent[1].index });
+    } else if (type === 'SCRAMBLE' && selectedOpponent) {
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)), targetIndex: selectedOpponent[1].index });
+    } else if (type === 'GRID_SHIFT' && selectedOpponent) {
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1, targetIndex: selectedOpponent[1].index });
+    } else if (type === 'EARTHQUAKE') {
+      emitToOpponents('receive-garbage', (player) => ({ count: safeAmount || 4, fromIndex: sender.index, targetIndex: player.index }));
+    } else if (type === 'RECYCLE') {
+      const allies = room.mode.isTeamMode
+        ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
+        : null;
+      const selectedAlly = (targetIndex !== undefined && targetIndex !== null)
+        ? allies?.find(([, player]) => player.index === targetIndex)
+        : null;
+      const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
+      io.to(targetSockId).emit('class-effect', { type: 'RECYCLE', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
+    } else if (type === 'GUARDIAN_ANGEL') {
+      const allies = room.mode.isTeamMode
+        ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
+        : null;
+      const selectedAlly = (targetIndex !== undefined && targetIndex !== null)
+        ? allies?.find(([, player]) => player.index === targetIndex)
+        : null;
+      const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
+      io.to(targetSockId).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
+    } else if (selectedOpponent) {
       const targetSockId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
-      io.to(targetSockId).emit('class-effect', { 
-        type, 
-        durationMs: safeDuration, 
-        amount: safeAmount, 
-        direction, 
-        targetIndex: selectedOpponent[1].index 
+      io.to(targetSockId).emit('class-effect', {
+        type,
+        durationMs: safeDuration,
+        amount: safeAmount,
+        direction,
+        targetIndex: selectedOpponent[1].index,
       });
     }
   });
 
+  socket.on('broadcast-ribbon', ({ message }) => {
+    const roomId = socket.data.roomId;
+    if (roomId) socket.to(roomId).emit('show-ribbon', { message });
+  });
+
+  socket.on('changeClass', ({ classId, targetId }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    let target = null;
+    if (targetId && room.hostId === socket.id) {
+      target = room.players.get(targetId);
+      if (target && !target.isBot) target = null;
+    } else {
+      target = room.players.get(socket.id);
+    }
+    
+    if (target) {
+      target.classId = classId;
+      emitRoomState(roomId);
+    }
+  });
+
+  socket.on('chatMessage', (msg) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (player) {
+      io.to(roomId).emit('chatMessage', { sender: player.name, text: msg });
+    }
+  });
+
   socket.on('disconnect', () => {
+    console.log(`[disconnect] ${socket.id}`);
     removePlayer(socket, { announceDisconnect: true });
   });
 });

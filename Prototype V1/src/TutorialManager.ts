@@ -290,6 +290,7 @@ export class TutorialManager {
   // ═══════════════════════════════════════════════════════════════════════════
 
   public startStage1() {
+    AudioManager.playMusic('game');
     this.activeStage = 1;
     this.eFsmState = GameState.TUTORIAL;
     this.boardCanvas = document.getElementById('board-p1') as HTMLCanvasElement | null;
@@ -316,6 +317,7 @@ export class TutorialManager {
   // ═══════════════════════════════════════════════════════════════════════════
 
   public startStage2(playerClass: PlayerClass = 'SPEEDSTER', onOpenClassSelector?: () => void) {
+    AudioManager.playMusic('game');
     this.activeStage = 2;
     this.activeClass = playerClass;
     if (onOpenClassSelector) {
@@ -347,6 +349,7 @@ export class TutorialManager {
 
   public startStage3() {
     this.stop();
+    AudioManager.playMusic('game');
     this.activeStage = 3;
     this.stage3Tutorial = new Stage3Tutorial();
     this.stage3Tutorial.start();
