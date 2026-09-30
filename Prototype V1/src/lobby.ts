@@ -9,6 +9,7 @@ import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
 import { AudioManager } from './AudioManager'
 import { mountInteractiveTutorial } from './InteractiveTutorial'
 import { mountProgression, type ProgressionController, type ProgressionMode } from './Progression'
+import { mountStatistics } from './Statistics'
 import { mountSettings } from './Settings'
 import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
@@ -172,7 +173,7 @@ const abilityRStatusP1 = safeGet('ability-r-status-p1')!;
 const gameManager = new GameManager(render);
 
 function updateNavHighlight(activeId: string) {
-  const ids = ['nav-menu', 'nav-lobby', 'nav-loadout', 'nav-game', 'nav-settings', 'nav-profile'];
+  const ids = ['nav-menu', 'nav-lobby', 'nav-loadout', 'nav-game', 'nav-statistics', 'nav-settings', 'nav-profile'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (!el) continue;
@@ -394,6 +395,11 @@ const navProfile = safeGet('nav-profile');
 let progression: ProgressionController | null = null;
 if (navProfile) {
   progression = mountProgression(navProfile);
+}
+
+const navStatistics = safeGet('nav-statistics');
+if (navStatistics && progression) {
+  mountStatistics(navStatistics, progression.store);
 }
 
 const navSettings = safeGet('nav-settings');

@@ -1,8 +1,5 @@
 import { supabase } from './supabase';
 import { showToast } from './Toast';
-import { PLAYER_CLASSES } from './PlayerClass';
-import { getTopScores, type HighScoreModeKey } from './HighScores';
-import { isClassCertified, getCertifiedClasses } from './TutorialManager';
 
 export type ProgressionMode = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
 export type CosmeticKind = 'block-skin' | 'special-effect' | 'profile-style';
@@ -50,12 +47,6 @@ const MODE_LABELS: Record<ProgressionMode, string> = {
   'team-deathmatch': '3v3 Deathmatch',
   'battle-royale': 'Battle Royale',
 };
-
-const PROFILE_HIGHSCORE_MODES: Array<{ key: HighScoreModeKey; label: string; accent: string }> = [
-  { key: 'SOLO', label: 'Solo Endless', accent: '#00ff88' },
-  { key: 'EASY', label: 'Easy Bot (1v1)', accent: '#ffd700' },
-  { key: 'HARD', label: 'Hard Bot (1v1)', accent: '#ff1493' },
-];
 
 const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked' | 'unlockedAt'>[] = [
   { id: 'first-win', title: 'First Victory', description: 'Win your first multiplayer match.', reward: 100 },
@@ -127,6 +118,7 @@ export class ProgressionStore {
           }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save));
           if (this.onRefreshNeeded) this.onRefreshNeeded();
+          window.dispatchEvent(new CustomEvent('progressionUpdated'));
         }
       }
     });
@@ -140,6 +132,7 @@ export class ProgressionStore {
   
   private async persist() { 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.save)); 
+    window.dispatchEvent(new CustomEvent('progressionUpdated'));
     if (this.currentUserId) {
       const progPayload = {
         points: this.save.points,
@@ -203,7 +196,7 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
   overlay.innerHTML = `
     <div class="bq-progress-panel" role="dialog" aria-modal="true">
       <div class="bq-progress-head">
-        <div><p>PROFILE PROGRESSION</p><h2>Player Profile, High Scores &amp; Certifications</h2></div>
+        <div><p>PROFILE PROGRESSION</p><h2>Player Profile, Achievements &amp; Cosmetics</h2></div>
         <button class="bq-progress-close" type="button">×</button>
       </div>
       <div class="bq-progress-body">
@@ -211,15 +204,7 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
           <div class="bq-progress-stat"><b data-points>0</b><span>customization points</span></div>
           <div class="bq-progress-stat"><b data-wins>0</b><span>multiplayer wins</span></div>
           <div class="bq-progress-stat"><b data-matches>0</b><span>matches played</span></div>
-          <div class="bq-progress-stat"><b data-certified>0 / 4</b><span>classes certified</span></div>
-        </div>
-        <div class="bq-progress-section">
-          <h3>Class Certifications &amp; Loadout Kit</h3>
-          <div class="bq-progress-grid" data-certifications></div>
-        </div>
-        <div class="bq-progress-section">
-          <h3>Personal High Scores (Top 3)</h3>
-          <div class="bq-progress-grid" data-highscores></div>
+          <div class="bq-progress-stat"><b data-achievements-unlocked>0 / 9</b><span>achievements unlocked</span></div>
         </div>
         <div class="bq-progress-section">
           <h3>Achievements</h3>
@@ -234,57 +219,17 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
   `;
   document.body.appendChild(overlay);
 
-  const classAccents: Record<string, string> = {
-    SPEEDSTER: '#00FFFF',
-    TANK: '#FFD700',
-    SABOTEUR: '#FF1493',
-    SUPPORT: '#00FF88',
-  };
-
   const refresh = () => {
+    const allAchievements = store.getAchievements();
+    const unlockedCount = allAchievements.filter(a => a.unlocked).length;
     (overlay.querySelector('[data-points]') as HTMLElement).textContent = store.points.toLocaleString();
     (overlay.querySelector('[data-wins]') as HTMLElement).textContent = String(store.wins);
     (overlay.querySelector('[data-matches]') as HTMLElement).textContent = String(store.matches);
-    const certCount = getCertifiedClasses().length;
-    (overlay.querySelector('[data-certified]') as HTMLElement).textContent = `${certCount} / 4`;
-
-    const certGrid = overlay.querySelector<HTMLElement>('[data-certifications]');
-    if (certGrid) {
-      certGrid.innerHTML = PLAYER_CLASSES.map(cls => {
-        const certified = isClassCertified(cls.id);
-        const accent = classAccents[cls.id] || '#00e5ff';
-        return `
-          <article class="bq-progress-card ${certified ? '' : 'locked'}" style="${certified ? `border-color:${accent}66` : ''}">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-              <h4 style="color:${accent}">${cls.name}</h4>
-              <small style="color:${certified ? '#00ff88' : '#9da6c8'}">${certified ? '★ CERTIFIED' : 'UNCERTIFIED'}</small>
-            </div>
-            <p>[Q] ${cls.abilityQName} · [E] ${cls.abilityEName} · [R] ${cls.ultimateName}</p>
-          </article>
-        `;
-      }).join('');
-    }
-
-    const highScoresGrid = overlay.querySelector<HTMLElement>('[data-highscores]');
-    if (highScoresGrid) {
-      highScoresGrid.innerHTML = PROFILE_HIGHSCORE_MODES.map(mode => {
-        const scores = getTopScores(mode.key);
-        const rows = [0, 1, 2].map(i => {
-          const entry = scores[i];
-          if (!entry) return `<div style="display:flex;justify-content:space-between;font-size:.7rem;color:#6b7280;padding:2px 0"><span>#${i + 1}</span><span>No score yet</span></div>`;
-          return `<div style="display:flex;justify-content:space-between;font-size:.72rem;color:#eef2ff;padding:2px 0"><span>#${i + 1}</span><strong>${entry.score.toLocaleString()} <span style="color:#9da6c8;font-weight:600">(${entry.lines}L)</span></strong></div>`;
-        }).join('');
-        return `
-          <article class="bq-progress-card">
-            <h4 style="color:${mode.accent};margin-bottom:6px">${mode.label}</h4>
-            ${rows}
-          </article>
-        `;
-      }).join('');
-    }
+    const unlockedEl = overlay.querySelector('[data-achievements-unlocked]') as HTMLElement | null;
+    if (unlockedEl) unlockedEl.textContent = `${unlockedCount} / ${allAchievements.length}`;
 
     const achievements = overlay.querySelector<HTMLElement>('[data-achievements]')!;
-    achievements.innerHTML = store.getAchievements().map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4>${item.unlocked ? '◆ ' : '◇ '}${item.title}</h4><p>${item.description}</p><small>${item.unlocked ? `UNLOCKED · +${item.reward} PTS` : `REWARD · +${item.reward} PTS`}</small></article>`).join('');
+    achievements.innerHTML = allAchievements.map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4>${item.unlocked ? '◆ ' : '◇ '}${item.title}</h4><p>${item.description}</p><small>${item.unlocked ? `UNLOCKED · +${item.reward} PTS` : `REWARD · +${item.reward} PTS`}</small></article>`).join('');
     const cosmetics = overlay.querySelector<HTMLElement>('[data-cosmetics]')!;
     cosmetics.innerHTML = store.getCosmetics().map(item => `<article class="bq-progress-card ${item.unlocked ? '' : 'locked'}"><h4 style="color:${item.accent}">${item.name}</h4><p>${item.description}</p><small>${item.unlocked ? (item.equipped ? 'EQUIPPED' : 'UNLOCKED') : `${item.cost} PTS`}</small><br><button class="bq-progress-btn" data-cosmetic="${item.id}">${item.unlocked ? (item.equipped ? 'UNEQUIP' : 'EQUIP') : 'UNLOCK'}</button></article>`).join('');
     cosmetics.querySelectorAll<HTMLButtonElement>('[data-cosmetic]').forEach(button => button.addEventListener('click', () => {
@@ -306,8 +251,6 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
   };
 
   store.onRefreshNeeded = refresh;
-  window.addEventListener('highScoresUpdated', refresh);
-  window.addEventListener('tutorialProgressUpdated', refresh);
 
   const report = (input: MatchProgressionInput) => { const result = store.recordMatch(input); if (result.earned > 0) showToast(`+${result.earned} customization points earned`, 'reward'); for (const achievement of result.achievements) setTimeout(() => showToast(`Achievement unlocked: ${achievement.title}`, 'reward'), 300); refresh(); return result; };
   const closeOverlay = () => { overlay.classList.remove('open'); overlay.style.display = 'none'; };

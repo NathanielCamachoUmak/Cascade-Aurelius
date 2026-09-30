@@ -3,6 +3,7 @@ import './style.css'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountProgression, type ProgressionController } from './Progression'
+import { mountStatistics } from './Statistics'
 import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
 import { isTutorialCompleted, getCertifiedClasses } from './TutorialManager'
@@ -42,10 +43,17 @@ const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
 const navProfile = document.getElementById('nav-profile');
+const navStatistics = document.getElementById('nav-statistics');
 const navSettings = document.getElementById('nav-settings');
 
 mountAuth();
-if (navProfile) mountProgression(navProfile);
+let progression: ProgressionController | null = null;
+if (navProfile) {
+  progression = mountProgression(navProfile);
+}
+if (navStatistics && progression) {
+  mountStatistics(navStatistics, progression.store);
+}
 if (navSettings) mountSettings(navSettings);
 
 // Attach Top 3 Highest Score hover popups to Solo & Bot mode cards
@@ -58,7 +66,7 @@ let pendingMode: ModeType = null;
 let onlineModeId: OnlineModeId = ONLINE_GAME_MODES[0].id;
 
 function updateNavHighlight(activeId: string) {
-  const ids = ['nav-menu', 'nav-modes', 'nav-lobby', 'nav-settings', 'nav-profile'];
+  const ids = ['nav-menu', 'nav-modes', 'nav-lobby', 'nav-statistics', 'nav-settings', 'nav-profile'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
