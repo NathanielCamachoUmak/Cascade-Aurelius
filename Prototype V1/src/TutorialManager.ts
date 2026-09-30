@@ -17,6 +17,29 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK_SIZE = 30;
 const PLAYER_COLOR = '#00E5FF';
+const TUTORIAL_STORAGE_KEY = 'cascade_completed_tutorials_v1';
+
+export function isTutorialCompleted(tutorialId: string): boolean {
+  try {
+    const raw = localStorage.getItem(TUTORIAL_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return Boolean(parsed && parsed[tutorialId]);
+  } catch {
+    return false;
+  }
+}
+
+export function markTutorialCompleted(tutorialId: string): void {
+  try {
+    const raw = localStorage.getItem(TUTORIAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    parsed[tutorialId] = true;
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 // Deterministic sequence for Stage 1 so every run is predictable:
 // 1: T (Move + Soft Drop), 2: I (Hard Drop), 3: L (Rotate), 4: O (Hold), 5: J (Drop first), then S (Swap Hold)
@@ -194,7 +217,7 @@ export class TutorialManager {
     });
     panel.querySelector('#tut-btn-exit')?.addEventListener('click', () => {
       this.stop();
-      window.location.href = 'modeselect.html';
+      window.location.href = 'modeselect.html?screen=tutorial';
     });
 
     // Conclusion Modal
@@ -242,7 +265,7 @@ export class TutorialManager {
             Replay Stage 1
           </button>
           <button id="tut-modal-done" type="button" class="flex-1 px-4 py-3 rounded-lg bg-neon-cyan text-deep-purple text-xs font-bold tracking-widest uppercase hover:brightness-110 shadow-[0_0_20px_rgba(0,229,255,0.3)] transition-all cursor-pointer">
-            Back to Modes
+            Back to Tutorials
           </button>
         </div>
       </div>
@@ -257,7 +280,7 @@ export class TutorialManager {
     });
     modal.querySelector('#tut-modal-done')?.addEventListener('click', () => {
       this.stop();
-      window.location.href = 'modeselect.html';
+      window.location.href = 'modeselect.html?screen=tutorial';
     });
   }
 
@@ -807,6 +830,7 @@ export class TutorialManager {
   }
 
   private showConclusionModal() {
+    markTutorialCompleted('cascade-basics');
     if (!this.conclusionModal) return;
     this.conclusionModal.classList.remove('hidden');
     this.conclusionModal.classList.add('flex');

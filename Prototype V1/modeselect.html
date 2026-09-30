@@ -440,6 +440,129 @@
           </div>
         </div>
 
+        <!-- ───── Screen: Tutorial Menu ───── -->
+        <div id="screen-tutorial-menu" class="hidden flex-col items-center w-full max-w-4xl px-4 relative z-10">
+          <div class="mb-6 text-center">
+            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">TRAINING SYSTEM</h2>
+            <h1 class="text-3xl md:text-4xl font-bold">Select a Tutorial</h1>
+            <p class="text-gray-400 text-sm mt-2 uppercase tracking-wider">Master the basics and competitive game modes</p>
+          </div>
+
+          <!-- Scrollable Tutorial List -->
+          <div class="w-full max-h-[52vh] overflow-y-auto pr-2 space-y-6 mb-8">
+            <!-- Section: Cascade Basics -->
+            <div class="space-y-3">
+              <div class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-cyan px-1">Cascade Basics</div>
+
+              <!-- Row: Cascade Basics (Stage 1-4) -->
+              <div class="bg-card-bg/70 backdrop-blur-md border-2 border-card-border hover:border-neon-cyan/60 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2.5 mb-1">
+                    <h3 class="text-lg font-bold text-white">Cascade Basics</h3>
+                    <span class="border border-neon-cyan/50 text-neon-cyan text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">STAGE 1–4</span>
+                  </div>
+                  <p class="text-gray-400 text-xs">The Stage 1–4 basic tutorial of the game: movement, soft &amp; hard drop, rotation, and holding blocks.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <button id="btn-start-basics-tutorial" type="button" class="px-6 py-2.5 bg-neon-cyan text-deep-purple font-bold text-xs tracking-widest uppercase rounded-lg transition-all duration-200 hover:brightness-110 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+                    START
+                  </button>
+                  <div id="status-basics-tutorial" class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                    NOT COMPLETED
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section: Mode Tutorials -->
+            <div class="space-y-3">
+              <div class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-pink px-1">Mode Tutorials</div>
+
+              <!-- Row: 1v1 Tutorial -->
+              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2.5 mb-1">
+                    <h3 class="text-lg font-bold text-white">1v1 Tutorial</h3>
+                    <span class="border border-neon-yellow/50 text-neon-yellow text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">DUEL</span>
+                  </div>
+                  <p class="text-gray-400 text-xs">Head-to-head block battles, sending garbage lines, and defensive counterplay.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                    START
+                  </button>
+                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                    NOT COMPLETED
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row: FFA Tutorial -->
+              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2.5 mb-1">
+                    <h3 class="text-lg font-bold text-white">FFA Tutorial</h3>
+                    <span class="border border-neon-green/50 text-neon-green text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">4 PLAYER</span>
+                  </div>
+                  <p class="text-gray-400 text-xs">Free-For-All multi-opponent targeting, survival, and scoreboard pressure.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                    START
+                  </button>
+                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                    NOT COMPLETED
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row: TDM (Team Deathmatch) Tutorial -->
+              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2.5 mb-1">
+                    <h3 class="text-lg font-bold text-white">TDM (Team Deathmatch) Tutorial</h3>
+                    <span class="border border-neon-cyan/50 text-neon-cyan text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">3V3 TEAM</span>
+                  </div>
+                  <p class="text-gray-400 text-xs">Team coordination, shared Cyan vs. Magenta score races, and timed match rules.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                    START
+                  </button>
+                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                    NOT COMPLETED
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row: Battle Royale Tutorial -->
+              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2.5 mb-1">
+                    <h3 class="text-lg font-bold text-white">Battle Royale Tutorial</h3>
+                    <span class="border border-neon-pink/50 text-neon-pink text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">SURVIVAL</span>
+                  </div>
+                  <p class="text-gray-400 text-xs">Large-lobby survival, K.O. recoveries, phase eliminations, and sudden death.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                    START
+                  </button>
+                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                    NOT COMPLETED
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col items-center gap-4">
+            <button id="btn-tutorial-menu-back" class="px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-gray-400 hover:scale-105 cursor-pointer">
+              &lt; BACK
+            </button>
+          </div>
+        </div>
+
 
         </div>
       </div>

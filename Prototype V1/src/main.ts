@@ -5,10 +5,12 @@ import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './O
 import { mountProgression, type ProgressionController } from './Progression'
 import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
+import { isTutorialCompleted } from './TutorialManager'
 
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
 const screenSoloOptions = document.getElementById('screen-solo-options')!;
+const screenTutorialMenu = document.getElementById('screen-tutorial-menu');
 function getOrCreateOnlineModeSelectScreen() {
   const existing = document.getElementById('screen-online-mode-select');
   if (existing) return existing;
@@ -28,6 +30,9 @@ const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnHowToPlay = document.getElementById('btn-how-to-play')!;
 const btnSoloHowToPlay = document.getElementById('btn-solo-how-to-play');
+const btnStartBasicsTutorial = document.getElementById('btn-start-basics-tutorial');
+const statusBasicsTutorial = document.getElementById('status-basics-tutorial');
+const btnTutorialMenuBack = document.getElementById('btn-tutorial-menu-back');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
 const btnPlayOnline = document.getElementById('btn-play-online')!;
@@ -62,6 +67,34 @@ function bootGame(config: any) {
   window.location.href = 'lobby.html';
 }
 
+function refreshTutorialMenuStatuses() {
+  const completed = isTutorialCompleted('cascade-basics');
+  if (btnStartBasicsTutorial) {
+    btnStartBasicsTutorial.textContent = completed ? 'REPLAY' : 'START';
+  }
+  if (statusBasicsTutorial) {
+    if (completed) {
+      statusBasicsTutorial.textContent = '✓ COMPLETED';
+      statusBasicsTutorial.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+    } else {
+      statusBasicsTutorial.textContent = 'NOT COMPLETED';
+      statusBasicsTutorial.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
+    }
+  }
+}
+
+function openTutorialMenu() {
+  refreshTutorialMenuStatuses();
+  screenMain.classList.remove('flex');
+  screenMain.classList.add('hidden');
+  screenSoloOptions.classList.remove('flex');
+  screenSoloOptions.classList.add('hidden');
+  if (screenTutorialMenu) {
+    screenTutorialMenu.classList.remove('hidden');
+    screenTutorialMenu.classList.add('flex');
+  }
+}
+
 btnSolo.addEventListener('click', () => {
   screenMain.classList.remove('flex');
   screenMain.classList.add('hidden');
@@ -74,8 +107,30 @@ btnSoloGame.addEventListener('click', () => {
 });
 
 btnSoloTutorial.addEventListener('click', () => {
-  bootGame({ mode: 'TUTORIAL', stage: 1 });
+  openTutorialMenu();
 });
+
+if (btnStartBasicsTutorial) {
+  btnStartBasicsTutorial.addEventListener('click', () => {
+    bootGame({ mode: 'TUTORIAL', stage: 1 });
+  });
+}
+
+if (btnTutorialMenuBack) {
+  btnTutorialMenuBack.addEventListener('click', () => {
+    if (screenTutorialMenu) {
+      screenTutorialMenu.classList.remove('flex');
+      screenTutorialMenu.classList.add('hidden');
+    }
+    screenSoloOptions.classList.remove('hidden');
+    screenSoloOptions.classList.add('flex');
+  });
+}
+
+// Automatically open the Tutorial Menu if navigated back with ?screen=tutorial
+if (new URLSearchParams(window.location.search).get('screen') === 'tutorial') {
+  openTutorialMenu();
+}
 
 btnEasyBot.addEventListener('click', () => {
   bootGame({ mode: 'VS_BOT', botDifficulty: 'EASY' });
