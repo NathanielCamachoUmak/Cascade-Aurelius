@@ -52,13 +52,7 @@ export async function mountAuth() {
     modal.classList.remove('hidden');
   });
 
-  const testSuccessBtn = document.getElementById('btn-test-success');
-  if (testSuccessBtn) {
-    testSuccessBtn.addEventListener('click', () => {
-      showToast('Registration successful! Please check your email.', 'success');
-      modal.classList.add('hidden');
-    });
-  }
+  
 
   btnClose.addEventListener('click', () => {
     modal.classList.add('hidden');
