@@ -1282,23 +1282,17 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  // 5. Shield Block [S] / Fortify Defensive Aura & Deflection Flash
+  // 5. Shield Block [S] / Fortify Defensive Border & Deflection Flash
   if (player.shieldActive || player.fortifyCharges > 0 || player.shieldDeflectTimer > 0) {
     tCtx.save();
-    const pulse = 0.55 + 0.45 * Math.sin(performance.now() * 0.008);
     const isDeflecting = player.shieldDeflectTimer > 0;
-    const alpha = isDeflecting ? Math.min(1, player.shieldDeflectTimer / 450) : 0.75 * pulse;
+    const pulseAlpha = isDeflecting ? 0.9 : 0.45 + Math.sin(performance.now() * 0.012) * 0.3;
 
-    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : '#00FF88';
-    tCtx.lineWidth = isDeflecting ? 5 : 3.5;
+    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : `rgba(0, 255, 136, ${pulseAlpha})`;
+    tCtx.lineWidth = isDeflecting ? 6 : 5;
     tCtx.shadowColor = '#00FF88';
-    tCtx.shadowBlur = isDeflecting ? 28 : 16;
-    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardPixelW - 4, boardPixelH - 4);
-
-    tCtx.fillStyle = isDeflecting
-      ? `rgba(0, 255, 136, ${alpha * 0.25})`
-      : `rgba(0, 255, 136, ${alpha * 0.08})`;
-    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.shadowBlur = isDeflecting ? 26 : 18;
+    tCtx.strokeRect(offsetX + 3, offsetY + 3, boardPixelW - 6, boardPixelH - 6);
     tCtx.restore();
   }
 
