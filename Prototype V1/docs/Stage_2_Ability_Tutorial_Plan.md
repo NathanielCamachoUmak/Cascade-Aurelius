@@ -1,135 +1,81 @@
-# Cascade: Stage 2 Per-Class Ability Tutorial Implementation Plan
+# Cohesive Class-Specific Tutorial Implementation Plan (Stage 2)
 
-This document outlines the technical implementation for the **Stage 2: Classes & Abilities Tutorial**, where **each of the 4 classes has its own dedicated, scenario-based "Problem-Solution" tutorial** covering its complete kit (**Passive → `[Q]` Ability → `[E]` Ability → `[R]` Ultimate**).
-
----
-
-## Overview & Entry Flow
-
-1. **Launching Stage 2 from the Tutorial Menu ([modeselect.html](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/modeselect.html))**:
-   - Clicking **START / REPLAY** on **Stage 2 (`CLASSES & ABILITIES`)** opens the **Choose Your Class (Loadout) Modal** ([`showClassSelectModal`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/ClassSelectModal.ts)).
-   - Each class card in the modal displays whether that class's tutorial has been completed (`✓ COMPLETED` or `NOT COMPLETED`).
-   - Confirming a class launches `lobby.html` into that specific class's 4-step interactive tutorial (`bootGame({ mode: 'TUTORIAL', stage: 2, tutorialClass: classId })`).
-2. **Per-Class Completion Tracking (`localStorage`)**:
-   - Individual completion keys:
-     - `basics-stage-2-SPEEDSTER`
-     - `basics-stage-2-TANK` (Sentinel)
-     - `basics-stage-2-SABOTEUR`
-     - `basics-stage-2-SUPPORT`
-   - The Stage 2 row in the Tutorial Menu displays overall progress (`0 / 4 COMPLETED`, `1 / 4 COMPLETED`, ..., `✓ 4 / 4 COMPLETED`) and marks `basics-stage-2` complete once all 4 classes are mastered.
-3. **Conclusion Modal Options**:
-   - Upon finishing a class's 4-step tutorial, the conclusion modal shows:
-     - Which classes are completed (`X / 4 Classes Mastered`)
-     - **Next Unfinished Class** / **Choose Another Class** button (re-opens the Class Select Modal right away)
-     - **Replay This Class** button
-     - **Back to Tutorials** button
+This document outlines the step-by-step technical implementation for the scenario-based "Problem-Solution" tutorials for **Stage 2: Class Certifications**. It prioritizes the class-specific progression flow while seamlessly integrating engine-level architectural requirements.
 
 ---
 
-## Phase 1: Engine Preparation & The "Dummy Board"
-To teach offensive, defensive, and AoE abilities effectively, the player must see the consequences of their actions on an opponent.
+## Phase 1: Engine Architecture & State Management
+To teach abilities effectively without risking live-server interference, we establish a localized, highly controlled sandbox environment.
 
-* **Task 1.1: Dummy Grid Instantiation**
-  * Instantiate a secondary, non-playable 10×20 grid alongside the player's main HTML5 Canvas grid (`GameManager.initTutorialWithDummy` / `TutorialManager`).
-  * Set the Dummy Grid's input listener to `null` (frozen) so the local player cannot control it.
-* **Task 1.2: Scripted AI / Dummy States**
-  * Use [`Grid.loadPresetMatrix`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/Grid.ts#L314-L330) to load pre-configured 2D arrays (static block arrangements) or restricted AI states for each class scenario.
-* **Task 1.3: Targeting System Override**
-  * Force the player's $O(1)$ Circular Linked List targeting pointer (`selectedTargetIndex = 1`) to lock exclusively onto the Dummy Board during the `TUTORIAL` state.
+### 1.1 Dummy Grid Instantiation & Targeting
+* **Headless Grid Creation:** [`GameManager.ts`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/GameManager.ts) and [`TutorialManager.ts`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/TutorialManager.ts) spawn secondary, non-playable 10×20 HTML5 Canvas grids ("Dummy Opponents" or "Ally Dummy").
+* **Input & Network Isolation:** Set the dummy grid's input listener to `null` (frozen). Explicitly disconnect tutorial instances from the `Socket.io` network loop so tutorial actions never emit live server broadcasts.
+* **Targeting Override:** Force the player's $O(1)$ Circular Linked List targeting pointer (`selectedTargetIndex = 1`) to lock exclusively onto the active Dummy Board(s) during the tutorial.
 
----
-
-## Phase 2–4: Per-Class 4-Step Curriculum (Passive → `[Q]` → `[E]` → `[R]`)
-
-### Class 1: Speedster (`SPEEDSTER`)
-1. **Step 1 — Passive Drill (`Speed Block [V] Guarantee`)**:
-   * **Setup:** Player's board is pre-stacked with a 4-row Tetris well (Column 10 open). Provide an `I`-piece.
-   * **Action (Part A):** Rotate and drop the `I`-piece into Column 10 to clear a **4-line Tetris**.
-   * **Action (Part B):** Clearing the Tetris intercepts the RNG and forces a **Speed Block (`V`)** onto the next `I`-piece. Clear the single-row setup containing `[V]`.
-   * **Resolution:** Triggers the **Speed Block (`V`)**, slowing piece drop rate by **25%**.
-2. **Step 2 — `[Q]` Sprint (Targeted Offense)**:
-   * **Setup:** Dummy Board is active on the right (`TARGET LOCKED`) with pieces dropping at normal speed.
-   * **Action:** eFSM Guard prompts **`[Q]` Sprint**.
-   * **Resolution:** The Dummy Board's **current piece and next 3 pieces** drop **50% faster**, visually forcing rapid drops on the Dummy Board.
-3. **Step 3 — `[E]` Time Warp (The Clutch Crisis)**:
-   * **Setup:** Temporarily alter the player's Dynamic Gravity System to maximum speed (`55ms` drop interval) with a 4-cell gap on the bottom row.
-   * **Action:** eFSM Guard requires pressing **`[E]` Time Warp** first, then sliding the `I`-piece into the right-hand gap and clearing the line.
-   * **Resolution:** Cuts drop speed by **50% for 6 seconds**, allowing the player to safely place the piece.
-4. **Step 4 — `[R]` Bullet Time (3-Dummy AoE Sandbox)**:
-   * **Setup:** Instantiate **three miniature Dummy Boards** (`DUMMY ALPHA`, `DUMMY BETA`, `DUMMY GAMMA`) and pre-fill the player's Ultimate meter (`40 / 40 LINES`).
-   * **Action:** eFSM Guard prompts **`[R]` Bullet Time**.
-   * **Resolution:** Freezes **all 3 Dummy Boards** in place (`QUICKSILVER` effect) for **5 seconds** while the player continues playing. Marks `basics-stage-2-SPEEDSTER` complete.
+### 1.2 State Overrides & AI Injections
+* **`TUTORIAL` / `TUTORIAL_ACTIVE` State:** Inject the tutorial overarching state into the Extended Finite State Machine (eFSM). This state disables standard game-over conditions, bypasses standard ability cooldowns when transitioning steps, and grants full ultimate charge when dictated by the script.
+* **eFSM Guard Conditions:** Utilize eFSM guards to pause tutorial progression until the exact required keystroke (`[Q]`, `[E]`, `[R]`) or line-clear condition is captured.
+* **Scripted Engine Injections:**
+  * Accept automated, scripted garbage queues via the Command Query Responsibility Segregation (CQRS) queue.
+  * Allow the engine to override the standard Dynamic Gravity multiplier temporarily (e.g., `55ms` instant drop rate for Speedster Step 2).
+  * Populate dummy boards using either restricted Pierre Dellacherie AI or pre-configured static 2D arrays via [`Grid.loadPresetMatrix`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/Grid.ts#L314-L330).
 
 ---
 
-### Class 2: Sentinel (`TANK`)
-1. **Step 1 — Passive Drill (`Shield Block [S] Guarantee`)**:
-   * **Setup:** Pre-stacked 4-row Tetris well (Column 10 open) + `I`-piece.
-   * **Action (Part A):** Drop the `I`-piece into Column 10 to clear a **4-line Tetris**.
-   * **Action (Part B):** Clearing the Tetris forces a **Shield Block (`S`)** onto the next piece. Clear the single-row setup containing `[S]`.
-   * **Resolution:** Activates `SHIELD ACTIVE`, automatically blocking an incoming garbage attack from the Dummy Board.
-2. **Step 2 — `[Q]` Fortify (Multi-Attack Absorption)**:
-   * **Setup:** Queue **2 consecutive incoming garbage attacks** (`Attack 1: 4 Lines`, `Attack 2: 4 Lines`) from the Dummy Board.
-   * **Action:** eFSM Guard prompts **`[Q]` Fortify**.
-   * **Resolution:** Grants **2 Fortify charges** (`fortifyCharges = 2`), absorbing and nullifying both incoming garbage attacks back-to-back.
-3. **Step 3 — `[E]` Counter Strike (The Defense Crisis)**:
-   * **Setup:** Freeze the player's grid and queue an unavoidable **10-line garbage attack** via the CQRS queue.
-   * **Action:** eFSM Guard prompts **`[E]` Counter Strike**.
-   * **Resolution:** Intercepts the 10-line garbage attack, applies the reflector, and visually bounces all **10 lines of garbage** onto the Dummy Board.
-4. **Step 4 — `[R]` Earthquake (3-Dummy AoE Sandbox)**:
-   * **Setup:** Instantiate **three miniature Dummy Boards** and pre-fill the player's Ultimate meter (`50 / 50 LINES`).
-   * **Action:** eFSM Guard prompts **`[R]` Earthquake**.
-   * **Resolution:** Simultaneously sends **+4 lines of garbage** to **all 3 Dummy Boards** with screen shake. Marks `basics-stage-2-TANK` complete.
+## Phase 2: Bridging Mechanics (The Passives Drill)
+Before introducing active abilities, the engine bridges the gap between basic controls and class mechanics using forced RNG resolutions. This applies to **Step 1** of Speedster, Sentinel, and Saboteur (while Support begins with a 18-line garbage survival setup and conversion).
+
+* **The Tetris Trigger:** Spawn the player into a board pre-stacked with a "well" (Column 10 open) requiring only a single `I`-piece to clear a Tetris. The engine provides the `I`-piece.
+* **Forced Resolution:** Upon clearing the Tetris, the engine intercepts the RNG and forces the queue to drop the player's class-specific Special Block (`Speed [V]`, `Shield [S]`, or `Freeze [F]`).
+* **Demonstration:** The player clears a single line containing this Special Block to visually trigger its baseline passive effect.
 
 ---
 
-### Class 3: Saboteur (`SABOTEUR`)
-1. **Step 1 — Passive Drill (`Freeze Block [F] Guarantee`)**:
-   * **Setup:** Pre-stacked 4-row Tetris well (Column 10 open) + `I`-piece.
-   * **Action (Part A):** Drop the `I`-piece into Column 10 to clear a **4-line Tetris**.
-   * **Action (Part B):** Clearing the Tetris forces a **Freeze Block (`F`)** onto the next piece. Clear the single-row setup containing `[F]`.
-   * **Resolution:** Triggers **Ability Freeze (`3.0s`)**, locking the Dummy Board's abilities (`[Q]`, `[E]`, `[R]`).
-2. **Step 2 — `[Q]` Scramble (Queue Disruption)**:
-   * **Setup:** Dummy Board has an upcoming preview queue of clean `I`-pieces (`[I, I, I, I, I]`). Targeting pointer is locked onto the Dummy Board.
-   * **Action:** eFSM Guard prompts **`[Q]` Scramble**.
-   * **Resolution:** Scrambles the Dummy's **next 5 upcoming pieces** into randomized shapes (`Z`, `S`, `J`, `L`, `T`).
-3. **Step 3 — `[E]` Grid Shift (The Disruption Crisis)**:
-   * **Setup:** Load a static 2D array for the Dummy Board showing a **perfect 4-line Tetris well** in Column 10, with the Dummy about to drop its vertical `I`-piece.
-   * **Action:** eFSM Guard prompts **`[E]` Grid Shift** *(marks `[E]` as `USED (1/MATCH)`)*.
-   * **Resolution:** Shifts the Dummy's board by **2 columns**, misaligning their well so their `I`-piece misdrops onto the stack.
-4. **Step 4 — `[R]` Chaos Mode (3-Dummy AoE + Grid Shift Reset)**:
-   * **Setup:** Instantiate **three miniature Dummy Boards** while `[E] Grid Shift` remains `USED (1/MATCH)`. Pre-fill the player's Ultimate meter (`35 / 35 LINES`).
-   * **Action:**
-     1. eFSM Guard prompts **`[R]` Chaos Mode** (reverses controls on all 3 Dummy Boards for **8 seconds** **AND resets `[E] Grid Shift`**!).
-     2. Prompt the player to press **`[E]` Grid Shift** again to verify the reset!
-   * **Resolution:** Demonstrates both the 3-Dummy AoE control reversal and the `[E] Grid Shift` reset. Marks `basics-stage-2-SABOTEUR` complete.
+## Phase 3: The Certification Scenarios (Per-Class 4-Step Flow)
+Each class has its own 4-step certification tutorial selected via the **Choose Your Class (Loadout) Modal**.
+
+### 1. Speedster Certification (`SPEEDSTER`)
+**Objective:** Teach players to survive high-speed drops and weaponize tempo.
+* **Step 1 (Passive):** Player executes the Passives Drill (Tetris Trigger → Forced **Speed Block (`V`)**). Clearing the line containing the Speed Block (`V`) reduces baseline drop speed by **25%**.
+* **Step 2 (Survival / The Clutch — `[E] Time Warp`):** The engine overrides Dynamic Gravity, accelerating the player's drop speed to an unmanageable rate (`55ms`). The UI prompts **`[E] Time Warp`**. Pressing `E` cuts drop speed by **50% for 6 seconds**, allowing safe placement of the `I`-piece to clear the line.
+* **Step 3 (Offense — `[Q] Sprint`):** A Dummy Board spawns with active falling pieces. The UI prompts **`[Q] Sprint`**. Pressing `Q` causes the dummy's current and next 3 pieces to slam down **50% faster**.
+* **Step 4 (Ultimate / AoE — `[R] Bullet Time`):** The engine spawns **3 miniature Dummy Boards** and maxes the player's FSM Ultimate meter (`40 / 40 LINES`). The player activates **`[R] Bullet Time`**, visually freezing all three dummies completely for **5 seconds** while the player scores a free **4-line Tetris** in a pre-stacked well!
+
+### 2. Sentinel (Tank) Certification (`TANK`)
+**Objective:** Teach players defensive mitigation and counter-attacking.
+* **Step 1 (Passive):** Player executes the Passives Drill (Tetris Trigger → Forced **Shield Block (`S`)**). Clearing the line containing the Shield Block (`S`) arms a shield that absorbs a minor, scripted garbage attack from the Dummy Board.
+* **Step 2 (Survival / The Defense — `[Q] Fortify`):** The player's grid is frozen. The CQRS system queues a massive, unavoidable **10-line garbage attack** (split across 2 incoming salvos). The UI prompts **`[Q] Fortify`**. The player gains **2 FSM immunity charges**, completely blocking the lethal damage.
+* **Step 3 (Offense — `[E] Counter Strike`):** A subsequent **10-line garbage attack** is queued. The UI prompts **`[E] Counter Strike`**. The eFSM intercepts the garbage, applies the reflector arming visual, and bounces all 10 lines directly back onto the Dummy Opponent.
+* **Step 4 (Ultimate / AoE — `[R] Earthquake`):** **3 miniature Dummy Boards** spawn and the Ultimate meter is maxed (`50 / 50 LINES`). The player triggers **`[R] Earthquake`**, dropping **4 raw lines of garbage** onto all three dummy boards simultaneously.
+
+### 3. Saboteur Certification (`SABOTEUR`)
+**Objective:** Teach players disruption, misdirection, and targeting.
+* **Step 1 (Passive):** Player executes the Passives Drill (Tetris Trigger → Forced **Freeze Block (`F`)**). Clearing the line containing the Freeze Block (`F`) visually locks the Dummy Board's UI abilities (`[Q]`, `[E]`, `[R]`) for **3 seconds**.
+* **Step 2 (Interception — `[Q] Scramble`):** The Dummy Board loads a static 2D array showing a perfect 4-line well with an `"I"` block queued in its preview. The UI prompts **`[Q] Scramble`**, which shuffles the dummy's next 5 upcoming pieces into awkward shapes, ruining their Tetris clear.
+* **Step 3 (Offense / The Disruption — `[E] Grid Shift`):** The Dummy Board sets up a new well with an `"I"` piece poised above Column 10. The UI prompts **`[E] Grid Shift`**. The engine shifts the dummy's 2D array **2 columns over**, misaligning their stack so the piece misdrops.
+* **Step 4 (Ultimate / AoE — `[R] Chaos Mode`):** **3 miniature Dummy Boards** spawn and the Ultimate meter is maxed (`35 / 35 LINES`). The player triggers **`[R] Chaos Mode`**, reversing all 3 dummies' piece rotations and horizontal movements for **8 seconds** and resetting `[E] Grid Shift`!
+
+### 4. Support Certification (`SUPPORT`)
+**Objective:** Teach players resource conversion and recovery from behind.
+* **Step 1 (Survival & Conversion — `[Q] Recycle`):**
+  * **Setup:** The player spawns onto a board pre-filled with **18 lines of raw garbage** (critical danger state).
+  * **Action:** The UI prompts **`[Q] Recycle`**. Pressing `Q` converts the top 4 garbage lines into usable **Special Blocks** (`Bomb [B]`, `Heavy [W]`, `Multiplier [X]`, `Garbage Eater [G]`), and the player drops a piece to trigger the converted Special Blocks and stabilize the board!
+* **Step 2 (Passive — `Tetris Garbage Conversion`):**
+  * **Setup:** Pre-stacked 4-row Tetris well in Column 10 + `I`-piece.
+  * **Action:** Clear the 4-line Tetris to arm Support's passive (`supportPassiveConversion`), automatically converting the Dummy's next incoming garbage attack into Special Blocks.
+* **Step 3 (Offense — `[E] Perfect Clear Bonus`):**
+  * **Setup:** The board is set up for an all-clear (4 simple scripted pieces away from an empty grid).
+  * **Action:** The player activates **`[E] Perfect Clear Bonus`** (starting the **15-second timer**) and places the scripted pieces to achieve an **All-Clear**, triggering **+4 Bonus Lines** and charging the Ultimate meter to full (`45 / 45 LINES`).
+* **Step 4 (Ultimate / The Rescue — `[R] Guardian Angel`):**
+  * **Setup:** An **"Ally" Dummy Board** spawns on the right, 18 lines high (one block away from topping out!).
+  * **Action:** With the targeting pointer locked onto the Ally Dummy Board, the player activates **`[R] Guardian Angel`**, instantly clearing the ally's **bottom 4 lines** to demonstrate team-saving utility!
 
 ---
 
-### Class 4: Support (`SUPPORT`)
-1. **Step 1 — Passive Drill (`Incoming Garbage Conversion`)**:
-   * **Setup:** Pre-stacked 4-row Tetris well (Column 10 open) + `I`-piece.
-   * **Action:** Drop the `I`-piece into Column 10 to clear a **4-line Tetris**.
-   * **Resolution:** Arms Support's passive (`supportPassiveConversion = true`). When the Dummy Board sends a 3-line garbage attack, the incoming garbage lines automatically transform into **Special Blocks (`B`, `W`, `X`, `S`, `F`, `G`)** on the player's board!
-2. **Step 2 — `[Q]` Recycle (Board Garbage Conversion & Ally Targeting)**:
-   * **Setup:** Player's board has **4 lines of grey garbage** at the bottom.
-   * **Action:** eFSM Guard prompts **`[Q]` Recycle**.
-   * **Resolution:** Converts **4 garbage blocks/lines** on the board into **Special Blocks** (and highlights that in 3v3 Team Deathmatch, `Recycle` can target allies).
-3. **Step 3 — `[E]` Perfect Clear Bonus (All-Clear Window)**:
-   * **Setup:** Player's board has a single bottom row with 6 filled cells (`columns 0–5`) and 4 open cells (`columns 6–9`), plus a horizontal `I`-piece. Clearing this single row leaves the entire grid **100% empty**.
-   * **Action:**
-     1. eFSM Guard prompts **`[E]` Perfect Clear Bonus** first (opening the **15-second Perfect Clear Window**).
-     2. Slide the horizontal `I`-piece into `columns 6–9` and press `SPACEBAR` to achieve a **Perfect Clear**!
-   * **Resolution:** Awards **+4 Bonus Lines** and **+4 Ultimate Meter** upon emptying the grid within the window.
-4. **Step 4 — `[R]` Guardian Angel (The Rescue Crisis)**:
-   * **Setup:** Spawn the player on a board pre-filled with **18 lines of garbage** (critical danger state) with the Ultimate meter pre-filled (`45 / 45 LINES`).
-   * **Action:** eFSM Guard prompts **`[R]` Guardian Angel**.
-   * **Resolution:** Instantly clears the **bottom 4 lines** of the board, rescuing the player from top-out. Marks `basics-stage-2-SUPPORT` complete.
-
----
-
-## Phase 5: eFSM Integration & State Guards
-* **Task 5.1: `TUTORIAL` State Module**
-  * Uses the `GameState.TUTORIAL` state in [`GameManager.ts`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/GameManager.ts) and [`TutorialManager.ts`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/TutorialManager.ts).
-  * Disables normal game-over conditions and blocks multiplayer network broadcasts (`Socket.io`) during tutorial execution.
-  * Enforces eFSM keystroke guards so each step waits until the required ability key (`[Q]`, `[E]`, `[R]`) or line-clear condition is satisfied.
+## Phase 4: UI, Onboarding Integration, & Persistence
+* **Menu Routing:** Clicking **Stage 2** in the Tutorial Menu ([modeselect.html](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/modeselect.html)) opens the **Choose Your Class (Loadout) Modal** ([`ClassSelectModal.ts`](file:///c:/Users/destr/Documents/Cascade-Aurelius/Prototype%20V1/src/ClassSelectModal.ts)) so the player picks which Class Certification to run.
+* **Local & Cloud Persistence (Supabase):**
+  * Saves per-class completion flags (`basics-stage-2-SPEEDSTER`, `basics-stage-2-TANK`, `basics-stage-2-SABOTEUR`, `basics-stage-2-SUPPORT`) in `localStorage` and syncs them to the signed-in user's Supabase `user_metadata.completed_tutorials`.
+  * Stage 2 status in the Tutorial Menu shows `0 / 4 COMPLETED` through `✓ 4 / 4 COMPLETED`.
+* **Cosmetic Rewards (`★ CERTIFIED` Badge):**
+  * Completing a class certification unlocks a **`★ CERTIFIED`** cosmetic badge displayed on that class's card in the Class Select Modal across all modes (without locking classes in Online Matchmaking).
