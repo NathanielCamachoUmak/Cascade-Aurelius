@@ -262,19 +262,25 @@ function activeGarbageRate(room) {
 
 // Server-side point computation. The client tells us what happened; the
 // numbers themselves are decided here and nowhere else.
-function computeScoreEvent(room, player, { type, lines, combo }) {
+function computeScoreEvent(room, player, { type, lines, combo, multiplier }) {
   const comboStep = Math.max(0, Math.min(20, Math.floor(Number(combo) || 0)));
-  const cleared = Math.max(0, Math.min(4, Math.floor(Number(lines) || 0)));
+  const cleared = Math.max(0, Math.min(5, Math.floor(Number(lines) || 0)));
+  const itemMult = Number(multiplier) === 2 ? 2 : 1;
   let base = 0;
 
-  if (type === 'lines') base = LINE_SCORES[cleared] || 0;
-  else if (type === 'tspin') base = TSPIN_SCORES[cleared] ?? 400;
+  if (type === 'lines') {
+    const clamped = Math.min(4, cleared);
+    const extra = Math.max(0, cleared - 4);
+    base = (LINE_SCORES[clamped] || 0) + extra * 200;
+  }
+  else if (type === 'tspin') base = TSPIN_SCORES[Math.min(4, cleared)] ?? 400;
   else if (type === 'softdrop') base = Math.min(20, Math.max(0, Math.floor(Number(lines) || 0)));
   else if (type === 'harddrop') base = Math.min(40, Math.max(0, Math.floor(Number(lines) || 0)));
+  else if (type === 'garbage_eater') base = 800;
   else return 0;
 
   if (type === 'lines' || type === 'tspin') base += 50 * comboStep;
-  return Math.floor(base * activeScoreMultiplier(room));
+  return Math.floor(base * itemMult * activeScoreMultiplier(room));
 }
 
 function activePlayerCount(room) {
@@ -863,7 +869,7 @@ io.on('connection', socket => {
     const room = roomId && rooms.get(roomId);
     if (!room || room.phase !== 'in-game') return;
 
-    const { botId, type, lines, combo, clientTs } = payload || {};
+    const { botId, type, lines, combo, multiplier, clientTs } = payload || {};
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
     if (!player || (botId && player.ownerId !== socket.id)) return;
 
@@ -877,13 +883,13 @@ io.on('connection', socket => {
     if (player.lastScoreEventAt && now - player.lastScoreEventAt < 40) return;
     player.lastScoreEventAt = now;
 
-    const points = computeScoreEvent(room, player, { type, lines, combo });
+    const points = computeScoreEvent(room, player, { type, lines, combo, multiplier });
     if (points <= 0 && type !== 'lines') return;
 
     const scoreCap = room.mode.id === 'battle-royale' ? 5_000_000 : 999_999;
     player.score = Math.max(0, Math.min(scoreCap, Math.floor((player.score || 0) + points)));
     if (type === 'lines') {
-      const cleared = Math.max(0, Math.min(4, Math.floor(Number(lines) || 0)));
+      const cleared = Math.max(0, Math.min(5, Math.floor(Number(lines) || 0)));
       player.lines = Math.max(0, Math.min(9999, (player.lines || 0) + cleared));
       player.lastClearAt = now;
     }
@@ -1063,7 +1069,9 @@ io.on('connection', socket => {
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
         : null;
-      const selectedAlly = allies?.find(([, player]) => player.index === targetIndex) ?? allies?.[0];
+      const selectedAlly = (targetIndex !== undefined && targetIndex !== null)
+        ? allies?.find(([, player]) => player.index === targetIndex)
+        : null;
       const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
       io.to(targetSockId).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
     }

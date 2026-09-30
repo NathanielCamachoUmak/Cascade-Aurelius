@@ -37,14 +37,16 @@ export class ScoreManager {
 
   public activateMultiplierBlock() {
     this.scoreMultiplier = 2;
-    this.multiplierTimer = 8000; // 8 seconds
+    this.multiplierTimer = 5000; // 5 seconds (matches Stage 3 Tutorial)
   }
 
-  public addScoreForLines(lines: number) {
-    if (lines > 0 && lines <= 4) {
+  public addScoreForLines(lines: number): number {
+    if (lines > 0) {
+      const clampedLines = Math.min(4, lines);
+      const extraLines = Math.max(0, lines - 4);
       this.totalLinesCleared += lines;
       
-      let points = this.LINE_SCORES[lines];
+      let points = this.LINE_SCORES[clampedLines] + extraLines * 200;
       
       // Apply combo bonus
       points += 50 * this.combo;
@@ -57,7 +59,9 @@ export class ScoreManager {
       // Update combo stack and reset decay timer
       this.combo++;
       this.comboTimer = this.COMBO_DURATION;
+      return points;
     }
+    return 0;
   }
 
   public addDropScore(cellsDropped: number) {
@@ -68,5 +72,12 @@ export class ScoreManager {
     if (lines <= 0) return;
     this.totalLinesCleared += lines;
     this.score += lines * 100 * this.scoreMultiplier * this.globalMultiplier;
+  }
+
+  public addFlatBonusScore(basePoints: number): number {
+    if (basePoints <= 0) return 0;
+    const gained = basePoints * this.scoreMultiplier * this.globalMultiplier;
+    this.score += gained;
+    return gained;
   }
 }

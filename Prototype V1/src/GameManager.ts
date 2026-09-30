@@ -24,12 +24,14 @@ export interface Particle {
 }
 
 interface LineClearEffect {
+  playerIndex?: number;
   row: number;
   flash: number; // 0-1, fades out
   color: string;
 }
 
 interface ComboText {
+  playerIndex?: number;
   text: string;
   x: number;
   y: number;
@@ -271,9 +273,8 @@ export class GameManager {
 
     net.onReceiveGarbage = (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }, targetIndex?: number) => {
       // Find the specific player this is meant for (either us or a bot we own)
-      const targetPlayer = (targetIndex !== undefined && targetIndex !== null)
-        ? this.players[targetIndex]
-        : this.players[myIndex];
+      const resolvedIdx = (targetIndex !== undefined && targetIndex !== null) ? targetIndex : myIndex;
+      const targetPlayer = this.players[resolvedIdx];
 
       if (targetPlayer && !targetPlayer.isToppedOut) {
         // If it's a remote player we don't own, ignore it (we only process our own state and our bots' state)
@@ -282,24 +283,31 @@ export class GameManager {
         const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
         if (!isSolidSuddenDeath && targetPlayer.shieldActive) {
           targetPlayer.shieldActive = false;
+          targetPlayer.shieldDeflectTimer = 900;
+          this.spawnBoardExplosionParticles(resolvedIdx, 150, 18 * 30, '#00FF88', '#00E5FF', 24);
+          this.spawnBoardFloatingText(resolvedIdx, '🛡 ATTACK BLOCKED!', 150, 13 * 30, '#00FF88', 14);
           return;
         }
         if (!isSolidSuddenDeath && targetPlayer.fortifyCharges > 0) {
           targetPlayer.fortifyCharges--;
+          this.spawnBoardFloatingText(resolvedIdx, `🛡 FORTIFY BLOCKED! (${targetPlayer.fortifyCharges} LEFT)`, 150, 13 * 30, '#00FF88', 13);
           return;
         }
         if (!isSolidSuddenDeath && targetPlayer.reflectGarbage && fromIndex !== undefined) {
           targetPlayer.reflectGarbage = false;
           this.network?.sendReflectedGarbage(fromIndex, count);
+          this.spawnBoardFloatingText(resolvedIdx, `⚡ REFLECTED ${count} LINES!`, 150, 13 * 30, '#FF1493', 14);
           return;
         }
         targetPlayer.grid.addGarbageLines(count, 'HUMAN', { solid: isSolidSuddenDeath, unClearable: Boolean(options?.unClearable) });
         if (!isSolidSuddenDeath && targetPlayer.supportPassiveConversion) {
           targetPlayer.grid.convertGarbageToSpecialBlocks(count);
           targetPlayer.supportPassiveConversion = false;
+          this.spawnBoardFloatingText(resolvedIdx, '♻ PASSIVE RECYCLE!', 150, 14 * 30, '#00E5FF', 13);
         } else if (!isSolidSuddenDeath && targetPlayer.recycleGarbageLines > 0) {
           const converted = targetPlayer.grid.convertGarbageToSpecialBlocks(Math.min(count, targetPlayer.recycleGarbageLines));
           targetPlayer.recycleGarbageLines = Math.max(0, targetPlayer.recycleGarbageLines - converted);
+          this.spawnBoardFloatingText(resolvedIdx, '♻ GARBAGE RECYCLED!', 150, 14 * 30, '#00E5FF', 13);
         }
         // Stage 4: Reactive replanning — bot received garbage, force re-evaluation
         if (targetPlayer.bot) {
@@ -337,33 +345,48 @@ export class GameManager {
     };
 
     net.onClassEffect = effect => {
-      const targetPlayer = (effect.targetIndex !== undefined && effect.targetIndex !== null)
-        ? this.players[effect.targetIndex]
-        : this.players[myIndex];
+      const resolvedIdx = (effect.targetIndex !== undefined && effect.targetIndex !== null)
+        ? effect.targetIndex
+        : myIndex;
+      const targetPlayer = this.players[resolvedIdx];
 
       if (!targetPlayer || targetPlayer.isToppedOut) return;
       if (targetPlayer !== this.players[myIndex] && !(targetPlayer as any).botId) return;
 
       if (effect.type === 'QUICKSILVER') {
+        const dur = effect.durationMs ?? BULLET_TIME_DURATION_MS;
+        targetPlayer.quicksilverTimer = dur;
         targetPlayer.activeEffectType = 'QUICKSILVER';
-        targetPlayer.activeEffectTimer = effect.durationMs ?? BULLET_TIME_DURATION_MS;
-        targetPlayer.inputHandler.freezeFor(targetPlayer.activeEffectTimer);
+        targetPlayer.activeEffectTimer = dur;
+        targetPlayer.inputHandler.freezeFor(dur);
+        this.spawnBoardFloatingText(resolvedIdx, '❄ BULLET TIME FROZEN!', 150, 10 * 30, '#00E5FF', 14);
       } else if (effect.type === 'CHAOS') {
+        const dur = effect.durationMs ?? CHAOS_DURATION_MS;
+        targetPlayer.chaosTimer = dur;
         targetPlayer.activeEffectType = 'CHAOS';
-        targetPlayer.activeEffectTimer = effect.durationMs ?? CHAOS_DURATION_MS;
-        targetPlayer.inputHandler.reverseFor(targetPlayer.activeEffectTimer);
+        targetPlayer.activeEffectTimer = dur;
+        targetPlayer.inputHandler.reverseFor(dur);
+        this.spawnBoardFloatingText(resolvedIdx, '🌀 CHAOS! CONTROLS REVERSED', 150, 10 * 30, '#FF1493', 13);
       } else if (effect.type === 'SPRINT') {
         this.applySprintEffect(targetPlayer, effect.amount ?? 3);
+        this.spawnBoardFloatingText(resolvedIdx, '⚡ SPRINT! 2x DROP SPEED', 150, 10 * 30, '#FF1493', 13);
       } else if (effect.type === 'SCRAMBLE') {
         this.scramblePreview(targetPlayer, effect.amount ?? 5);
+        this.spawnBoardFloatingText(resolvedIdx, '🎲 QUEUE SCRAMBLED!', 150, 10 * 30, '#B026FF', 13);
       } else if (effect.type === 'GRID_SHIFT') {
         targetPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
+        this.spawnBoardFloatingText(resolvedIdx, '⇄ GRID SHIFTED!', 150, 10 * 30, '#FFD700', 14);
       } else if (effect.type === 'RECYCLE') {
-        targetPlayer.recycleGarbageLines = effect.amount ?? 4;
+        const totalToRecycle = effect.amount ?? 4;
+        const convertedNow = targetPlayer.grid.convertGarbageToSpecialBlocks(totalToRecycle);
+        targetPlayer.recycleGarbageLines = Math.max(0, totalToRecycle - convertedNow);
+        this.spawnBoardFloatingText(resolvedIdx, '♻ RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 13);
       } else if (effect.type === 'GUARDIAN_ANGEL') {
         targetPlayer.grid.clearBottomLines(effect.amount ?? 4);
+        this.spawnBoardFloatingText(resolvedIdx, '👼 GUARDIAN ANGEL! -4 LINES', 150, 14 * 30, '#00FF88', 13);
       } else if (effect.type === 'ABILITY_FREEZE') {
         targetPlayer.abilityFreezeTimer = effect.durationMs ?? 3000;
+        this.spawnBoardFloatingText(resolvedIdx, '❄ ABILITIES LOCKED!', 150, 11 * 30, '#38BDF8', 14);
       }
       // Stage 4: Reactive replanning — bot hit by a disruptive effect, force re-evaluation
       if (targetPlayer.bot) {
@@ -457,9 +480,22 @@ export class GameManager {
       player.perfectClearWindow = Math.max(0, player.perfectClearWindow - dt);
 
       player.koStampTimer = Math.max(0, player.koStampTimer - dt);
-
       player.abilityFreezeTimer = Math.max(0, player.abilityFreezeTimer - dt);
+      player.shieldDeflectTimer = Math.max(0, player.shieldDeflectTimer - dt);
+      player.garbageEaterTimer = Math.max(0, player.garbageEaterTimer - dt);
 
+      if (player.bombBlastVisual) {
+        player.bombBlastVisual.timer = Math.max(0, player.bombBlastVisual.timer - dt);
+        if (player.bombBlastVisual.timer === 0) player.bombBlastVisual = null;
+      }
+      if (player.heavyCrushVisual) {
+        player.heavyCrushVisual.timer = Math.max(0, player.heavyCrushVisual.timer - dt);
+        if (player.heavyCrushVisual.timer === 0) player.heavyCrushVisual = null;
+      }
+      if (player.freezeTetherVisual) {
+        player.freezeTetherVisual.timer = Math.max(0, player.freezeTetherVisual.timer - dt);
+        if (player.freezeTetherVisual.timer === 0) player.freezeTetherVisual = null;
+      }
 
       if (player.speedBlockSlowTimer > 0) {
         player.speedBlockSlowTimer = Math.max(0, player.speedBlockSlowTimer - dt);
@@ -468,14 +504,44 @@ export class GameManager {
         }
       }
 
-      if (player.activeEffectTimer > 0) {
+      if (player.timeWarpTimer > 0) {
+        player.timeWarpTimer = Math.max(0, player.timeWarpTimer - dt);
+        if (player.timeWarpTimer === 0) {
+          player.dropInterval = Math.max(100, player.dropInterval / 2);
+        }
+      }
+      if (player.quicksilverTimer > 0) {
+        player.quicksilverTimer = Math.max(0, player.quicksilverTimer - dt);
+      }
+      if (player.chaosTimer > 0) {
+        player.chaosTimer = Math.max(0, player.chaosTimer - dt);
+      }
+
+      // Synchronize activeEffectType / activeEffectTimer for HUD display
+      if (player.quicksilverTimer > 0) {
+        player.activeEffectType = 'QUICKSILVER';
+        player.activeEffectTimer = player.quicksilverTimer;
+      } else if (player.chaosTimer > 0) {
+        player.activeEffectType = 'CHAOS';
+        player.activeEffectTimer = player.chaosTimer;
+      } else if (player.timeWarpTimer > 0) {
+        player.activeEffectType = 'TIME_WARP';
+        player.activeEffectTimer = player.timeWarpTimer;
+      } else if (player.activeEffectTimer > 0) {
         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
         if (player.activeEffectTimer === 0) {
-          if (player.activeEffectType === 'TIME_WARP') {
-            player.dropInterval = Math.max(100, player.dropInterval / 2);
-          }
           player.activeEffectType = null;
         }
+      } else {
+        player.activeEffectType = null;
+      }
+
+      // Always tick InputHandler so freezeTimer and reverseTimer count down for both humans and AI bots
+      player.inputHandler.update(dt);
+
+      // Speedster [R] Bullet Time (QUICKSILVER): completely freezes opponent boards & gravity for 5s
+      if (player.quicksilverTimer > 0 || (player.activeEffectType === 'QUICKSILVER' && player.activeEffectTimer > 0)) {
+        continue;
       }
 
       // AI update
@@ -532,13 +598,6 @@ export class GameManager {
         });
 
         player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx, worldState);
-      } else {
-        // Human input auto-repeat tick
-        player.inputHandler.update(dt);
-      }
-
-      if (player.activeEffectType === 'QUICKSILVER' && player.activeEffectTimer > 0) {
-        continue;
       }
 
       // Spawning
@@ -680,7 +739,7 @@ export class GameManager {
 
     player.dropInterval = Math.max(100, player.dropInterval * player.speedMultiplier);
 
-    if (player.activeEffectType === 'TIME_WARP' && player.activeEffectTimer > 0) {
+    if (player.timeWarpTimer > 0 || (player.activeEffectType === 'TIME_WARP' && player.activeEffectTimer > 0)) {
       player.dropInterval *= 2;
     }
 
@@ -818,22 +877,30 @@ export class GameManager {
     if (player.abilityFreezeTimer > 0) return;
     if (slot !== 'R' && player.abilityCooldowns[slot] > 0) return;
     const level = Math.floor(player.scoreManager.totalLinesCleared / 10);
+    const pIdx = Math.max(0, this.players.indexOf(player));
 
     if (slot === 'Q') {
       if (player.playerClass === 'SPEEDSTER') {
         this.sendOrApplyClassEffect(player, { type: 'SPRINT', amount: 3, targetIndex: player.selectedTargetIndex ?? undefined });
         player.abilityCooldowns.Q = 12_000;
+        this.spawnBoardFloatingText(pIdx, '⚡ [Q] SPRINT LAUNCHED!', 150, 12 * 30, '#00E5FF', 12);
       } else if (player.playerClass === 'TANK') {
         player.fortifyCharges = 2;
         player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
+        this.spawnBoardFloatingText(pIdx, '🛡 [Q] FORTIFY (2 CHARGES)!', 150, 12 * 30, '#00FF88', 12);
       } else if (player.playerClass === 'SABOTEUR') {
         this.sendOrApplyClassEffect(player, { type: 'SCRAMBLE', amount: 5, targetIndex: player.selectedTargetIndex ?? undefined });
         player.abilityCooldowns.Q = 12_000;
+        this.spawnBoardFloatingText(pIdx, '🎲 [Q] SCRAMBLE SENT!', 150, 12 * 30, '#B026FF', 12);
       } else if (player.playerClass === 'SUPPORT') {
         if (this.isOnline && this.isTeamMode && player.selectedTargetIndex !== null && player.selectedTargetIndex !== this.myPlayerIndex) {
           this.sendOrApplyClassEffect(player, { type: 'RECYCLE', amount: 4, targetIndex: player.selectedTargetIndex });
         } else {
-          player.recycleGarbageLines = 4;
+          // Immediately convert up to 4 garbage blocks on the board into Special Blocks,
+          // and arm any remaining charges for future incoming garbage lines (matches Stage 2 Support Tutorial)
+          const convertedNow = player.grid.convertGarbageToSpecialBlocks(4);
+          player.recycleGarbageLines = Math.max(0, 4 - convertedNow);
+          this.spawnBoardFloatingText(pIdx, '♻ [Q] RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 12);
         }
         player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
       }
@@ -842,18 +909,24 @@ export class GameManager {
 
     if (slot === 'E') {
       if (player.playerClass === 'SPEEDSTER') {
+        if (player.timeWarpTimer <= 0) {
+          player.dropInterval *= 2;
+        }
+        player.timeWarpTimer = TIME_WARP_DURATION_MS;
         player.activeEffectType = 'TIME_WARP';
         player.activeEffectTimer = TIME_WARP_DURATION_MS;
-        player.dropInterval *= 2;
         player.abilityCooldowns.E = CLASS_E_COOLDOWN_MS;
+        this.spawnBoardFloatingText(pIdx, '⏳ [E] TIME WARP! -50% GRAVITY', 150, 12 * 30, '#00E5FF', 12);
       } else if (player.playerClass === 'TANK') {
         player.reflectGarbage = true;
         player.abilityCooldowns.E = 20_000;
+        this.spawnBoardFloatingText(pIdx, '⚡ [E] COUNTER STRIKE ARMED!', 150, 12 * 30, '#FFD700', 12);
       } else if (player.playerClass === 'SABOTEUR') {
         if (player.gridShiftUsed) return;
         player.gridShiftUsed = true;
         player.gridShiftUsedLevel = level;
         this.sendOrApplyClassEffect(player, { type: 'GRID_SHIFT', direction: Math.random() < 0.5 ? -1 : 1, targetIndex: player.selectedTargetIndex ?? undefined });
+        this.spawnBoardFloatingText(pIdx, '⇄ [E] GRID SHIFT SENT!', 150, 12 * 30, '#FFD700', 12);
       } else if (player.playerClass === 'SUPPORT') {
         if (player.nextPiece) {
           player.itemManager.applyGoldDropToTetromino(player.nextPiece);
@@ -861,6 +934,7 @@ export class GameManager {
           player.itemManager.forceGoldDropNext();
         }
         player.abilityCooldowns.E = 25_000;
+        this.spawnBoardFloatingText(pIdx, '✨ [E] GOLD DROP! 4 ITEM BLOCKS', 150, 12 * 30, '#FFD700', 12);
       }
       return;
     }
@@ -870,15 +944,19 @@ export class GameManager {
     player.classMeter = 0;
     if (player.playerClass === 'SPEEDSTER') {
       this.sendOrApplyClassEffect(player, { type: 'QUICKSILVER', durationMs: BULLET_TIME_DURATION_MS });
+      this.spawnBoardFloatingText(pIdx, '❄ [R] BULLET TIME UNLEASHED!', 150, 10 * 30, '#00E5FF', 14);
     } else if (player.playerClass === 'TANK') {
       this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 4 });
+      this.spawnBoardFloatingText(pIdx, '💥 [R] EARTHQUAKE! +4 GARBAGE', 150, 10 * 30, '#FFD700', 14);
     } else if (player.playerClass === 'SABOTEUR') {
       player.gridShiftUsed = false;
       player.gridShiftUsedLevel = -1;
       player.abilityCooldowns.E = 0;
       this.sendOrApplyClassEffect(player, { type: 'CHAOS', durationMs: CHAOS_DURATION_MS });
+      this.spawnBoardFloatingText(pIdx, '🌀 [R] CHAOS MODE! [E] RESET', 150, 10 * 30, '#FF1493', 13);
     } else if (player.playerClass === 'SUPPORT') {
       this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: player.selectedTargetIndex ?? undefined });
+      this.spawnBoardFloatingText(pIdx, '👼 [R] GUARDIAN ANGEL!', 150, 10 * 30, '#00FF88', 14);
     }
   }
 
@@ -907,18 +985,75 @@ export class GameManager {
     }
     const opponents = this.players.filter(target => target.id !== player.id && !target.isToppedOut);
     const selectedTarget = effect.targetIndex === undefined ? undefined : this.players[effect.targetIndex];
-    if (effect.type === 'QUICKSILVER') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
-    else if (effect.type === 'CHAOS') opponents.forEach(target => target.inputHandler.reverseFor(effect.durationMs ?? CHAOS_DURATION_MS));
-    else if (effect.type === 'SCRAMBLE') this.scramblePreview(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 5);
-    else if (effect.type === 'SPRINT') this.applySprintEffect(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 3);
-    else if (effect.type === 'RECYCLE') {
+    const targetOpp = selectedTarget && selectedTarget !== player && !selectedTarget.isToppedOut ? selectedTarget : opponents[0];
+
+    if (effect.type === 'QUICKSILVER') {
+      const dur = effect.durationMs ?? BULLET_TIME_DURATION_MS;
+      opponents.forEach(target => {
+        const tIdx = this.players.indexOf(target);
+        target.quicksilverTimer = dur;
+        target.activeEffectType = 'QUICKSILVER';
+        target.activeEffectTimer = dur;
+        target.inputHandler.freezeFor(dur);
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '❄ BULLET TIME FROZEN!', 150, 10 * 30, '#00E5FF', 13);
+      });
+    } else if (effect.type === 'CHAOS') {
+      const dur = effect.durationMs ?? CHAOS_DURATION_MS;
+      opponents.forEach(target => {
+        const tIdx = this.players.indexOf(target);
+        target.chaosTimer = dur;
+        target.activeEffectType = 'CHAOS';
+        target.activeEffectTimer = dur;
+        target.inputHandler.reverseFor(dur);
+        if (target.bot) target.bot.replan();
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '🌀 CHAOS! CONTROLS REVERSED', 150, 10 * 30, '#FF1493', 12);
+      });
+    } else if (effect.type === 'SCRAMBLE') {
+      if (targetOpp) {
+        this.scramblePreview(targetOpp, effect.amount ?? 5);
+        if (targetOpp.bot) targetOpp.bot.replan();
+        const tIdx = this.players.indexOf(targetOpp);
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '🎲 QUEUE SCRAMBLED!', 150, 10 * 30, '#B026FF', 13);
+      }
+    } else if (effect.type === 'SPRINT') {
+      if (targetOpp) {
+        this.applySprintEffect(targetOpp, effect.amount ?? 3);
+        const tIdx = this.players.indexOf(targetOpp);
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '⚡ SPRINT! 2x DROP SPEED', 150, 10 * 30, '#FF1493', 13);
+      }
+    } else if (effect.type === 'RECYCLE') {
       const allyTarget = selectedTarget && !selectedTarget.isToppedOut ? selectedTarget : player;
-      allyTarget.recycleGarbageLines = effect.amount ?? 4;
+      const totalToRecycle = effect.amount ?? 4;
+      const convertedNow = allyTarget.grid.convertGarbageToSpecialBlocks(totalToRecycle);
+      allyTarget.recycleGarbageLines = Math.max(0, totalToRecycle - convertedNow);
+      if (allyTarget.bot) allyTarget.bot.replan();
+      const tIdx = this.players.indexOf(allyTarget);
+      if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '♻ RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 13);
+    } else if (effect.type === 'GRID_SHIFT') {
+      if (targetOpp) {
+        targetOpp.grid.shiftHorizontally((effect.direction ?? 1) * 2);
+        if (targetOpp.bot) targetOpp.bot.replan();
+        const tIdx = this.players.indexOf(targetOpp);
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '⇄ GRID SHIFTED!', 150, 10 * 30, '#FFD700', 14);
+      }
+    } else if (effect.type === 'EARTHQUAKE') {
+      const count = effect.amount ?? 4;
+      opponents.forEach(target => {
+        this.applyIncomingGarbageToTarget(player, target, count);
+      });
+    } else if (effect.type === 'GUARDIAN_ANGEL') {
+      const rescueTarget = (this.isTeamMode && selectedTarget && !selectedTarget.isToppedOut) ? selectedTarget : player;
+      rescueTarget.grid.clearBottomLines(effect.amount ?? 4);
+      if (rescueTarget.bot) rescueTarget.bot.replan();
+      const tIdx = this.players.indexOf(rescueTarget);
+      if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '👼 GUARDIAN ANGEL! -4 LINES', 150, 14 * 30, '#00FF88', 13);
+    } else if (effect.type === 'ABILITY_FREEZE') {
+      opponents.forEach(target => {
+        target.abilityFreezeTimer = effect.durationMs ?? 3000;
+        const tIdx = this.players.indexOf(target);
+        if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '❄ ABILITIES LOCKED!', 150, 11 * 30, '#38BDF8', 13);
+      });
     }
-    else if (effect.type === 'GRID_SHIFT') (selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0])?.grid.shiftHorizontally((effect.direction ?? 1) * 2);
-    else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 4, 'HUMAN'));
-    else if (effect.type === 'GUARDIAN_ANGEL') player.grid.clearBottomLines(effect.amount ?? 4);
-    else if (effect.type === 'ABILITY_FREEZE') opponents.forEach(target => { target.abilityFreezeTimer = effect.durationMs ?? 3000; });
   }
 
   private applySprintEffect(player: Player | undefined, nextBlocksCount: number = 3) {
@@ -948,14 +1083,21 @@ export class GameManager {
 
   /** Freezes all opponents' abilities (Q/E/R) for the specified duration. Triggered by the Freeze special block. */
   private applyAbilityFreeze(source: Player, durationMs: number) {
+    const opponents = this.players
+      .map((p, idx) => ({ p, idx }))
+      .filter(({ p }) => p.id !== source.id && !p.isToppedOut);
+    if (opponents.length > 0) {
+      const targetEntry = (source.selectedTargetIndex !== null && opponents.find(o => o.idx === source.selectedTargetIndex)) || opponents[0];
+      source.freezeTetherVisual = { targetPlayerIndex: targetEntry.idx, timer: 650, maxTimer: 650 };
+    }
+
     if (this.isOnline && this.state !== GameState.TUTORIAL) {
       this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs });
       return;
     }
-    for (const target of this.players) {
-      if (target.id !== source.id && !target.isToppedOut) {
-        target.abilityFreezeTimer = durationMs;
-      }
+    for (const { p: target, idx } of opponents) {
+      target.abilityFreezeTimer = durationMs;
+      this.spawnBoardFloatingText(idx, '❄ ABILITIES LOCKED!', 150, 11 * 30, '#38BDF8', 13);
     }
   }
 
@@ -1039,41 +1181,61 @@ export class GameManager {
     player.lockMoveResets = 0;
     player.hasHeld = false;
     
-    const { linesCleared, specialBlocksToTrigger, clearedRows } = player.grid.clearLines();
+    const { linesCleared, specialBlocksToTrigger, clearedRows, specialBlockPositions } = player.grid.clearLines();
+    const uniqueSpecials = new Set(specialBlocksToTrigger);
+    const pIdx = Math.max(0, this.players.indexOf(player));
+    const isLocalHuman = !this.isOnline || player === this.players[this.myPlayerIndex];
+
+    // Step 3 (Multiplier Block [X]): activate 2x multiplier (5s) BEFORE scoring the line clear
+    // so the triggering line clear is also doubled, matching Stage 3 Tutorial!
+    if (uniqueSpecials.has(SpecialBlockType.MULTIPLIER)) {
+      player.scoreManager.activateMultiplierBlock();
+    }
 
     if (linesCleared > 0) {
-      player.scoreManager.addScoreForLines(linesCleared);
+      const gainedPoints = player.scoreManager.addScoreForLines(linesCleared);
 
       // Server-authoritative scoring: report the EVENT, not a raw score.
       // The local score above stays as an immediate prediction for the HUD;
       // the server's authoritative value overwrites it when it echoes back.
       if (this.isOnline) {
         if (player === this.players[this.myPlayerIndex]) {
-          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo);
+          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo, undefined, player.scoreManager.scoreMultiplier);
         } else if ((player as any).botId) {
-          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo, (player as any).botId);
+          this.network?.sendScoreEvent('lines', linesCleared, player.scoreManager.combo, (player as any).botId, player.scoreManager.scoreMultiplier);
         }
       }
       player.classMeter += linesCleared;
 
       // Trigger visual + audio effects for the local player's clears
-      if (!this.isOnline || player === this.players[this.myPlayerIndex]) {
-        this.triggerLineClearEffects(linesCleared, clearedRows, this.players.indexOf(player));
+      if (isLocalHuman) {
+        this.triggerLineClearEffects(linesCleared, clearedRows, pIdx);
         AudioManager.playSfx('lineClear');
+      }
+
+      if (uniqueSpecials.has(SpecialBlockType.MULTIPLIER) && isLocalHuman) {
+        this.spawnFloatingScoreUiPopup(`+2x Points! (+${Math.round(gainedPoints)} PTS)`);
       }
 
       if (linesCleared >= 4) {
         if (player.playerClass === 'SPEEDSTER') {
           if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.SPEED);
           else player.itemManager.forceNextItem(SpecialBlockType.SPEED);
+          this.spawnBoardFloatingText(pIdx, '⚡ PASSIVE: SPEED BLOCK [V] NEXT!', 150, 8 * 30, '#00E5FF', 12);
         } else if (player.playerClass === 'TANK') {
           if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.SHIELD);
           else player.itemManager.forceNextItem(SpecialBlockType.SHIELD);
+          this.spawnBoardFloatingText(pIdx, '🛡 PASSIVE: SHIELD BLOCK [S] NEXT!', 150, 8 * 30, '#00FF88', 12);
         } else if (player.playerClass === 'SABOTEUR') {
           if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.FREEZE);
           else player.itemManager.forceNextItem(SpecialBlockType.FREEZE);
+          this.spawnBoardFloatingText(pIdx, '❄ PASSIVE: FREEZE BLOCK [F] NEXT!', 150, 8 * 30, '#38BDF8', 12);
         } else if (player.playerClass === 'SUPPORT') {
-          player.supportPassiveConversion = true;
+          const convertedNow = player.grid.convertGarbageToSpecialBlocks(4);
+          if (convertedNow < 4) {
+            player.supportPassiveConversion = true;
+          }
+          this.spawnBoardFloatingText(pIdx, '♻ PASSIVE: GARBAGE RECYCLED!', 150, 8 * 30, '#00E5FF', 12);
         }
       }
 
@@ -1094,28 +1256,66 @@ export class GameManager {
       }
     }
 
-    // Special blocks — deduplicate so each type fires at most once (does not stack)
-    const uniqueSpecials = new Set(specialBlocksToTrigger);
+    // Special blocks — execute all 7 Special Block mechanics matching Stage 3 Tutorial
     for (const special of uniqueSpecials) {
       if (special === SpecialBlockType.BOMB) {
-        player.grid.clearBombArea(clearedRows[0], Math.floor(player.grid.width / 2));
-      } 
-      else if (special === SpecialBlockType.HEAVY) {
-      // Handled inside Grid.clearLines() itself now — destroying the row
-      // beneath a HEAVY block has to happen before compaction, not after.
+        const bombPos = specialBlockPositions.find(pos => pos.type === SpecialBlockType.BOMB);
+        const rawRow = bombPos ? bombPos.row : (clearedRows[0] ?? player.grid.height - 2);
+        const rawCol = bombPos ? bombPos.col : Math.floor(player.grid.width / 2);
+        const effRow = Math.max(1, Math.min(player.grid.height - 2, rawRow));
+        const effCol = Math.max(1, Math.min(player.grid.width - 2, rawCol));
+
+        player.grid.clearBombArea(effRow, effCol);
+        player.bombBlastVisual = { row: effRow, col: effCol, timer: 900, maxTimer: 900 };
+        this.spawnBoardExplosionParticles(pIdx, (effCol + 0.5) * 30, (effRow + 0.5) * 30, '#FF5555', '#FFD700', 28);
+        this.spawnBoardFloatingText(pIdx, '💥 3×3 BLAST!', (effCol + 0.5) * 30, Math.max(60, (effRow - 1) * 30), '#FFD700', 14);
+      } else if (special === SpecialBlockType.HEAVY) {
+        // Row crushing & compaction is handled inside Grid.clearLines()
+        const heavyPos = specialBlockPositions.find(pos => pos.type === SpecialBlockType.HEAVY);
+        const crushRow = Math.min(player.grid.height - 1, (heavyPos ? heavyPos.row : (clearedRows[0] ?? 18)) + 1);
+        player.heavyCrushVisual = { row: crushRow, timer: 850, maxTimer: 850 };
+        this.spawnBoardExplosionParticles(pIdx, 150, crushRow * 30, '#FFD700', '#00E5FF', 22);
+        this.spawnBoardFloatingText(pIdx, '⬇ HEAVY CRUSH! +1 ROW', 150, Math.max(60, (crushRow - 1) * 30), '#FFD700', 13);
       } else if (special === SpecialBlockType.MULTIPLIER) {
-        player.scoreManager.activateMultiplierBlock();
+        // Already activated above before addScoreForLines; spawn visual feedback
+        const multRow = clearedRows[0] ?? 18;
+        this.spawnBoardExplosionParticles(pIdx, 150, multRow * 30, '#B026FF', '#E879F9', 20);
+        this.spawnBoardFloatingText(pIdx, '⚡ +2x POINTS (5s)!', 150, Math.max(60, (multRow - 1) * 30), '#E879F9', 13);
       } else if (special === SpecialBlockType.SPEED) {
         if (player.speedBlockSlowTimer <= 0) {
           player.dropInterval *= 2;
         }
         player.speedBlockSlowTimer = 5000;
+        const speedRow = clearedRows[0] ?? 18;
+        this.spawnBoardExplosionParticles(pIdx, 150, speedRow * 30, '#00E5FF', '#38BDF8', 20);
+        this.spawnBoardFloatingText(pIdx, '⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, Math.max(60, (speedRow - 1) * 30), '#00E5FF', 12);
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
+        const shieldRow = clearedRows[0] ?? 18;
+        this.spawnBoardExplosionParticles(pIdx, 150, shieldRow * 30, '#00FF88', '#00E5FF', 20);
+        this.spawnBoardFloatingText(pIdx, '🛡 SHIELD AURA RAISED!', 150, Math.max(60, (shieldRow - 1) * 30), '#00FF88', 13);
       } else if (special === SpecialBlockType.FREEZE) {
         this.applyAbilityFreeze(player, 3000);
+        const freezeRow = clearedRows[0] ?? 18;
+        this.spawnBoardExplosionParticles(pIdx, 150, freezeRow * 30, '#38BDF8', '#00E5FF', 20);
+        this.spawnBoardFloatingText(pIdx, '❄ LAUNCHING FREEZE TETHER!', 150, Math.max(60, (freezeRow - 1) * 30), '#38BDF8', 12);
       } else if (special === SpecialBlockType.GARBAGE_EATER) {
-        player.grid.clearGarbageLines(1);
+        player.grid.clearGarbageLines(4);
+        const bonusPts = player.scoreManager.addFlatBonusScore(800);
+        player.garbageEaterTimer = 950;
+        if (this.isOnline) {
+          if (player === this.players[this.myPlayerIndex]) {
+            this.network?.sendScoreEvent('garbage_eater', 0, player.scoreManager.combo, undefined, player.scoreManager.scoreMultiplier);
+          } else if ((player as any).botId) {
+            this.network?.sendScoreEvent('garbage_eater', 0, player.scoreManager.combo, (player as any).botId, player.scoreManager.scoreMultiplier);
+          }
+        }
+        const geRow = clearedRows[0] ?? 18;
+        this.spawnBoardExplosionParticles(pIdx, 150, geRow * 30, '#F59E0B', '#FFD700', 26);
+        this.spawnBoardFloatingText(pIdx, `🍽 GARBAGE CONVERTED → +${Math.round(bonusPts)} PTS!`, 150, Math.max(60, (geRow - 1) * 30), '#FFD700', 13);
+        if (isLocalHuman) {
+          this.spawnFloatingScoreUiPopup(`🍽 Garbage Devoured! +${Math.round(bonusPts)} PTS`);
+        }
       }
     }
 
@@ -1147,11 +1347,6 @@ export class GameManager {
   }
 
   private distributeGarbage(sender: Player, count: number) {
-    let senderType: 'EASY' | 'HARD' | 'HUMAN' = 'HUMAN';
-    if (sender.bot) {
-      senderType = sender.bot.difficulty;
-    }
-
     const validOpponents = this.players.filter(p => p.id !== sender.id && !p.isToppedOut);
     if (validOpponents.length === 0) return;
 
@@ -1163,27 +1358,46 @@ export class GameManager {
       }
     }
 
-    // Apply to target
+    this.applyIncomingGarbageToTarget(sender, target, count);
+  }
+
+  private applyIncomingGarbageToTarget(sender: Player, target: Player, count: number) {
+    let senderType: 'EASY' | 'HARD' | 'HUMAN' = 'HUMAN';
+    if (sender.bot) {
+      senderType = sender.bot.difficulty;
+    }
+    const targetIdx = Math.max(0, this.players.indexOf(target));
+    const senderIdx = Math.max(0, this.players.indexOf(sender));
+
     if (target.shieldActive) {
       target.shieldActive = false;
+      target.shieldDeflectTimer = 900;
+      this.spawnBoardExplosionParticles(targetIdx, 150, 18 * 30, '#00FF88', '#00E5FF', 24);
+      this.spawnBoardFloatingText(targetIdx, '🛡 ATTACK BLOCKED!', 150, 13 * 30, '#00FF88', 14);
       return;
     }
     if (target.fortifyCharges > 0) {
       target.fortifyCharges--;
+      this.spawnBoardFloatingText(targetIdx, `🛡 FORTIFY BLOCKED! (${target.fortifyCharges} LEFT)`, 150, 13 * 30, '#00FF88', 13);
       return;
     }
     if (target.reflectGarbage) {
       target.reflectGarbage = false;
       sender.grid.addGarbageLines(count, senderType);
+      if (sender.bot) sender.bot.replan();
+      this.spawnBoardFloatingText(targetIdx, `⚡ REFLECTED ${count} LINES!`, 150, 13 * 30, '#FF1493', 14);
+      this.spawnBoardFloatingText(senderIdx, `💥 HIT BY ${count} REFLECTED LINES!`, 150, 13 * 30, '#FF1493', 13);
       return;
     }
     target.grid.addGarbageLines(count, senderType);
     if (target.supportPassiveConversion) {
       target.grid.convertGarbageToSpecialBlocks(count);
       target.supportPassiveConversion = false;
+      this.spawnBoardFloatingText(targetIdx, '♻ PASSIVE RECYCLE!', 150, 14 * 30, '#00E5FF', 13);
     } else if (target.recycleGarbageLines > 0) {
       const converted = target.grid.convertGarbageToSpecialBlocks(Math.min(count, target.recycleGarbageLines));
       target.recycleGarbageLines = Math.max(0, target.recycleGarbageLines - converted);
+      this.spawnBoardFloatingText(targetIdx, '♻ GARBAGE RECYCLED!', 150, 14 * 30, '#00E5FF', 13);
     }
     // Stage 4: Reactive replanning for local bots
     if (target.bot) {
@@ -1229,6 +1443,60 @@ export class GameManager {
   // Visual Effects
   // ==============================
 
+  private spawnBoardExplosionParticles(pIdx: number, cx: number, cy: number, color1: string, color2: string, count: number) {
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+      const speed = 2.5 + Math.random() * 5.5;
+      this.particles.push({
+        playerIndex: pIdx,
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1.5,
+        life: 700 + Math.random() * 350,
+        maxLife: 1050,
+        color: i % 2 === 0 ? color1 : color2,
+        size: 3.5 + Math.random() * 3.5,
+      });
+    }
+  }
+
+  private spawnBoardFloatingText(pIdx: number, text: string, x: number, y: number, color: string, size: number = 13) {
+    this.comboTexts.push({
+      playerIndex: pIdx,
+      text,
+      x,
+      y,
+      life: 1400,
+      maxLife: 1400,
+      color,
+      size,
+    });
+  }
+
+  private spawnFloatingScoreUiPopup(text: string) {
+    if (typeof document === 'undefined') return;
+    document.getElementById('gameplay-floating-score-pop')?.remove();
+    const scoreEl = document.getElementById('score-p1');
+    const scoreBrEl = document.getElementById('score-p1-br');
+    const activeEl = (scoreEl && scoreEl.getBoundingClientRect().width > 0) ? scoreEl : scoreBrEl;
+    if (!activeEl) return;
+    const rect = activeEl.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+
+    const pop = document.createElement('div');
+    pop.id = 'gameplay-floating-score-pop';
+    pop.className =
+      'fixed z-50 pointer-events-none px-3 py-1.5 rounded-lg border-2 border-neon-yellow bg-deep-purple/95 text-neon-yellow font-extrabold text-xs tracking-wider shadow-[0_0_25px_rgba(255,215,0,0.5)] animate-bounce';
+    pop.style.left = `${Math.max(12, Math.round(rect.left - 10))}px`;
+    pop.style.top = `${Math.max(12, Math.round(rect.top - 38))}px`;
+    pop.textContent = text;
+    document.body.appendChild(pop);
+    window.setTimeout(() => {
+      pop.remove();
+    }, 2200);
+  }
+
   private triggerLineClearEffects(linesCleared: number, clearedRows: number[], pIdx: number) {
     const BLOCK_SIZE = 30;
     const COLS = 10;
@@ -1245,9 +1513,6 @@ export class GameManager {
     // Spawn particles for each cleared row
     for (const row of clearedRows) {
       for (let c = 0; c < COLS; c++) {
-        const px = (this.myPlayerIndex * (COLS * BLOCK_SIZE + 40)) + c * BLOCK_SIZE + BLOCK_SIZE / 2;
-        const py = row * BLOCK_SIZE + BLOCK_SIZE / 2;
-
         // Spawn 3-6 particles per cell for big clears, 1-2 for singles
         const particleCount = linesCleared >= 3 ? Math.floor(Math.random() * 4) + 3 : Math.floor(Math.random() * 2) + 1;
         for (let i = 0; i < particleCount; i++) {
@@ -1268,6 +1533,7 @@ export class GameManager {
       // Flash effect for 3+ line clears
       if (linesCleared >= 3) {
         this.lineClearEffects.push({
+          playerIndex: pIdx,
           row: row,
           flash: 1.0,
           color: color,
@@ -1276,7 +1542,7 @@ export class GameManager {
     }
 
     // Combo text
-    const comboCount = this.players[this.isOnline ? this.myPlayerIndex : 0]?.scoreManager.combo || 0;
+    const comboCount = this.players[pIdx]?.scoreManager.combo || 0;
     let text = '';
     if (linesCleared === 3) text = 'TRIPLE!';
     else if (linesCleared >= 4) text = 'TETRIS!';
@@ -1284,15 +1550,15 @@ export class GameManager {
     else if (comboCount > 1) text = `COMBO x${comboCount}`;
 
     if (text) {
-      const cx = (this.myPlayerIndex * (COLS * BLOCK_SIZE + 40)) + (COLS * BLOCK_SIZE) / 2;
       this.comboTexts.push({
+        playerIndex: pIdx,
         text: text,
-        x: cx,
+        x: (COLS * BLOCK_SIZE) / 2,
         y: BLOCK_SIZE * 10,
         life: 1200,
         maxLife: 1200,
         color: color,
-        size: linesCleared >= 4 ? 28 : 22,
+        size: linesCleared >= 4 ? 24 : 18,
       });
     }
 

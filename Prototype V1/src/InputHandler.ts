@@ -95,15 +95,21 @@ export class InputHandler {
   }
 
   public getNextInput(): InputAction | undefined {
+    if (this.isFrozen) return undefined;
     const action = this.inputQueue.shift();
     if (this.reverseTimer <= 0 || !action) return action;
     if (action === InputAction.LEFT) return InputAction.RIGHT;
     if (action === InputAction.RIGHT) return InputAction.LEFT;
+    if (action === InputAction.ROTATE_CW) return InputAction.ROTATE_CCW;
+    if (action === InputAction.ROTATE_CCW) return InputAction.ROTATE_CW;
     return action;
   }
 
-  public hasInput() { return this.inputQueue.length > 0; }
-  public pushInput(action: InputAction) { this.inputQueue.push(action); }
+  public hasInput() { return !this.isFrozen && this.inputQueue.length > 0; }
+  public pushInput(action: InputAction) {
+    if (this.isFrozen) return;
+    this.inputQueue.push(action);
+  }
   public freeze() { this.isFrozen = true; this.freezeTimer = 0; this.clear(); }
   public freezeFor(durationMs: number) { this.isFrozen = true; this.freezeTimer = durationMs; this.clear(); }
   public reverseFor(durationMs: number) { this.reverseTimer = Math.max(this.reverseTimer, durationMs); this.clear(); }

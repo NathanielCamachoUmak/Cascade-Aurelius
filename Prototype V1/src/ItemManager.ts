@@ -19,10 +19,11 @@ interface ItemWeight {
 
 export class ItemManager {
   private itemPool: ItemWeight[] = [
-    { type: SpecialBlockType.NONE, weight: 80 },
+    { type: SpecialBlockType.NONE, weight: 78 },
     { type: SpecialBlockType.MULTIPLIER, weight: 10 },
     { type: SpecialBlockType.BOMB, weight: 2 },
     { type: SpecialBlockType.HEAVY, weight: 2 },
+    { type: SpecialBlockType.SPEED, weight: 2 },
     { type: SpecialBlockType.SHIELD, weight: 2 },
     { type: SpecialBlockType.FREEZE, weight: 2 },
     { type: SpecialBlockType.GARBAGE_EATER, weight: 2 },

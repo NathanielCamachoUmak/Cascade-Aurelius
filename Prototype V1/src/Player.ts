@@ -22,6 +22,9 @@ export class Player {
   public classMeter = 0;
   public activeEffectType: ActiveClassEffect = null;
   public activeEffectTimer = 0;
+  public timeWarpTimer = 0;
+  public quicksilverTimer = 0;
+  public chaosTimer = 0;
   public abilityCooldowns = { Q: 0, E: 0 };
   public fortifyCharges = 0;
   public reflectGarbage = false;
@@ -38,6 +41,13 @@ export class Player {
   public selectedTargetIndex: number | null = null;
   public shieldActive = false;
   public abilityFreezeTimer = 0;
+
+  // Visual effect state matching Stage 2 & Stage 3 Tutorials
+  public bombBlastVisual: { row: number; col: number; timer: number; maxTimer: number } | null = null;
+  public heavyCrushVisual: { row: number; timer: number; maxTimer: number } | null = null;
+  public shieldDeflectTimer = 0;
+  public garbageEaterTimer = 0;
+  public freezeTetherVisual: { targetPlayerIndex: number; timer: number; maxTimer: number } | null = null;
 
   public inputHandler: InputHandler;
   public itemManager: ItemManager;
@@ -84,6 +94,9 @@ export class Player {
     this.classMeter = 0;
     this.activeEffectType = null;
     this.activeEffectTimer = 0;
+    this.timeWarpTimer = 0;
+    this.quicksilverTimer = 0;
+    this.chaosTimer = 0;
     this.abilityCooldowns = { Q: 0, E: 0 };
     this.fortifyCharges = 0;
     this.reflectGarbage = false;
@@ -100,5 +113,10 @@ export class Player {
     this.selectedTargetIndex = null;
     this.shieldActive = false;
     this.abilityFreezeTimer = 0;
+    this.bombBlastVisual = null;
+    this.heavyCrushVisual = null;
+    this.shieldDeflectTimer = 0;
+    this.garbageEaterTimer = 0;
+    this.freezeTetherVisual = null;
   }
 }

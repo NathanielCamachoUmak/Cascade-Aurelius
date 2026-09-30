@@ -321,8 +321,8 @@ export class NetworkManager {
    * Report WHAT happened and let the server compute the points. The raw score
    * is never sent from here — see Server/index.js's 'score-event' handler.
    */
-  public sendScoreEvent(type: 'lines' | 'tspin' | 'softdrop' | 'harddrop', lines: number, combo: number, botId?: string) {
-    this.socket.emit("score-event", { type, lines, combo, clientTs: Date.now(), botId });
+  public sendScoreEvent(type: 'lines' | 'tspin' | 'softdrop' | 'harddrop' | 'garbage_eater', lines: number, combo: number, botId?: string, multiplier: number = 1) {
+    this.socket.emit("score-event", { type, lines, combo, multiplier, clientTs: Date.now(), botId });
   }
 
   public sendToppedOut() {

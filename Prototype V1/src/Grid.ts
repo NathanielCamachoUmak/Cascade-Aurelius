@@ -80,77 +80,94 @@ export class Grid {
     }
   }
 
-  public clearLines(): { linesCleared: number; specialBlocksToTrigger: string[]; clearedRows: number[] } {
-  let linesCleared = 0;
-  const specialBlocksToTrigger: string[] = [];
-  const clearedRows: number[] = [];
+  public clearLines(): {
+    linesCleared: number;
+    specialBlocksToTrigger: string[];
+    clearedRows: number[];
+    specialBlockPositions: Array<{ type: string; row: number; col: number }>;
+  } {
+    let linesCleared = 0;
+    const specialBlocksToTrigger: string[] = [];
+    const clearedRows: number[] = [];
+    const specialBlockPositions: Array<{ type: string; row: number; col: number }> = [];
 
-  // First pass: figure out which rows are full and capture their specials
-  // BEFORE any mutation happens, so nothing below gets rewritten out from
-  // under us mid-calculation.
-  const isRowFull: boolean[] = new Array(this.height).fill(false);
-  const rowSpecials: string[][] = new Array(this.height);
-  for (let r = 0; r < this.height; r++) {
-    let full = true;
-    const specials: string[] = [];
-    for (let c = 0; c < this.width; c++) {
-      const cell = this.matrix[r][c];
-      if (cell.type === null || cell.unClearable) full = false;
-      if (cell.special) specials.push(cell.special);
-    }
-    isRowFull[r] = full;
-    rowSpecials[r] = specials;
-  }
+    // First pass: figure out which rows are full and capture their specials
+    // BEFORE any mutation happens, so nothing below gets rewritten out from
+    // under us mid-calculation.
+    const isRowFull: boolean[] = new Array(this.height).fill(false);
+    const isRowCrushed: boolean[] = new Array(this.height).fill(false);
+    const rowSpecials: string[][] = new Array(this.height);
+    const rowSpecialPositions: Array<{ type: string; row: number; col: number }>[] = new Array(this.height);
 
-  // HEAVY block side effect: destroy the row directly beneath a cleared
-  // HEAVY block. This must run BEFORE compaction, while "row + 1" still
-  // means what it looks like on screen — doing it after collapsing shifts
-  // rows out from under this index and leaves survivors floating.
-  for (let r = 0; r < this.height; r++) {
-    if (isRowFull[r] && rowSpecials[r].includes('HEAVY') && r + 1 < this.height) {
+    for (let r = 0; r < this.height; r++) {
+      let full = true;
+      const specials: string[] = [];
+      const positions: Array<{ type: string; row: number; col: number }> = [];
       for (let c = 0; c < this.width; c++) {
-        this.matrix[r + 1][c] = { type: null };
+        const cell = this.matrix[r][c];
+        if (cell.type === null || cell.unClearable) full = false;
+        if (cell.special) {
+          specials.push(cell.special);
+          positions.push({ type: cell.special, row: r, col: c });
+        }
+      }
+      isRowFull[r] = full;
+      rowSpecials[r] = specials;
+      rowSpecialPositions[r] = positions;
+    }
+
+    // HEAVY block side effect: automatically clear the single row directly
+    // beneath a cleared HEAVY block row (r + 1) and compact rows above it.
+    for (let r = 0; r < this.height; r++) {
+      if (isRowFull[r] && rowSpecials[r].includes('HEAVY') && r + 1 < this.height) {
+        const hasUnClearable = this.matrix[r + 1].some(cell => cell.unClearable);
+        if (!hasUnClearable) {
+          isRowCrushed[r + 1] = true;
+        }
       }
     }
-  }
 
-  // O(n) approach: sweep bottom-up, using the pre-computed fullness/specials
-  // rather than re-reading the matrix (which the HEAVY pass above may have
-  // just modified).
-  let writeRow = this.height - 1;
+    // O(n) approach: sweep bottom-up, removing both full rows and HEAVY-crushed rows
+    // so blocks above fall cleanly into the cleared space.
+    let writeRow = this.height - 1;
 
-  for (let readRow = this.height - 1; readRow >= 0; readRow--) {
-    if (isRowFull[readRow]) {
-      linesCleared++;
-      clearedRows.push(readRow);
-      specialBlocksToTrigger.push(...rowSpecials[readRow]);
-    } else {
-      if (readRow !== writeRow) {
-        for (let c = 0; c < this.width; c++) {
-          this.matrix[writeRow][c] = { ...this.matrix[readRow][c] };
+    for (let readRow = this.height - 1; readRow >= 0; readRow--) {
+      if (isRowFull[readRow] || isRowCrushed[readRow]) {
+        linesCleared++;
+        clearedRows.push(readRow);
+        if (isRowFull[readRow]) {
+          specialBlocksToTrigger.push(...rowSpecials[readRow]);
+          specialBlockPositions.push(...rowSpecialPositions[readRow]);
         }
+      } else {
+        if (readRow !== writeRow) {
+          for (let c = 0; c < this.width; c++) {
+            this.matrix[writeRow][c] = { ...this.matrix[readRow][c] };
+          }
+        }
+        writeRow--;
+      }
+    }
+
+    while (writeRow >= 0) {
+      for (let c = 0; c < this.width; c++) {
+        this.matrix[writeRow][c] = { type: null };
       }
       writeRow--;
     }
-  }
 
-  while (writeRow >= 0) {
-    for (let c = 0; c < this.width; c++) {
-      this.matrix[writeRow][c] = { type: null };
-    }
-    writeRow--;
+    return { linesCleared, specialBlocksToTrigger, clearedRows, specialBlockPositions };
   }
-
-  return { linesCleared, specialBlocksToTrigger, clearedRows };
-}
 
   // Effect implementations for items
 
   public clearBombArea(centerRow: number, centerCol: number): void {
-    // Instantly clears a 3x3 grid area around itself
-    for (let r = centerRow - 1; r <= centerRow + 1; r++) {
-      for (let c = centerCol - 1; c <= centerCol + 1; c++) {
-        if (r >= 0 && r < this.height && c >= 0 && c < this.width) {
+    // Instantly clears a 3x3 grid area surrounding the Bomb Block's coordinates
+    const effectiveRow = Math.max(1, Math.min(this.height - 2, centerRow));
+    const effectiveCol = Math.max(1, Math.min(this.width - 2, centerCol));
+    for (let r = effectiveRow - 1; r <= effectiveRow + 1; r++) {
+      for (let c = effectiveCol - 1; c <= effectiveCol + 1; c++) {
+        if (r >= 0 && r < this.height && c >= 0 && c < this.width && !this.matrix[r][c].unClearable) {
           this.matrix[r][c] = { type: null };
         }
       }
@@ -200,7 +217,7 @@ export class Grid {
 
   /** Converts up to `count` garbage cells, prioritising the lower board, into special blocks. */
   public convertGarbageToSpecialBlocks(count: number): number {
-    const specials = ['BOMB', 'HEAVY', 'MULTIPLIER', 'SHIELD', 'FREEZE', 'GARBAGE_EATER'];
+    const specials = ['BOMB', 'HEAVY', 'MULTIPLIER', 'SPEED', 'SHIELD', 'FREEZE', 'GARBAGE_EATER'];
     let converted = 0;
     for (let r = this.height - 1; r >= 0 && converted < count; r--) {
       for (let c = 0; c < this.width && converted < count; c++) {

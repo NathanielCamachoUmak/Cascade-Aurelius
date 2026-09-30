@@ -312,13 +312,13 @@ const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> =
 };
 
 const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[] = [
-  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area around it, clearing nearby blocks too.' },
-  { letter: 'W', name: 'Heavy', description: 'When its line clears, also destroys the entire row directly beneath it.' },
-  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your score for the next 8 seconds.' },
-  { letter: 'V', name: 'Speed', description: 'When its line clears, slows your own piece drop rate by 50% for 5 seconds — giving you more breathing room.' },
-  { letter: 'S', name: 'Shield', description: 'When its line clears, blocks the very next garbage attack sent at you completely.' },
-  { letter: 'F', name: 'Freeze', description: "When its line clears, freezes every opponent's Q/E/R abilities for 3 seconds." },
-  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, instantly eats one line of garbage from the bottom of your own board.' },
+  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area surrounding the block, clearing nearby blocks too.' },
+  { letter: 'W', name: 'Heavy', description: 'When its line clears, automatically clears and crushes the single row directly beneath it.' },
+  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your point gains (2x) for 5 seconds.' },
+  { letter: 'V', name: 'Speed', description: 'When its line clears, slows your own piece drop speed by 50% for 5 seconds — giving you extra control.' },
+  { letter: 'S', name: 'Shield', description: 'When its line clears, raises a defensive aura that completely blocks the next incoming garbage attack.' },
+  { letter: 'F', name: 'Freeze', description: "When its line clears, launches a frost tether that locks out opponents' active Q/E/R class abilities for 3 seconds." },
+  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, devours garbage lines on your board and converts the threat into +800 bonus points.' },
 ];
 
 function renderTutorialClasses() {
@@ -1229,6 +1229,127 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     }
   }
 
+  // ─── Stage 3 Tutorial Visuals in All Modes ───
+  const boardPixelW = COLS * blockSize;
+  const boardPixelH = ROWS * blockSize;
+
+  // 1. Bomb Block [B] 3×3 Blast Box & Expanding Shockwave
+  if (player.bombBlastVisual && player.bombBlastVisual.timer > 0) {
+    const bv = player.bombBlastVisual;
+    const progress = 1 - bv.timer / bv.maxTimer;
+    const alpha = Math.max(0, bv.timer / bv.maxTimer);
+    const cx = offsetX + (bv.col + 0.5) * blockSize;
+    const cy = offsetY + (bv.row + 0.5) * blockSize;
+    const radius = 12 + progress * (blockSize * 2.2);
+
+    tCtx.save();
+    // 3×3 blast zone box
+    tCtx.strokeStyle = `rgba(255, 215, 0, ${alpha * 0.9})`;
+    tCtx.lineWidth = 2.5;
+    tCtx.setLineDash([5, 3]);
+    tCtx.strokeRect(
+      offsetX + (bv.col - 1) * blockSize,
+      offsetY + (bv.row - 1) * blockSize,
+      blockSize * 3,
+      blockSize * 3
+    );
+    tCtx.setLineDash([]);
+
+    // Expanding shockwave ring
+    const grad = tCtx.createRadialGradient(cx, cy, 4, cx, cy, radius);
+    grad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.85})`);
+    grad.addColorStop(0.45, `rgba(255, 215, 0, ${alpha * 0.65})`);
+    grad.addColorStop(0.8, `rgba(255, 85, 85, ${alpha * 0.45})`);
+    grad.addColorStop(1, 'rgba(255, 85, 85, 0)');
+    tCtx.fillStyle = grad;
+    tCtx.beginPath();
+    tCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    tCtx.fill();
+    tCtx.restore();
+  }
+
+  // 2. Heavy Block [W] Downward Crush Wave
+  if (player.heavyCrushVisual && player.heavyCrushVisual.timer > 0) {
+    const hv = player.heavyCrushVisual;
+    const alpha = Math.max(0, hv.timer / hv.maxTimer);
+    const crushY = offsetY + Math.max(0, hv.row - 1) * blockSize;
+    tCtx.save();
+    tCtx.fillStyle = `rgba(255, 215, 0, ${alpha * 0.42})`;
+    tCtx.fillRect(offsetX, crushY, boardPixelW, Math.min(boardPixelH - (crushY - offsetY), blockSize * 2));
+    tCtx.strokeStyle = `rgba(255, 215, 0, ${alpha})`;
+    tCtx.lineWidth = 3;
+    tCtx.strokeRect(offsetX + 2, crushY + 2, boardPixelW - 4, Math.min(boardPixelH - (crushY - offsetY), blockSize * 2) - 4);
+    tCtx.restore();
+  }
+
+  // 5. Shield Block [S] / Fortify Defensive Aura & Deflection Flash
+  if (player.shieldActive || player.fortifyCharges > 0 || player.shieldDeflectTimer > 0) {
+    tCtx.save();
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() * 0.008);
+    const isDeflecting = player.shieldDeflectTimer > 0;
+    const alpha = isDeflecting ? Math.min(1, player.shieldDeflectTimer / 450) : 0.75 * pulse;
+
+    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : '#00FF88';
+    tCtx.lineWidth = isDeflecting ? 5 : 3.5;
+    tCtx.shadowColor = '#00FF88';
+    tCtx.shadowBlur = isDeflecting ? 28 : 16;
+    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardPixelW - 4, boardPixelH - 4);
+
+    tCtx.fillStyle = isDeflecting
+      ? `rgba(0, 255, 136, ${alpha * 0.25})`
+      : `rgba(0, 255, 136, ${alpha * 0.08})`;
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  }
+
+  // 6. Freeze Block [F] Frost Overlay on Affected Board
+  if (player.abilityFreezeTimer > 0) {
+    tCtx.save();
+    tCtx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.strokeStyle = '#38BDF8';
+    tCtx.lineWidth = 3;
+    tCtx.shadowColor = '#38BDF8';
+    tCtx.shadowBlur = 14;
+    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardPixelW - 4, boardPixelH - 4);
+    tCtx.restore();
+  }
+
+  // 7. Garbage Eater [G] Golden Conversion Flash
+  if (player.garbageEaterTimer > 0) {
+    const alpha = Math.max(0, player.garbageEaterTimer / 950);
+    tCtx.save();
+    tCtx.fillStyle = `rgba(255, 215, 0, ${alpha * 0.28})`;
+    tCtx.fillRect(offsetX, offsetY + (ROWS - 4) * blockSize, boardPixelW, blockSize * 4);
+    tCtx.strokeStyle = `rgba(255, 215, 0, ${alpha})`;
+    tCtx.lineWidth = 3;
+    tCtx.strokeRect(offsetX + 2, offsetY + (ROWS - 4) * blockSize + 2, boardPixelW - 4, blockSize * 4 - 4);
+    tCtx.restore();
+  }
+
+  // Stage 2 Class Ability Overlays: Bullet Time (QUICKSILVER) & Chaos Mode (CHAOS)
+  if (player.quicksilverTimer > 0) {
+    tCtx.save();
+    tCtx.fillStyle = 'rgba(0, 229, 255, 0.18)';
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.strokeStyle = '#00E5FF';
+    tCtx.lineWidth = 3.5;
+    tCtx.shadowColor = '#00E5FF';
+    tCtx.shadowBlur = 18;
+    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardPixelW - 4, boardPixelH - 4);
+    tCtx.restore();
+  } else if (player.chaosTimer > 0) {
+    tCtx.save();
+    tCtx.fillStyle = 'rgba(255, 20, 147, 0.14)';
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.strokeStyle = '#FF1493';
+    tCtx.lineWidth = 3;
+    tCtx.shadowColor = '#FF1493';
+    tCtx.shadowBlur = 14;
+    tCtx.strokeRect(offsetX + 2, offsetY + 2, boardPixelW - 4, boardPixelH - 4);
+    tCtx.restore();
+  }
+
   // Draw topping out overlay for this player
   if (player.isToppedOut) {
     tCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
@@ -1349,62 +1470,111 @@ function render() {
       return { x: 0, y: 0 };
   }
 
+  // Draw Freeze Block [F] Targeting Tether between boards (Step 6 Tutorial visual)
+  for (let i = 0; i < gameManager.players.length; i++) {
+    const p = gameManager.players[i];
+    if (!p.freezeTetherVisual || p.freezeTetherVisual.timer <= 0) continue;
+    const tv = p.freezeTetherVisual;
+    const progress = 1 - tv.timer / tv.maxTimer;
+    const targetCtx = isDuo ? eCtx : ctx;
+
+    let sx = 0, sy = 0, tx = 0, ty = 0;
+    if (isDuo) {
+      const sOff = getCanvasRectOffset(i);
+      const tOff = getCanvasRectOffset(tv.targetPlayerIndex);
+      sx = sOff.x + (COLS * BLOCK_SIZE) / 2;
+      sy = sOff.y + 15 * BLOCK_SIZE;
+      tx = tOff.x + (COLS * BLOCK_SIZE) / 2;
+      ty = tOff.y + 8 * BLOCK_SIZE;
+    } else {
+      const sLay = boardLayout[i] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+      const tLay = boardLayout[tv.targetPlayerIndex] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+      sx = sLay.offsetX + (COLS * sLay.blockSize) / 2;
+      sy = sLay.offsetY + 15 * sLay.blockSize;
+      tx = tLay.offsetX + (COLS * tLay.blockSize) / 2;
+      ty = tLay.offsetY + 8 * tLay.blockSize;
+    }
+    const curX = sx + (tx - sx) * Math.min(1, progress * 1.4);
+    const curY = sy + (ty - sy) * Math.min(1, progress * 1.4);
+
+    targetCtx.save();
+    targetCtx.strokeStyle = '#38BDF8';
+    targetCtx.lineWidth = 4;
+    targetCtx.shadowColor = '#00E5FF';
+    targetCtx.shadowBlur = 18;
+    targetCtx.setLineDash([8, 4]);
+    targetCtx.beginPath();
+    targetCtx.moveTo(sx, sy);
+    targetCtx.lineTo(curX, curY);
+    targetCtx.stroke();
+    targetCtx.setLineDash([]);
+    targetCtx.fillStyle = '#FFFFFF';
+    targetCtx.beginPath();
+    targetCtx.arc(curX, curY, 7, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.restore();
+  }
+
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
-    const pIdx = (flash as any).playerIndex ?? 0;
+    const pIdx = flash.playerIndex ?? 0;
     const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
     const rectOffset = getCanvasRectOffset(pIdx);
     
     const targetCtx = isDuo ? eCtx : ctx;
+    const cellSz = isDuo ? BLOCK_SIZE : blockSize;
     const finalX = isDuo ? rectOffset.x : offsetX;
     const finalY = isDuo ? rectOffset.y : offsetY;
     
     targetCtx.fillStyle = flash.color + Math.floor(flash.flash * 80).toString(16).padStart(2, '0');
-    targetCtx.fillRect(finalX, finalY + flash.row * blockSize, COLS * blockSize, blockSize);
+    targetCtx.fillRect(finalX, finalY + flash.row * cellSz, COLS * cellSz, cellSz);
   }
 
-  // Draw particles
+  // Draw particles (stored in board-local 300x600 coordinates)
   for (const p of effects.particles) {
-    const pIdx = (p as any).playerIndex ?? 0;
+    const pIdx = p.playerIndex ?? 0;
     const rectOffset = getCanvasRectOffset(pIdx);
-    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
+    const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+    const scale = isDuo ? 1 : (blockSize / BLOCK_SIZE);
     
     const targetCtx = isDuo ? eCtx : ctx;
-    const finalX = isDuo ? (p.x - offsetX + rectOffset.x) : p.x;
-    const finalY = isDuo ? (p.y - offsetY + rectOffset.y) : p.y;
+    const finalX = isDuo ? (rectOffset.x + p.x) : (offsetX + p.x * scale);
+    const finalY = isDuo ? (rectOffset.y + p.y) : (offsetY + p.y * scale);
 
     const alpha = Math.max(0, p.life / p.maxLife);
     targetCtx.globalAlpha = alpha;
     targetCtx.fillStyle = p.color;
     targetCtx.beginPath();
-    targetCtx.arc(finalX, finalY, p.size * alpha, 0, Math.PI * 2);
+    targetCtx.arc(finalX, finalY, p.size * scale * alpha, 0, Math.PI * 2);
     targetCtx.fill();
   }
   if(isDuo) eCtx.globalAlpha = 1;
   ctx.globalAlpha = 1;
   
-  // Draw combo texts
+  // Draw combo & ability/block floating texts (stored in board-local 300x600 coordinates)
   for (const t of effects.comboTexts) {
-    const pIdx = (t as any).playerIndex ?? 0;
+    const pIdx = t.playerIndex ?? 0;
     const rectOffset = getCanvasRectOffset(pIdx);
-    const { offsetX, offsetY } = boardLayout[pIdx] ?? { offsetX: 0, offsetY: 0 };
+    const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+    const scale = isDuo ? 1 : Math.max(0.6, blockSize / BLOCK_SIZE);
     
     const targetCtx = isDuo ? eCtx : ctx;
-    const finalX = isDuo ? (t.x - offsetX + rectOffset.x) : t.x;
-    const finalY = isDuo ? (t.y - offsetY + rectOffset.y) : t.y;
+    const finalX = isDuo ? (rectOffset.x + t.x) : (offsetX + t.x * (blockSize / BLOCK_SIZE));
+    const finalY = isDuo ? (rectOffset.y + t.y) : (offsetY + t.y * (blockSize / BLOCK_SIZE));
 
     const alpha = Math.max(0, t.life / t.maxLife);
     targetCtx.globalAlpha = alpha;
     targetCtx.fillStyle = t.color;
-    targetCtx.font = `bold ${t.size}px "Press Start 2P"`;
+    targetCtx.font = `bold ${Math.max(9, Math.round(t.size * scale))}px "Press Start 2P"`;
     targetCtx.textAlign = 'center';
     targetCtx.textBaseline = 'middle';
     
     targetCtx.shadowColor = t.color;
-    targetCtx.shadowBlur = 20;
+    targetCtx.shadowBlur = 16;
     targetCtx.fillText(t.text, finalX, finalY);
     targetCtx.shadowBlur = 0;
   }
+  if (isDuo) eCtx.globalAlpha = 1;
   ctx.globalAlpha = 1;
 
   // In online mode, figure out which player index is "ours" for the left HUD
@@ -1440,7 +1610,10 @@ function render() {
     }
     setText('level-p1', `${p1.scoreManager.totalLinesCleared}`); setText('level-p1-br', `${p1.scoreManager.totalLinesCleared}`);
     setText('combo-p1', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : ''); setText('combo-p1-br', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '');
-    setText('multiplier-p1', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : ''); setText('multiplier-p1-br', p1.scoreManager.scoreMultiplier > 1 ? `MULT x${p1.scoreManager.scoreMultiplier}` : '');
+    const multTextP1 = p1.scoreManager.scoreMultiplier > 1
+      ? `MULT x${p1.scoreManager.scoreMultiplier}${p1.scoreManager.multiplierTimer > 0 ? ` (${(p1.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+      : '';
+    setText('multiplier-p1', multTextP1); setText('multiplier-p1-br', multTextP1);
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
     const holdC1BR = safeGet('hold-canvas-p1-br', 'canvas') as HTMLCanvasElement;
     if (holdC1BR) renderPieceOnMiniCanvas(holdC1BR, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
@@ -1461,23 +1634,37 @@ function render() {
     const classInfo1 = PLAYER_CLASSES.find((c) => c.id === p1.playerClass);
     abilityMeterP1.classList.remove('hidden');
     if (classInfo1) {
+      const isFrozen1 = p1.abilityFreezeTimer > 0;
+      const freezeSec1 = (p1.abilityFreezeTimer / 1000).toFixed(1);
       const qCooldown = Math.max(0, p1.abilityCooldowns.Q);
       const eCooldown = Math.max(0, p1.abilityCooldowns.E);
       const eUnavailable = eCooldown > 0 || (p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed);
-      const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = (p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY');
+      const qStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
+      const eStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : ((p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
       const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
+
+      // Visually dim the ability UI when locked out by a Freeze Block [F] (matches Stage 3 Tutorial Step 6)
+      abilityMeterP1.classList.toggle('opacity-45', isFrozen1);
+      abilityMeterP1.classList.toggle('grayscale', isFrozen1);
+      const abilityMeterP1Br = safeGet('ability-meter-p1-br');
+      if (abilityMeterP1Br) {
+        abilityMeterP1Br.classList.toggle('opacity-45', isFrozen1);
+        abilityMeterP1Br.classList.toggle('grayscale', isFrozen1);
+      }
+
       abilityQLabelP1.innerText = classInfo1.abilityQName.toUpperCase();
       abilityQStatusP1.innerText = qStatus;
-      abilityQStatusP1.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
+      abilityQStatusP1.className = `text-[9px] font-bold ${isFrozen1 ? 'text-neon-pink' : (qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan')}`;
       abilityELabelP1.innerText = classInfo1.abilityEName.toUpperCase();
       abilityEStatusP1.innerText = eStatus;
-      abilityEStatusP1.className = `text-[9px] font-bold ${eUnavailable ? 'text-gray-500' : 'text-neon-yellow'}`;
+      abilityEStatusP1.className = `text-[9px] font-bold ${isFrozen1 ? 'text-neon-pink' : (eUnavailable ? 'text-gray-500' : 'text-neon-yellow')}`;
       abilityLabelP1.innerText = classInfo1.ultimateName.toUpperCase();
-      abilityRStatusP1.innerText = `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
+      abilityRStatusP1.innerText = isFrozen1
+        ? `🔒 ABILITIES FROZEN (${freezeSec1}s)`
+        : `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
       setWidth('ability-fill-p1', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`); setWidth('ability-fill-p1-br', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`);
-      abilityReadyP1.classList.toggle('hidden', p1.classMeter < classInfo1.ultimateCost);
+      abilityReadyP1.classList.toggle('hidden', isFrozen1 || p1.classMeter < classInfo1.ultimateCost);
     }
   }
 
@@ -1487,7 +1674,9 @@ function render() {
     scoreElementP2.innerText = `${Math.round(p2.scoreManager.score)}`;
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
-    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1 ? `MULT x${p2.scoreManager.scoreMultiplier}` : '';
+    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1
+      ? `MULT x${p2.scoreManager.scoreMultiplier}${p2.scoreManager.multiplierTimer > 0 ? ` (${(p2.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+      : '';
     
     const holdC2 = safeGet('hold-canvas-p2', 'canvas') as HTMLCanvasElement;
     if (holdC2) renderPieceOnMiniCanvas(holdC2, p2.holdPiece, PLAYER_COLORS[1] || '#FF007F');
@@ -1507,31 +1696,46 @@ function render() {
     setDisplay('ability-meter-p2', 'flex');
     setDisplay('ability-meter-p2-br', 'flex');
     if (classInfo2) {
+      const isFrozen2 = p2.abilityFreezeTimer > 0;
+      const freezeSec2 = (p2.abilityFreezeTimer / 1000).toFixed(1);
       const qCooldown = Math.max(0, p2.abilityCooldowns?.Q || 0);
       const eCooldown = Math.max(0, p2.abilityCooldowns?.E || 0);
       const eUnavailable2 = eCooldown > 0 || (p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed);
-      const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = (p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY');
+      const qStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
+      const eStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : ((p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p2.activeEffectTimer > 0 ? ` · ${p2.activeEffectType} ${Math.ceil(p2.activeEffectTimer / 1000)}s` : '';
       const targetName = p2.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p2.selectedTargetIndex]?.name) ?? `P${p2.selectedTargetIndex + 1}`);
+
+      const abilityMeterP2El = safeGet('ability-meter-p2');
+      if (abilityMeterP2El) {
+        abilityMeterP2El.classList.toggle('opacity-45', isFrozen2);
+        abilityMeterP2El.classList.toggle('grayscale', isFrozen2);
+      }
+      const abilityMeterP2BrEl = safeGet('ability-meter-p2-br');
+      if (abilityMeterP2BrEl) {
+        abilityMeterP2BrEl.classList.toggle('opacity-45', isFrozen2);
+        abilityMeterP2BrEl.classList.toggle('grayscale', isFrozen2);
+      }
       
       setText('ability-q-label-p2', classInfo2.abilityQName.toUpperCase());
       setText('ability-q-status-p2', qStatus);
       const qEl = safeGet('ability-q-status-p2');
-      if (qEl) qEl.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
+      if (qEl) qEl.className = `text-[9px] font-bold ${isFrozen2 ? 'text-neon-pink' : (qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan')}`;
       
       setText('ability-e-label-p2', classInfo2.abilityEName.toUpperCase());
       setText('ability-e-status-p2', eStatus);
       const eEl = safeGet('ability-e-status-p2');
-      if (eEl) eEl.className = `text-[9px] font-bold ${eUnavailable2 ? 'text-gray-500' : 'text-neon-yellow'}`;
+      if (eEl) eEl.className = `text-[9px] font-bold ${isFrozen2 ? 'text-neon-pink' : (eUnavailable2 ? 'text-gray-500' : 'text-neon-yellow')}`;
 
       setText('ability-label-p2', classInfo2.ultimateName.toUpperCase());
-      setText('ability-r-status-p2', `${Math.round(p2.classMeter)}/${classInfo2.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`);
+      setText('ability-r-status-p2', isFrozen2
+        ? `🔒 ABILITIES FROZEN (${freezeSec2}s)`
+        : `${Math.round(p2.classMeter)}/${classInfo2.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`);
       const wid = `${Math.min(100, (p2.classMeter / classInfo2.ultimateCost) * 100)}%`;
       setWidth('ability-fill-p2', wid); setWidth('ability-fill-p2-br', wid);
       
       const rdy = safeGet('ability-ready-p2');
-      if (rdy) rdy.classList.toggle('hidden', p2.classMeter < classInfo2.ultimateCost);
+      if (rdy) rdy.classList.toggle('hidden', isFrozen2 || p2.classMeter < classInfo2.ultimateCost);
     }
   }
   // Update multiplayer scoreboard
