@@ -28,8 +28,12 @@ export class Player {
   public recycleGarbageLines = 0;
   public supportPassiveConversion = false;
   public perfectClearWindow = 0;
+  public gridShiftUsed = false;
   public gridShiftUsedLevel = -1;
   public scramblePreviewCount = 0;
+  public sprintBlocksRemaining = 0;
+  public isCurrentBlockSprinted = false;
+  public speedMultiplier = 1;
   public selectedTargetIndex: number | null = null;
   public shieldActive = false;
   public abilityFreezeTimer = 0;
@@ -85,8 +89,12 @@ export class Player {
     this.recycleGarbageLines = 0;
     this.supportPassiveConversion = false;
     this.perfectClearWindow = 0;
+    this.gridShiftUsed = false;
     this.gridShiftUsedLevel = -1;
     this.scramblePreviewCount = 0;
+    this.sprintBlocksRemaining = 0;
+    this.isCurrentBlockSprinted = false;
+    this.speedMultiplier = 1;
     this.selectedTargetIndex = null;
     this.shieldActive = false;
     this.abilityFreezeTimer = 0;

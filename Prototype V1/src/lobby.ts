@@ -222,7 +222,7 @@ function renderClassCards() {
   classCardList.innerHTML = '';
   const roleMap: Record<string, string> = {
     'Speedster': 'AGILITY FIGHTER',
-    'Tank': 'HEAVY DEFENDER',
+    'Sentinel': 'HEAVY DEFENDER',
     'Saboteur': 'GRID DISRUPTOR',
     'Support': 'TACTICAL UTILITY'
   };
@@ -240,7 +240,7 @@ function renderClassCards() {
       selectedClasses = 'border-neon-yellow shadow-[inset_0_0_0_1px_rgba(255,215,0,1),_0_0_26px_rgba(255,215,0,0.2)] -translate-y-1';
       hoverClasses = 'hover:border-neon-yellow hover:shadow-[0_0_0_3px_rgba(255,215,0,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
       accentColorClass = 'text-neon-yellow';
-    } else if (info.name === 'Tank') {
+    } else if (info.name === 'Sentinel') {
       selectedClasses = 'border-neon-cyan shadow-[inset_0_0_0_1px_rgba(0,255,255,1),_0_0_26px_rgba(0,255,255,0.2)] -translate-y-1';
       hoverClasses = 'hover:border-neon-cyan hover:shadow-[0_0_0_3px_rgba(0,255,255,0.18),0_14px_26px_rgba(0,0,0,0.26)]';
       accentColorClass = 'text-neon-cyan';
@@ -264,7 +264,7 @@ function renderClassCards() {
     card.className = `${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`;
     
     const qDesc = info.abilityQDescription.replace(/^Q [·\-] (.*?s cooldown:?)\s*/i, '($1) ');
-    const eDesc = info.abilityEDescription.replace(/^E [·\-] (.*?cooldown:?|once per level:?)\s*/i, '($1) ');
+    const eDesc = info.abilityEDescription.replace(/^E [·\-] (.*?cooldown:?|once per (?:level|match):?)\s*/i, '($1) ');
     const rDesc = info.ultimateDescription.replace(/^R [·\-] (.*?(?:lines|cost):?)\s*/i, '');
     const passDesc = info.passiveDescription.replace(/^Passive:\s*/i, '');
 
@@ -304,7 +304,7 @@ renderClassCards();
 // --- Tutorial ---
 const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> = {
   Speedster: { text: 'text-neon-yellow', border: 'border-neon-yellow/40' },
-  Tank: { text: 'text-neon-cyan', border: 'border-neon-cyan/40' },
+  Sentinel: { text: 'text-neon-cyan', border: 'border-neon-cyan/40' },
   Saboteur: { text: 'text-neon-pink', border: 'border-neon-pink/40' },
   Support: { text: 'text-neon-green', border: 'border-neon-green/40' },
 };
@@ -313,7 +313,7 @@ const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[
   { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area around it, clearing nearby blocks too.' },
   { letter: 'W', name: 'Heavy', description: 'When its line clears, also destroys the entire row directly beneath it.' },
   { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your score for the next 8 seconds.' },
-  { letter: 'V', name: 'Speed', description: "When its line clears, speeds up your own piece drop rate — good for aggressive stacking." },
+  { letter: 'V', name: 'Speed', description: "When its line clears, slows your own piece drop rate by 25% — giving you more breathing room." },
   { letter: 'S', name: 'Shield', description: 'When its line clears, blocks the very next garbage attack sent at you completely.' },
   { letter: 'F', name: 'Freeze', description: "When its line clears, freezes every opponent's Q/E/R abilities for 3 seconds." },
   { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, instantly eats one line of garbage from the bottom of your own board.' },
@@ -331,7 +331,7 @@ function renderTutorialClasses() {
       <ul class="space-y-1.5 text-xs text-gray-300">
         <li><span class="text-gray-400 font-bold">Passive —</span> ${info.passiveDescription.replace(/^Passive:\s*/i, '')}</li>
         <li><span class="${accent.text} font-bold">[Q] ${info.abilityQName} —</span> ${info.abilityQDescription.replace(/^Q [·\-] .*?cooldown:?\s*/i, '')}</li>
-        <li><span class="${accent.text} font-bold">[E] ${info.abilityEName} —</span> ${info.abilityEDescription.replace(/^E [·\-] .*?(?:cooldown|level):?\s*/i, '')}</li>
+        <li><span class="${accent.text} font-bold">[E] ${info.abilityEName} —</span> ${info.abilityEDescription.replace(/^E [·\-] .*?(?:cooldown|level|match):?\s*/i, '')}</li>
         <li><span class="${accent.text} font-bold">[R] ${info.ultimateName} (${info.ultimateCost} lines) —</span> ${info.ultimateDescription.replace(/^R [·\-] .*?lines:?\s*/i, '')}</li>
       </ul>
     `;
@@ -1366,8 +1366,9 @@ function render() {
     if (classInfo1) {
       const qCooldown = Math.max(0, p1.abilityCooldowns.Q);
       const eCooldown = Math.max(0, p1.abilityCooldowns.E);
+      const eUnavailable = eCooldown > 0 || (p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed);
       const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
+      const eStatus = (p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY');
       const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
       const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
       abilityQLabelP1.innerText = classInfo1.abilityQName.toUpperCase();
@@ -1375,7 +1376,7 @@ function render() {
       abilityQStatusP1.className = `text-[9px] font-bold ${qCooldown > 0 ? 'text-gray-500' : 'text-neon-cyan'}`;
       abilityELabelP1.innerText = classInfo1.abilityEName.toUpperCase();
       abilityEStatusP1.innerText = eStatus;
-      abilityEStatusP1.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
+      abilityEStatusP1.className = `text-[9px] font-bold ${eUnavailable ? 'text-gray-500' : 'text-neon-yellow'}`;
       abilityLabelP1.innerText = classInfo1.ultimateName.toUpperCase();
       abilityRStatusP1.innerText = `${Math.round(p1.classMeter)}/${classInfo1.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`;
       setWidth('ability-fill-p1', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`); setWidth('ability-fill-p1-br', `${Math.min(100, (p1.classMeter / classInfo1.ultimateCost) * 100)}%`);
@@ -1411,8 +1412,9 @@ function render() {
     if (classInfo2) {
       const qCooldown = Math.max(0, p2.abilityCooldowns?.Q || 0);
       const eCooldown = Math.max(0, p2.abilityCooldowns?.E || 0);
+      const eUnavailable2 = eCooldown > 0 || (p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed);
       const qStatus = qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY';
-      const eStatus = eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY';
+      const eStatus = (p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY');
       const activeSuffix = p2.activeEffectTimer > 0 ? ` · ${p2.activeEffectType} ${Math.ceil(p2.activeEffectTimer / 1000)}s` : '';
       const targetName = p2.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p2.selectedTargetIndex]?.name) ?? `P${p2.selectedTargetIndex + 1}`);
       
@@ -1424,7 +1426,7 @@ function render() {
       setText('ability-e-label-p2', classInfo2.abilityEName.toUpperCase());
       setText('ability-e-status-p2', eStatus);
       const eEl = safeGet('ability-e-status-p2');
-      if (eEl) eEl.className = `text-[9px] font-bold ${eCooldown > 0 ? 'text-gray-500' : 'text-neon-yellow'}`;
+      if (eEl) eEl.className = `text-[9px] font-bold ${eUnavailable2 ? 'text-gray-500' : 'text-neon-yellow'}`;
 
       setText('ability-label-p2', classInfo2.ultimateName.toUpperCase());
       setText('ability-r-status-p2', `${Math.round(p2.classMeter)}/${classInfo2.ultimateCost} LINES · TAB: ${targetName}${activeSuffix}`);

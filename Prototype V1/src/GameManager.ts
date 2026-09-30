@@ -331,10 +331,14 @@ export class GameManager {
         targetPlayer.activeEffectType = 'CHAOS';
         targetPlayer.activeEffectTimer = effect.durationMs ?? CHAOS_DURATION_MS;
         targetPlayer.inputHandler.reverseFor(targetPlayer.activeEffectTimer);
+      } else if (effect.type === 'SPRINT') {
+        this.applySprintEffect(targetPlayer, effect.amount ?? 3);
       } else if (effect.type === 'SCRAMBLE') {
         this.scramblePreview(targetPlayer, effect.amount ?? 5);
       } else if (effect.type === 'GRID_SHIFT') {
         targetPlayer.grid.shiftHorizontally(effect.direction === -1 ? -2 : 2);
+      } else if (effect.type === 'RECYCLE') {
+        targetPlayer.recycleGarbageLines = effect.amount ?? 4;
       } else if (effect.type === 'GUARDIAN_ANGEL') {
         targetPlayer.grid.clearBottomLines(effect.amount ?? 4);
       } else if (effect.type === 'ABILITY_FREEZE') {
@@ -459,6 +463,7 @@ export class GameManager {
           abilityFreezeTimer: player.abilityFreezeTimer,
           fortifyCharges: player.fortifyCharges,
           reflectGarbage: player.reflectGarbage,
+          gridShiftUsed: player.gridShiftUsed,
           gridShiftUsedLevel: player.gridShiftUsedLevel,
           currentLevel: Math.floor(player.scoreManager.totalLinesCleared / 10),
           boardHeight,
@@ -645,8 +650,18 @@ export class GameManager {
       player.dropInterval = Math.max(100, baseInterval - linesFactor - timeFactor);
     }
 
+    player.dropInterval = Math.max(100, player.dropInterval * player.speedMultiplier);
+
     if (player.activeEffectType === 'TIME_WARP' && player.activeEffectTimer > 0) {
       player.dropInterval *= 2;
+    }
+
+    if (player.sprintBlocksRemaining > 0) {
+      player.sprintBlocksRemaining--;
+      player.isCurrentBlockSprinted = true;
+      player.dropInterval = Math.max(50, player.dropInterval * 0.5);
+    } else {
+      player.isCurrentBlockSprinted = false;
     }
     
     player.dropTimer = 0;
@@ -733,7 +748,9 @@ export class GameManager {
         break;
       case InputAction.SOFT_DROP:
         if (this.movePiece(player, 0, 1)) {
-          player.scoreManager.addDropScore(1);
+          if (!player.isCurrentBlockSprinted) {
+            player.scoreManager.addDropScore(1);
+          }
           player.dropTimer = 0;
         }
         break;
@@ -756,7 +773,9 @@ export class GameManager {
     if (!player.currentPiece) return;
     let dropped = 0;
     while (this.movePiece(player, 0, 1)) dropped++;
-    player.scoreManager.addDropScore(dropped * 2);
+    if (!player.isCurrentBlockSprinted) {
+      player.scoreManager.addDropScore(dropped * 2);
+    }
     this.handlePieceLock(player);
   }
 
@@ -767,7 +786,7 @@ export class GameManager {
 
     if (slot === 'Q') {
       if (player.playerClass === 'SPEEDSTER') {
-        this.hardDropPiece(player);
+        this.sendOrApplyClassEffect(player, { type: 'SPRINT', amount: 3, targetIndex: player.selectedTargetIndex ?? undefined });
         player.abilityCooldowns.Q = 12_000;
       } else if (player.playerClass === 'TANK') {
         player.fortifyCharges = 2;
@@ -776,7 +795,11 @@ export class GameManager {
         this.sendOrApplyClassEffect(player, { type: 'SCRAMBLE', amount: 5, targetIndex: player.selectedTargetIndex ?? undefined });
         player.abilityCooldowns.Q = 12_000;
       } else if (player.playerClass === 'SUPPORT') {
-        player.recycleGarbageLines = 4;
+        if (this.isOnline && this.isTeamMode && player.selectedTargetIndex !== null && player.selectedTargetIndex !== this.myPlayerIndex) {
+          this.sendOrApplyClassEffect(player, { type: 'RECYCLE', amount: 4, targetIndex: player.selectedTargetIndex });
+        } else {
+          player.recycleGarbageLines = 4;
+        }
         player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
       }
       return;
@@ -792,7 +815,8 @@ export class GameManager {
         player.reflectGarbage = true;
         player.abilityCooldowns.E = 20_000;
       } else if (player.playerClass === 'SABOTEUR') {
-        if (player.gridShiftUsedLevel === level) return;
+        if (player.gridShiftUsed) return;
+        player.gridShiftUsed = true;
         player.gridShiftUsedLevel = level;
         this.sendOrApplyClassEffect(player, { type: 'GRID_SHIFT', direction: Math.random() < 0.5 ? -1 : 1, targetIndex: player.selectedTargetIndex ?? undefined });
       } else if (player.playerClass === 'SUPPORT') {
@@ -808,8 +832,11 @@ export class GameManager {
     if (player.playerClass === 'SPEEDSTER') {
       this.sendOrApplyClassEffect(player, { type: 'QUICKSILVER', durationMs: BULLET_TIME_DURATION_MS });
     } else if (player.playerClass === 'TANK') {
-      this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 10 });
+      this.sendOrApplyClassEffect(player, { type: 'EARTHQUAKE', amount: 4 });
     } else if (player.playerClass === 'SABOTEUR') {
+      player.gridShiftUsed = false;
+      player.gridShiftUsedLevel = -1;
+      player.abilityCooldowns.E = 0;
       this.sendOrApplyClassEffect(player, { type: 'CHAOS', durationMs: CHAOS_DURATION_MS });
     } else if (player.playerClass === 'SUPPORT') {
       this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: player.selectedTargetIndex ?? undefined });
@@ -829,7 +856,7 @@ export class GameManager {
     player.selectedTargetIndex = candidates[(current + 1) % candidates.length];
   }
 
-  private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
+  private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE' | 'SPRINT' | 'RECYCLE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
     if (this.isOnline) {
       this.network?.sendClassAbility(effect);
       return;
@@ -839,10 +866,28 @@ export class GameManager {
     if (effect.type === 'QUICKSILVER') opponents.forEach(target => target.inputHandler.freezeFor(effect.durationMs ?? BULLET_TIME_DURATION_MS));
     else if (effect.type === 'CHAOS') opponents.forEach(target => target.inputHandler.reverseFor(effect.durationMs ?? CHAOS_DURATION_MS));
     else if (effect.type === 'SCRAMBLE') this.scramblePreview(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 5);
+    else if (effect.type === 'SPRINT') this.applySprintEffect(selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0], effect.amount ?? 3);
+    else if (effect.type === 'RECYCLE') {
+      const allyTarget = selectedTarget && !selectedTarget.isToppedOut ? selectedTarget : player;
+      allyTarget.recycleGarbageLines = effect.amount ?? 4;
+    }
     else if (effect.type === 'GRID_SHIFT') (selectedTarget && selectedTarget !== player ? selectedTarget : opponents[0])?.grid.shiftHorizontally((effect.direction ?? 1) * 2);
-    else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 10, 'HUMAN'));
+    else if (effect.type === 'EARTHQUAKE') opponents.forEach(target => target.grid.addGarbageLines(effect.amount ?? 4, 'HUMAN'));
     else if (effect.type === 'GUARDIAN_ANGEL') player.grid.clearBottomLines(effect.amount ?? 4);
     else if (effect.type === 'ABILITY_FREEZE') opponents.forEach(target => { target.abilityFreezeTimer = effect.durationMs ?? 3000; });
+  }
+
+  private applySprintEffect(player: Player | undefined, nextBlocksCount: number = 3) {
+    if (!player) return;
+    if (player.currentPiece) {
+      player.sprintBlocksRemaining = nextBlocksCount;
+      if (!player.isCurrentBlockSprinted) {
+        player.isCurrentBlockSprinted = true;
+        player.dropInterval = Math.max(50, player.dropInterval * 0.5);
+      }
+    } else {
+      player.sprintBlocksRemaining = nextBlocksCount + 1;
+    }
   }
 
   private scramblePreview(player: Player | undefined, count: number) {
@@ -972,10 +1017,11 @@ export class GameManager {
           if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.SPEED);
           else player.itemManager.forceNextItem(SpecialBlockType.SPEED);
         } else if (player.playerClass === 'TANK') {
-          if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.HEAVY);
-          else player.itemManager.forceNextItem(SpecialBlockType.HEAVY);
+          if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.SHIELD);
+          else player.itemManager.forceNextItem(SpecialBlockType.SHIELD);
         } else if (player.playerClass === 'SABOTEUR') {
-          this.sendOrApplyClassEffect(player, { type: 'SCRAMBLE', amount: 1, targetIndex: player.selectedTargetIndex ?? undefined });
+          if (player.nextPiece) player.itemManager.applySpecificItemToTetromino(player.nextPiece, SpecialBlockType.FREEZE);
+          else player.itemManager.forceNextItem(SpecialBlockType.FREEZE);
         } else if (player.playerClass === 'SUPPORT') {
           player.supportPassiveConversion = true;
         }
@@ -1010,7 +1056,8 @@ export class GameManager {
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
       } else if (special === SpecialBlockType.SPEED) {
-        player.dropInterval = Math.max(100, player.dropInterval * 0.75);
+        player.speedMultiplier *= 1.25;
+        player.dropInterval = Math.max(100, player.dropInterval * 1.25);
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
       } else if (special === SpecialBlockType.FREEZE) {

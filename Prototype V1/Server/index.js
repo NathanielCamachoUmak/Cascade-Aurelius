@@ -1039,6 +1039,9 @@ io.on('connection', socket => {
       emitToOpponents('class-effect', () => ({ type, durationMs: safeDuration }));
     } else if (type === 'ABILITY_FREEZE') {
       emitToOpponents('class-effect', () => ({ type: 'ABILITY_FREEZE', durationMs: safeDuration || 3000 }));
+    } else if (type === 'SPRINT' && selectedOpponent) {
+      const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
+      io.to(socketId).emit('class-effect', { type: 'SPRINT', amount: Math.max(1, Math.min(5, safeAmount || 3)), targetIndex: selectedOpponent[1].index });
     } else if (type === 'SCRAMBLE' && selectedOpponent) {
       const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
       io.to(socketId).emit('class-effect', { type: 'SCRAMBLE', amount: Math.max(1, Math.min(5, safeAmount || 5)), targetIndex: selectedOpponent[1].index });
@@ -1046,7 +1049,16 @@ io.on('connection', socket => {
       const socketId = selectedOpponent[1].isBot ? selectedOpponent[1].ownerId : selectedOpponent[0];
       io.to(socketId).emit('class-effect', { type: 'GRID_SHIFT', direction: direction === -1 ? -1 : 1, targetIndex: selectedOpponent[1].index });
     } else if (type === 'EARTHQUAKE') {
-      emitToOpponents('receive-garbage', (player) => ({ count: safeAmount || 10, fromIndex: sender.index, targetIndex: player.index }));
+      emitToOpponents('receive-garbage', (player) => ({ count: safeAmount || 4, fromIndex: sender.index, targetIndex: player.index }));
+    } else if (type === 'RECYCLE') {
+      const allies = room.mode.isTeamMode
+        ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
+        : null;
+      const selectedAlly = (targetIndex !== undefined && targetIndex !== null)
+        ? allies?.find(([, player]) => player.index === targetIndex)
+        : null;
+      const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
+      io.to(targetSockId).emit('class-effect', { type: 'RECYCLE', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
     } else if (type === 'GUARDIAN_ANGEL') {
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')

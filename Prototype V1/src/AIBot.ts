@@ -15,6 +15,7 @@ export interface AbilityContext {
   abilityFreezeTimer: number;
   fortifyCharges: number;
   reflectGarbage: boolean;
+  gridShiftUsed?: boolean;
   gridShiftUsedLevel: number;
   currentLevel: number;           // Math.floor(totalLinesCleared / 10)
   boardHeight: number;            // max column height (0–20)
@@ -322,9 +323,8 @@ export class AIBot {
   private shouldUseQ(ctx: AbilityContext): boolean {
     switch (ctx.playerClass) {
       case 'SPEEDSTER':
-        // Sprint: instant hard drop. Skip — the bot already hard-drops optimally.
-        // Only use if the bot is confident (low board, few holes).
-        return false; // Let the normal piece placement handle this
+        // Sprint: speed up target opponent's current and next 3 pieces by 50%.
+        return ctx.boardHeight <= 14 && ctx.holeCount <= 5;
 
       case 'TANK':
         // Fortify: ignore next 2 garbage. Use when board is getting tall.
@@ -354,8 +354,8 @@ export class AIBot {
         return ctx.boardHeight >= 10 && !ctx.reflectGarbage;
 
       case 'SABOTEUR':
-        // Grid Shift: shift opponent's grid. Once per level.
-        return ctx.gridShiftUsedLevel < ctx.currentLevel && ctx.boardHeight <= 14;
+        // Grid Shift: shift opponent's grid. Once per match (reset by Chaos Mode).
+        return !ctx.gridShiftUsed && ctx.boardHeight <= 14;
 
       case 'SUPPORT':
         // Perfect Clear Bonus: 15s window for a perfect clear bonus.
