@@ -10,6 +10,7 @@ type TutorialStep =
   | 'PIECE_4_HOLD'
   | 'PIECE_5_DROP_FIRST'
   | 'PIECE_5_SWAP_HOLD'
+  | 'PIECE_5_DROP_SWAPPED'
   | 'COMPLETED';
 
 const COLS = 10;
