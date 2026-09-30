@@ -844,7 +844,11 @@ export class GameManager {
         player.gridShiftUsedLevel = level;
         this.sendOrApplyClassEffect(player, { type: 'GRID_SHIFT', direction: Math.random() < 0.5 ? -1 : 1, targetIndex: player.selectedTargetIndex ?? undefined });
       } else if (player.playerClass === 'SUPPORT') {
-        player.perfectClearWindow = PERFECT_CLEAR_WINDOW_MS;
+        if (player.nextPiece) {
+          player.itemManager.applyGoldDropToTetromino(player.nextPiece);
+        } else {
+          player.itemManager.forceGoldDropNext();
+        }
         player.abilityCooldowns.E = 25_000;
       }
       return;

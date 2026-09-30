@@ -358,9 +358,8 @@ export class AIBot {
         return !ctx.gridShiftUsed && ctx.boardHeight <= 14;
 
       case 'SUPPORT':
-        // Perfect Clear Bonus: 15s window for a perfect clear bonus.
-        // Only use early game when board is very clean.
-        return ctx.boardHeight <= 4 && ctx.holeCount === 0;
+        // Gold Drop: next tetromino is made of 4 unique special item blocks (25s cooldown).
+        return true;
 
       default:
         return false;

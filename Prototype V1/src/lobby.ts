@@ -954,7 +954,7 @@ function drawBlock(
 }
 
 
-function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], color: string) {
+function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], color: string, nextPiece?: Tetromino | null) {
   if (!canvasEl) return;
   const tCtx = canvasEl.getContext('2d')!;
   tCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
@@ -962,7 +962,7 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
   const MINI_BLOCK_SIZE = 20;
   
   shapes.forEach((shapeType, i) => {
-    const temp = new Tetromino(shapeType as any);
+    const temp = (i === 0 && nextPiece) ? nextPiece : new Tetromino(shapeType as any);
     const shape = temp.matrix;
     const size = shape.length;
     
@@ -975,6 +975,7 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
         if (shape[r][c] !== 0) {
           const fx = offsetX + c * MINI_BLOCK_SIZE;
           const fy = offsetY + r * MINI_BLOCK_SIZE;
+          const specialType = (i === 0 && nextPiece) ? nextPiece.specialBlocks.get(`${r},${c}`) : undefined;
           if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
             tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
             tCtx.strokeStyle = color;
@@ -983,6 +984,15 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
           } else {
             tCtx.fillStyle = color;
             tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+          }
+          if (specialType) {
+            tCtx.fillStyle = '#000000B3';
+            tCtx.fillRect(fx + 2, fy + 2, MINI_BLOCK_SIZE - 4, MINI_BLOCK_SIZE - 4);
+            tCtx.fillStyle = '#FFFFFF';
+            tCtx.font = 'bold 11px "Press Start 2P"';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2 + 1);
           }
         }
       }
@@ -1391,9 +1401,9 @@ function render() {
     // Safety clamp to exactly 4 pieces
     while (p1Preview.length < 4) p1Preview.push(p1.bag.getPreview(1)[0]);
     p1Preview.length = 4;
-    renderQueueOnMiniCanvas(nextCanvasP1, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF');
+    renderQueueOnMiniCanvas(nextCanvasP1, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF', p1.nextPiece);
     const nextC1BR = safeGet('next-canvas-p1-br', 'canvas') as HTMLCanvasElement;
-    if (nextC1BR) renderQueueOnMiniCanvas(nextC1BR, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF');
+    if (nextC1BR) renderQueueOnMiniCanvas(nextC1BR, p1Preview, PLAYER_COLORS[myIdx] || '#00E5FF', p1.nextPiece);
     
     const p1PreviewText = p1.nextPiece ? [p1.nextPiece.type, ...p1.bag.getPreview(4)].join(' · ') : p1.bag.getPreview(5).join(' · ');
     nextQueueP1.innerText = p1PreviewText;
@@ -1440,9 +1450,9 @@ function render() {
     while (p2Preview.length < 4) p2Preview.push(p2.bag.getPreview(1)[0]);
     p2Preview.length = 4;
     const nextC2 = safeGet('next-canvas-p2', 'canvas') as HTMLCanvasElement;
-    if (nextC2) renderQueueOnMiniCanvas(nextC2, p2Preview, PLAYER_COLORS[1] || '#FF007F');
+    if (nextC2) renderQueueOnMiniCanvas(nextC2, p2Preview, PLAYER_COLORS[1] || '#FF007F', p2.nextPiece);
     const nextC2BR = safeGet('next-canvas-p2-br', 'canvas') as HTMLCanvasElement;
-    if (nextC2BR) renderQueueOnMiniCanvas(nextC2BR, p2Preview, PLAYER_COLORS[1] || '#FF007F');
+    if (nextC2BR) renderQueueOnMiniCanvas(nextC2BR, p2Preview, PLAYER_COLORS[1] || '#FF007F', p2.nextPiece);
 
 
     const classInfo2 = PLAYER_CLASSES.find((c) => c.id === p2.playerClass);

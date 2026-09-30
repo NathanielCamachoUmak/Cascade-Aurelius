@@ -28,15 +28,61 @@ export class ItemManager {
     { type: SpecialBlockType.GARBAGE_EATER, weight: 2 },
   ];
   private forcedNextItem: SpecialBlockType | null = null;
+  private forcedGoldDrop: boolean = false;
 
   public forceNextItem(item: SpecialBlockType): void {
     this.forcedNextItem = item;
   }
 
+  public forceGoldDropNext(): void {
+    this.forcedGoldDrop = true;
+  }
+
   public applyItemToTetromino(tetromino: Tetromino): void {
+    if (this.forcedGoldDrop) {
+      this.forcedGoldDrop = false;
+      this.applyGoldDropToTetromino(tetromino);
+      return;
+    }
     const itemType = this.forcedNextItem ?? this.getWeightedRandomItem();
     this.forcedNextItem = null;
     this.applySpecificItemToTetromino(tetromino, itemType);
+  }
+
+  /**
+   * Support [E] Gold Drop: populates every solid block of the tetromino
+   * with a distinct (unique) SpecialBlockType.
+   */
+  public applyGoldDropToTetromino(tetromino: Tetromino): void {
+    const solidBlocks: { r: number; c: number }[] = [];
+    for (let r = 0; r < tetromino.matrix.length; r++) {
+      for (let c = 0; c < tetromino.matrix[r].length; c++) {
+        if (tetromino.matrix[r][c] !== 0) solidBlocks.push({ r, c });
+      }
+    }
+    if (!solidBlocks.length) return;
+
+    const uniquePool: SpecialBlockType[] = [
+      SpecialBlockType.BOMB,
+      SpecialBlockType.HEAVY,
+      SpecialBlockType.MULTIPLIER,
+      SpecialBlockType.SPEED,
+      SpecialBlockType.SHIELD,
+      SpecialBlockType.FREEZE,
+      SpecialBlockType.GARBAGE_EATER,
+    ];
+
+    // Fisher-Yates shuffle to pick unique item blocks
+    for (let i = uniquePool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [uniquePool[i], uniquePool[j]] = [uniquePool[j], uniquePool[i]];
+    }
+
+    tetromino.specialBlocks.clear();
+    solidBlocks.forEach((cell, idx) => {
+      const itemType = uniquePool[idx % uniquePool.length];
+      tetromino.specialBlocks.set(`${cell.r},${cell.c}`, itemType);
+    });
   }
 
   public applySpecificItemToTetromino(tetromino: Tetromino, itemType: SpecialBlockType): void {

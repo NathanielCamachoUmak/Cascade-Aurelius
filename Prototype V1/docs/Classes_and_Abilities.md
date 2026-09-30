@@ -47,7 +47,7 @@ This document lists all playable classes, their passives, active abilities (`[Q]
 | :--- | :--- | :--- | :--- | :--- |
 | **Passive** | **Garbage Conversion** | Tetris (4-line clear) | Self | Clearing a Tetris arms your board so the **next incoming garbage attack** is automatically converted into **Special Blocks**. |
 | **`[Q]`** | **Recycle** | 10s Cooldown | Self or Targeted Ally (3v3 TDM) | Converts up to **4 existing garbage lines** into **Special Blocks** (or arms conversion for incoming garbage if fewer than 4 are on the board). Can target **allies in 3v3 Team Deathmatch** (or defaults to yourself). |
-| **`[E]`** | **Perfect Clear Bonus** | 15s–25s Cooldown | Self | Opens a **15-second window** where achieving an all-clear (empty grid) awards **4 bonus lines** and **+4 class meter**. |
+| **`[E]`** | **Gold Drop** | 25s Cooldown | Self | Your **next tetromino** is made entirely out of **4 different Special Item Blocks** (every block of the tetromino is a unique item block). |
 | **`[R]`** | **Guardian Angel** | **45 Lines** | Self or Ally (3v3 TDM) | Clears the **bottom 4 lines** of your board, or a **targeted ally's board** in 3v3 Team Deathmatch (automatically picks the most endangered ally if none is targeted). |
 
 ---

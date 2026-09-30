@@ -63,9 +63,9 @@ Each class has its own 4-step certification tutorial selected via the **Choose Y
 * **Step 2 (Passive — `Tetris Garbage Conversion`):**
   * **Setup:** Pre-stacked 4-row Tetris well in Column 10 + `I`-piece.
   * **Action:** Clear the 4-line Tetris to arm Support's passive (`supportPassiveConversion`), automatically converting the Dummy's next incoming garbage attack into Special Blocks.
-* **Step 3 (Offense — `[E] Perfect Clear Bonus`):**
-  * **Setup:** The board is set up for an all-clear (4 simple scripted pieces away from an empty grid).
-  * **Action:** The player activates **`[E] Perfect Clear Bonus`** (starting the **15-second timer**) and places the scripted pieces to achieve an **All-Clear**, triggering **+4 Bonus Lines** and charging the Ultimate meter to full (`45 / 45 LINES`).
+* **Step 3 (Item Generation — `[E] Gold Drop`):**
+  * **Setup:** Pre-stacked board with a 4-wide horizontal gap in Columns 7–10.
+  * **Action:** The player activates **`[E] Gold Drop`**, spawning an `I`-piece where **all 4 blocks are comprised of different Special Item Blocks** (`Bomb [B]`, `Heavy [W]`, `Multiplier [X]`, `Shield [S]`), and drops it into the gap to trigger all 4 item effects at once and charge the Ultimate meter (`45 / 45 LINES`).
 * **Step 4 (Ultimate / The Rescue — `[R] Guardian Angel`):**
   * **Setup:** An **"Ally" Dummy Board** spawns on the right, 18 lines high (one block away from topping out!).
   * **Action:** With the targeting pointer locked onto the Ally Dummy Board, the player activates **`[R] Guardian Angel`**, instantly clearing the ally's **bottom 4 lines** to demonstrate team-saving utility!

@@ -186,8 +186,7 @@ export class TutorialManager {
   private gridShiftUsed = false;
   private timeWarpActive = false;
   private timeWarpTimer = 0;
-  private perfectClearWindowActive = false;
-  private perfectClearTimer = 0;
+  private goldDropActive = false;
   private recycleConvertedReady = false;
   private stage2TransitionLocked = false;
 
@@ -565,8 +564,7 @@ export class TutorialManager {
     this.reflectArmed = false;
     this.timeWarpActive = false;
     this.timeWarpTimer = 0;
-    this.perfectClearWindowActive = false;
-    this.perfectClearTimer = 0;
+    this.goldDropActive = false;
     this.recycleConvertedReady = false;
     this.holdPiece = null;
     this.dropTimer = 0;
@@ -880,18 +878,19 @@ export class TutorialManager {
         this.queue = ['I', 'T', 'O', 'L'];
         this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'PASSIVE DRILL · TETRIS CONVERSION' })];
       } else if (step === 'STEP_3_ABILITY') {
-        // Support Step 3 (Offense): [E] Perfect Clear Bonus (15s window) -> Clear board for massive FSM meter charge
-        this.classMeter = 30;
+        // Support Step 3 (Item Generation): [E] Gold Drop -> Next Tetromino made of 4 unique Special Item Blocks
+        this.classMeter = 35;
         this.qStatusText = 'COOLDOWN';
         this.eStatusText = 'READY';
-        this.rStatusText = '30 / 45 LINES';
+        this.rStatusText = '35 / 45 LINES';
         this.grid = new Grid();
         this.grid.loadPresetMatrix([
           ['I', 'I', 'I', 'I', 'O', 'O', null, null, null, null],
+          ['J', 'J', 'J', 'L', 'L', 'L', 'O', 'O', 'T', null],
         ]);
-        this.currentPiece = null; // Spawns horizontal I-piece once [E] Perfect Clear Bonus is activated
+        this.currentPiece = null; // Spawns 4-item Gold Drop I-piece once [E] Gold Drop is activated
         this.queue = ['I', 'O', 'T', 'L'];
-        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'ALL-CLEAR OPPORTUNITY' })];
+        this.dummyBoards = [this.createSingleDummyBoard({ statusBadge: 'GOLD DROP DRILL · 4 UNIQUE ITEMS' })];
       } else if (step === 'STEP_4_ULTIMATE') {
         // Support Step 4 (Ultimate / The Rescue): Ally Dummy Board spawns 18 lines high -> Target Ally & press [R] Guardian Angel!
         this.classMeter = 45;
@@ -1322,16 +1321,16 @@ export class TutorialManager {
           </div>
         `;
       } else if (this.certStep === 'STEP_3_ABILITY') {
-        blockBadge.textContent = 'STEP 3 · OFFENSE ([E] PERFECT CLEAR BONUS)';
+        blockBadge.textContent = 'STEP 3 · ITEM GENERATION ([E] GOLD DROP)';
         list.innerHTML = `
           <div class="p-3 rounded-lg border border-neon-yellow bg-neon-yellow/10 flex flex-col gap-1.5">
             <div class="text-xs font-bold text-white">
-              ${this.perfectClearWindowActive ? '✓ 15s Timer Active! Clear the Final Row!' : '1. Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Perfect Clear Bonus)'}
+              ${this.goldDropActive ? '✓ Gold Drop Piece Spawned! Clear the Line!' : '1. Press <kbd class="px-2 py-0.5 bg-black/60 border border-neon-yellow rounded text-neon-yellow font-pixel text-[10px]">E</kbd> (Gold Drop)'}
             </div>
             <div class="text-[11px] text-gray-300 leading-relaxed">
-              ${this.perfectClearWindowActive
-                ? 'Slide the I-piece into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to empty the entire grid and earn +4 Bonus Lines &amp; full Ultimate charge!'
-                : 'Starts a 15-second window where achieving an All-Clear grants +4 Bonus Lines and massive Ultimate meter charge.'}
+              ${this.goldDropActive
+                ? 'Every block of your I-piece is a different Special Item (<strong class="text-neon-yellow">B, W, X, S</strong>)! Slide it into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to trigger all 4 effects at once!'
+                : 'Makes your next Tetromino entirely comprised of <strong>4 different Special Item Blocks</strong> (25s cooldown).'}
             </div>
           </div>
         `;
@@ -1664,21 +1663,27 @@ export class TutorialManager {
         return;
       }
 
-      if (this.certStep === 'STEP_3_ABILITY' && !this.perfectClearWindowActive) {
+      if (this.certStep === 'STEP_3_ABILITY' && !this.goldDropActive) {
         e.preventDefault();
         if (key === 'e' || key === 'E') {
-          this.perfectClearWindowActive = true;
-          this.perfectClearTimer = 15000;
-          this.eStatusText = 'WINDOW (15.0s)';
-          this.currentPiece = new Tetromino('I');
+          this.goldDropActive = true;
+          this.eStatusText = 'GOLD DROP!';
+          const goldPiece = new Tetromino('I');
+          // Assign 4 unique Special Item Blocks to all 4 cells of the I-piece (row 1, cols 0..3)
+          goldPiece.specialBlocks.set('1,0', SpecialBlockType.BOMB);
+          goldPiece.specialBlocks.set('1,1', SpecialBlockType.HEAVY);
+          goldPiece.specialBlocks.set('1,2', SpecialBlockType.MULTIPLIER);
+          goldPiece.specialBlocks.set('1,3', SpecialBlockType.SHIELD);
+          this.currentPiece = goldPiece;
           this.dropTimer = 0;
           this.lockTimer = 0;
-          this.showStage2Banner('✓ 15s PERFECT CLEAR WINDOW ACTIVE! Drop the I-piece into Columns 7–10 for an All-Clear!', 'cyan');
+          AudioManager.playSfx('lineClear');
+          this.showStage2Banner('✓ GOLD DROP! All 4 blocks of your I-piece are unique Special Items (B, W, X, S)! Drop it into Columns 7–10!', 'cyan');
           this.updateClassAbilityHud();
           this.updateStage2InstructionUi();
           this.render();
         } else {
-          this.showStage2Banner('eFSM Guard: Press [E] Perfect Clear Bonus first to open the 15-second window!', 'pink');
+          this.showStage2Banner('eFSM Guard: Press [E] Gold Drop first to infuse your next Tetromino with 4 unique Special Item Blocks!', 'pink');
         }
         return;
       }
@@ -1796,22 +1801,23 @@ export class TutorialManager {
       return;
     }
 
-    // ─── SUPPORT STEP 3 (PERFECT CLEAR BONUS) ───
+    // ─── SUPPORT STEP 3 (GOLD DROP) ───
     if (this.activeClass === 'SUPPORT' && this.certStep === 'STEP_3_ABILITY') {
-      if (this.perfectClearWindowActive && linesCleared >= 1 && this.grid.isEmpty()) {
+      if (this.goldDropActive && linesCleared >= 1) {
+        this.grid.clearBottomLines(1);
         AudioManager.playSfx('lineClear');
         this.classMeter = 45;
         this.rStatusText = 'READY (45/45)';
-        this.updateHudStats(2600, 13);
+        this.updateHudStats(2600, 12);
         this.updateClassAbilityHud();
         this.stage2TransitionLocked = true;
-        this.showStage2Banner('✓ PERFECT CLEAR BONUS! +4 Bonus Lines awarded & Ultimate Meter charged to 45/45!', 'green');
+        this.showStage2Banner('✓ GOLD DROP CLEARED! Triggered all 4 unique Special Item Blocks (Bomb, Heavy, Multiplier, Shield) at once!', 'green');
         setTimeout(() => {
           this.setupCertStep('STEP_4_ULTIMATE');
         }, 2100);
       } else {
         this.setupCertStep('STEP_3_ABILITY');
-        this.showStage2Banner('Press [E] first, then slide the horizontal I-piece into Columns 7–10 for an All-Clear!', 'pink');
+        this.showStage2Banner('Press [E] Gold Drop first, then slide the 4-item I-piece into Columns 7–10!', 'pink');
       }
       return;
     }
@@ -2495,12 +2501,6 @@ export class TutorialManager {
     if (this.timeWarpActive && this.timeWarpTimer > 0) {
       this.timeWarpTimer = Math.max(0, this.timeWarpTimer - dt);
       this.eStatusText = `ACTIVE (${(this.timeWarpTimer / 1000).toFixed(1)}s)`;
-      this.updateClassAbilityHud();
-    }
-
-    if (this.perfectClearWindowActive && this.perfectClearTimer > 0) {
-      this.perfectClearTimer = Math.max(0, this.perfectClearTimer - dt);
-      this.eStatusText = `WINDOW (${(this.perfectClearTimer / 1000).toFixed(1)}s)`;
       this.updateClassAbilityHud();
     }
 
