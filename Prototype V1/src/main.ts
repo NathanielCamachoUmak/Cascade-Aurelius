@@ -30,8 +30,8 @@ const btnHardBot = document.getElementById('btn-hard-bot')!;
 const btnBack = document.getElementById('btn-back')!;
 const btnHowToPlay = document.getElementById('btn-how-to-play')!;
 const btnSoloHowToPlay = document.getElementById('btn-solo-how-to-play');
-const btnStartBasicsTutorial = document.getElementById('btn-start-basics-tutorial');
-const statusBasicsTutorial = document.getElementById('status-basics-tutorial');
+const btnStartBasicsStage1 = document.getElementById('btn-start-basics-stage-1');
+const statusBasicsStage1 = document.getElementById('status-basics-stage-1');
 const btnTutorialMenuBack = document.getElementById('btn-tutorial-menu-back');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
@@ -68,17 +68,17 @@ function bootGame(config: any) {
 }
 
 function refreshTutorialMenuStatuses() {
-  const completed = isTutorialCompleted('cascade-basics');
-  if (btnStartBasicsTutorial) {
-    btnStartBasicsTutorial.textContent = completed ? 'REPLAY' : 'START';
+  const completed = isTutorialCompleted('basics-stage-1') || isTutorialCompleted('cascade-basics');
+  if (btnStartBasicsStage1) {
+    btnStartBasicsStage1.textContent = completed ? 'REPLAY' : 'START';
   }
-  if (statusBasicsTutorial) {
+  if (statusBasicsStage1) {
     if (completed) {
-      statusBasicsTutorial.textContent = '✓ COMPLETED';
-      statusBasicsTutorial.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+      statusBasicsStage1.textContent = '✓ COMPLETED';
+      statusBasicsStage1.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
     } else {
-      statusBasicsTutorial.textContent = 'NOT COMPLETED';
-      statusBasicsTutorial.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
+      statusBasicsStage1.textContent = 'NOT COMPLETED';
+      statusBasicsStage1.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
     }
   }
 }
@@ -110,8 +110,8 @@ btnSoloTutorial.addEventListener('click', () => {
   openTutorialMenu();
 });
 
-if (btnStartBasicsTutorial) {
-  btnStartBasicsTutorial.addEventListener('click', () => {
+if (btnStartBasicsStage1) {
+  btnStartBasicsStage1.addEventListener('click', () => {
     bootGame({ mode: 'TUTORIAL', stage: 1 });
   });
 }

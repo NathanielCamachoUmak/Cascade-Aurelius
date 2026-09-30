@@ -830,7 +830,7 @@ export class TutorialManager {
   }
 
   private showConclusionModal() {
-    markTutorialCompleted('cascade-basics');
+    markTutorialCompleted('basics-stage-1');
     if (!this.conclusionModal) return;
     this.conclusionModal.classList.remove('hidden');
     this.conclusionModal.classList.add('flex');
