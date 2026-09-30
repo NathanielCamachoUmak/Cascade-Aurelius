@@ -1194,7 +1194,7 @@ export class TutorialManager {
           <div class="p-3 rounded-lg border border-neon-green bg-neon-green/10 flex flex-col gap-1.5">
             <div class="text-xs font-bold text-white">Clear the Line Containing Your Speed Block [V]</div>
             <div class="text-[11px] text-gray-300 leading-relaxed">
-              Your Tetris guaranteed a <strong class="text-neon-yellow">Speed Block (V)</strong> on this piece! Slide it right into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to reduce baseline drop speed by 25%.
+              Your Tetris guaranteed a <strong class="text-neon-yellow">Speed Block (V)</strong> on this piece! Slide it right into Columns 7–10 and press <kbd class="px-1.5 py-0.5 bg-black/60 border border-neon-cyan/50 rounded text-neon-cyan font-pixel text-[9px]">SPACE</kbd> to slow your block drop speed by 50% for 5 seconds.
             </div>
           </div>
         `;
@@ -1934,7 +1934,7 @@ export class TutorialManager {
         this.stage2TransitionLocked = true;
 
         if (this.activeClass === 'SPEEDSTER') {
-          this.showStage2Banner('✓ SPEED BLOCK [V] TRIGGERED! Baseline drop speed reduced by 25%!', 'green');
+          this.showStage2Banner('✓ SPEED BLOCK [V] TRIGGERED! Block drop speed slowed by 50% for 5 seconds!', 'green');
         } else if (this.activeClass === 'TANK') {
           if (this.dummyBoards[0]) {
             this.dummyBoards[0].statusBadge = '🛡 ATTACK ABSORBED BY SHIELD BLOCK!';

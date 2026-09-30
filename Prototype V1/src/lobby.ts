@@ -315,7 +315,7 @@ const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[
   { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area around it, clearing nearby blocks too.' },
   { letter: 'W', name: 'Heavy', description: 'When its line clears, also destroys the entire row directly beneath it.' },
   { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your score for the next 8 seconds.' },
-  { letter: 'V', name: 'Speed', description: "When its line clears, slows your own piece drop rate by 25% — giving you more breathing room." },
+  { letter: 'V', name: 'Speed', description: 'When its line clears, slows your own piece drop rate by 50% for 5 seconds — giving you more breathing room.' },
   { letter: 'S', name: 'Shield', description: 'When its line clears, blocks the very next garbage attack sent at you completely.' },
   { letter: 'F', name: 'Freeze', description: "When its line clears, freezes every opponent's Q/E/R abilities for 3 seconds." },
   { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, instantly eats one line of garbage from the bottom of your own board.' },
@@ -1141,6 +1141,23 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   tCtx.lineWidth = 2;
   tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
+  // Speed Block [V] Visual Buff Lines on Grid (5s duration)
+  if (player.speedBlockSlowTimer > 0) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(0, 229, 255, 0.28)';
+    tCtx.lineWidth = 2;
+    const offset = (performance.now() * 0.25) % 60;
+    for (let i = 0; i < 8; i++) {
+      const lx = offsetX + 18 + i * (blockSize * 1.2);
+      const ly = offsetY + ((i * 85 + offset) % (ROWS * blockSize));
+      tCtx.beginPath();
+      tCtx.moveTo(lx, ly);
+      tCtx.lineTo(lx, Math.min(offsetY + ROWS * blockSize, ly + 36));
+      tCtx.stroke();
+    }
+    tCtx.restore();
+  }
+
   // Draw Block Matrix
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -1176,6 +1193,31 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     const shape = player.currentPiece.matrix;
     const size = shape.length;
     const color = playerColor;
+
+    // Speed Block [V] Motion Trail Afterimages (5s duration)
+    if (player.speedBlockSlowTimer > 0) {
+      for (let trail = 1; trail <= 3; trail++) {
+        const ty = player.currentPiece.y - trail;
+        if (ty < 0) continue;
+        tCtx.save();
+        tCtx.globalAlpha = 0.26 / trail;
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (shape[r][c] !== 0) {
+              tCtx.fillStyle = '#00E5FF';
+              tCtx.fillRect(
+                offsetX + (player.currentPiece.x + c) * blockSize + 3,
+                offsetY + (ty + r) * blockSize + 3,
+                blockSize - 6,
+                blockSize - 6
+              );
+            }
+          }
+        }
+        tCtx.restore();
+      }
+    }
+
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (shape[r][c] !== 0) {

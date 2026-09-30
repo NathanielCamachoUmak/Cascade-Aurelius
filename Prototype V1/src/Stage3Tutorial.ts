@@ -75,7 +75,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
     badgeText: 'STEP 1 / 7 · BOMB BLOCK [B]',
     preConditionTitle: 'Dense Stack · Bomb Block [B] Ready',
     preConditionDesc:
-      'A dense 5-row stack surrounds the target row. Drop the I-piece containing the Bomb Block [B] into the gap (or click Simulate Line Clear).',
+      'A dense 4-row stack sits at the bottom of the grid. Drop the I-piece containing the Bomb Block [B] into the gap on the top layer (or click Simulate Line Clear).',
     effectTitle: '💥 3×3 Localized Explosion Cleared!',
     effectDesc:
       'Standard line clear executed, followed by an instant 3×3 blast around the Bomb Block’s coordinates!',
@@ -118,9 +118,9 @@ const STAGE_3_STEPS: StepMetadata[] = [
     preConditionTitle: 'Standard Line Clear · Speed Block [V] Ready',
     preConditionDesc:
       'Lock the I-piece containing the Speed Block [V] to clear the line and trigger the visual speed buff on the grid.',
-    effectTitle: '⚡ Visual Speed Buff Active (10.0s)!',
+    effectTitle: '⚡ Visual Speed Buff Active (5.0s)!',
     effectDesc:
-      'Speed buff applied to the grid — watch the next falling piece drop 50% faster with motion trails for 10 seconds!',
+      'Speed buff applied to the grid — slows your falling block drop speed by 50% for 5 seconds, giving you extra control!',
   },
   {
     stepNumber: 5,
@@ -197,12 +197,12 @@ export class Stage3Tutorial {
   private multiplierBuffTimer = 0;
   private readonly MULTIPLIER_BUFF_MAX = 5000;
 
-  // Step 4: Speed 10s buff + 50% faster falling piece simulation
+  // Step 4: Speed 5s buff + 50% slower falling piece simulation
   private speedBuffTimer = 0;
-  private readonly SPEED_BUFF_MAX = 10000;
+  private readonly SPEED_BUFF_MAX = 5000;
   private simulatedFastPiece: Tetromino | null = null;
   private simulatedFastDropTimer = 0;
-  private readonly FAST_DROP_INTERVAL = 180; // 50% faster simulated drop
+  private readonly FAST_DROP_INTERVAL = 1400; // 50% slower simulated drop
 
   // Step 5: Shield aura & incoming garbage block state
   private shieldAuraActive = false;
@@ -554,19 +554,17 @@ export class Stage3Tutorial {
 
     // Configure predetermined grid state & active piece for each of the 7 steps:
     if (stepMeta.specialType === SpecialBlockType.BOMB) {
-      // Step 1: Bomb Block — dense 5-row stack where row 17 (index 17) is completed by an I-piece in cols 6..9
-      // and surrounded above (row 16) and below (rows 18, 19) by dense blocks so the 3x3 blast is unmistakable!
+      // Step 1: Bomb Block — dense 4-row stack where the top layer (row 16) is completed by an I-piece in cols 6..9
       this.grid.loadPresetMatrix([
-        [null, 'J', 'J', 'J', 'L', 'L', 'O', 'O', 'T', null], // row 15
-        ['S', 'S', 'T', 'T', 'T', 'Z', 'Z', 'O', 'O', null], // row 16 (above bomb)
-        ['I', 'I', 'I', 'I', 'O', 'O', null, null, null, null], // row 17 (target line clear! Bomb lands at col 7)
-        ['L', 'L', 'L', 'J', 'J', 'J', 'T', 'T', 'T', null], // row 18 (below bomb)
+        ['I', 'I', 'I', 'I', 'O', 'O', null, null, null, null], // row 16 (top layer target line clear! Bomb lands at col 7)
+        ['S', 'S', 'T', 'T', 'T', 'Z', 'Z', 'O', 'O', null], // row 17 (dense stack below bomb)
+        ['L', 'L', 'L', 'J', 'J', 'J', 'T', 'T', 'T', null], // row 18 (dense stack below bomb)
         ['Z', 'Z', 'S', 'S', 'O', 'O', 'I', 'I', 'J', null], // row 19 (bottom)
       ]);
       const piece = new Tetromino('I');
       piece.x = 6;
-      piece.y = 12;
-      piece.specialBlocks.set('1,1', SpecialBlockType.BOMB); // Lands at col 7, row 17
+      piece.y = 11;
+      piece.specialBlocks.set('1,1', SpecialBlockType.BOMB); // Lands at col 7, row 16
       this.currentPiece = piece;
     } else if (stepMeta.specialType === SpecialBlockType.HEAVY) {
       // Step 2: Heavy Block — two filled rows at the bottom (row 18 has a 4-cell gap in cols 6..9; row 19 beneath is filled)
@@ -716,7 +714,7 @@ export class Stage3Tutorial {
     // Ensure the piece is aligned horizontally in columns 6..9 so the simulated line clear always succeeds
     const piece = new Tetromino('I');
     piece.x = 6;
-    piece.y = stepMeta.specialType === SpecialBlockType.BOMB ? 16 : stepMeta.specialType === SpecialBlockType.HEAVY ? 17 : 18;
+    piece.y = stepMeta.specialType === SpecialBlockType.BOMB ? 15 : stepMeta.specialType === SpecialBlockType.HEAVY ? 17 : 18;
     piece.specialBlocks.set('1,1', stepMeta.specialType);
     while (!this.grid.checkCollision(piece, piece.x, piece.y + 1)) {
       piece.y++;
@@ -728,17 +726,17 @@ export class Stage3Tutorial {
 
     // ─── STEP 1: BOMB BLOCK (Line Clear -> 3x3 Area Clear + Localized Explosion) ───
     if (stepMeta.specialType === SpecialBlockType.BOMB) {
-      const bombRow = 17;
+      const bombRow = 16;
       const bombCol = 7; // Col 7 (piece.x=6 + col=1)
       this.lineFlashRow = bombRow;
       this.lineFlashTimer = 450;
 
       // 1. Standard line clear + 2. Instant 3x3 area clear surrounding the Bomb Block's coordinates
       this.grid.clearLines();
-      this.grid.clearBombArea(bombRow, bombCol);
+      this.grid.clearBombArea(17, bombCol);
 
       this.bombCenterCol = bombCol + 0.5;
-      this.bombCenterRow = bombRow + 0.5;
+      this.bombCenterRow = 17 + 0.5;
       this.bombShockwaveTimer = this.bombShockwaveMax;
 
       this.spawnExplosionParticles(this.bombCenterCol * BLOCK_SIZE, this.bombCenterRow * BLOCK_SIZE, '#FF5555', '#FFD700', 34);
@@ -814,7 +812,7 @@ export class Stage3Tutorial {
       this.simulatedFastDropTimer = 0;
 
       this.spawnRowParticles(19, '#00E5FF', 20);
-      this.addFloatingText('⚡ SPEED BUFF! +50% DROP SPEED (10s)', 150, 16 * BLOCK_SIZE, '#00E5FF', 12);
+      this.addFloatingText('⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, 16 * BLOCK_SIZE, '#00E5FF', 12);
 
       this.score += 150;
       this.lines += 1;
@@ -1126,7 +1124,7 @@ export class Stage3Tutorial {
 
     this.shieldAuraPulse += dt * 0.005;
 
-    // Update Buff Strip UI for Step 3 (Multiplier 5s), Step 4 (Speed 10s), Step 6 (Freeze 5s)
+    // Update Buff Strip UI for Step 3 (Multiplier 5s), Step 4 (Speed 5s), Step 6 (Freeze 5s)
     const buffStrip = document.getElementById('tut3-buff-strip');
     const buffLabel = document.getElementById('tut3-buff-label');
     const buffTimer = document.getElementById('tut3-buff-timer');
@@ -1141,10 +1139,10 @@ export class Stage3Tutorial {
       this.speedBuffTimer = Math.max(0, this.speedBuffTimer - dt);
       buffStrip?.classList.remove('hidden');
       buffStrip?.classList.add('flex');
-      if (buffLabel) buffLabel.textContent = '⚡ +50% DROP SPEED BUFF';
+      if (buffLabel) buffLabel.textContent = '⚡ -50% DROP SPEED BUFF';
       if (buffTimer) buffTimer.textContent = `${(this.speedBuffTimer / 1000).toFixed(1)}s`;
 
-      // Animate the next falling piece dropping 50% faster during the 10-second duration
+      // Animate the next falling piece dropping 50% slower during the 5-second duration
       if (this.simulatedFastPiece) {
         this.simulatedFastDropTimer += dt;
         if (this.simulatedFastDropTimer >= this.FAST_DROP_INTERVAL) {
@@ -1152,7 +1150,6 @@ export class Stage3Tutorial {
           if (!this.grid.checkCollision(this.simulatedFastPiece, this.simulatedFastPiece.x, this.simulatedFastPiece.y + 1)) {
             this.simulatedFastPiece.y++;
           } else {
-            // Loop the fast-dropping piece from the top so the player can observe the 50% faster drop rate throughout the 10s buff
             this.simulatedFastPiece.y = 0;
           }
         }
@@ -1243,7 +1240,7 @@ export class Stage3Tutorial {
       const stepMeta = STAGE_3_STEPS[this.currentStepIndex];
       const targetRow =
         stepMeta.specialType === SpecialBlockType.BOMB
-          ? 17
+          ? 16
           : stepMeta.specialType === SpecialBlockType.HEAVY
             ? 18
             : 19;

@@ -461,6 +461,13 @@ export class GameManager {
       player.abilityFreezeTimer = Math.max(0, player.abilityFreezeTimer - dt);
 
 
+      if (player.speedBlockSlowTimer > 0) {
+        player.speedBlockSlowTimer = Math.max(0, player.speedBlockSlowTimer - dt);
+        if (player.speedBlockSlowTimer === 0) {
+          player.dropInterval = Math.max(100, player.dropInterval / 2);
+        }
+      }
+
       if (player.activeEffectTimer > 0) {
         player.activeEffectTimer = Math.max(0, player.activeEffectTimer - dt);
         if (player.activeEffectTimer === 0) {
@@ -674,6 +681,10 @@ export class GameManager {
     player.dropInterval = Math.max(100, player.dropInterval * player.speedMultiplier);
 
     if (player.activeEffectType === 'TIME_WARP' && player.activeEffectTimer > 0) {
+      player.dropInterval *= 2;
+    }
+
+    if (player.speedBlockSlowTimer > 0) {
       player.dropInterval *= 2;
     }
 
@@ -1095,8 +1106,10 @@ export class GameManager {
       } else if (special === SpecialBlockType.MULTIPLIER) {
         player.scoreManager.activateMultiplierBlock();
       } else if (special === SpecialBlockType.SPEED) {
-        player.speedMultiplier *= 1.25;
-        player.dropInterval = Math.max(100, player.dropInterval * 1.25);
+        if (player.speedBlockSlowTimer <= 0) {
+          player.dropInterval *= 2;
+        }
+        player.speedBlockSlowTimer = 5000;
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
       } else if (special === SpecialBlockType.FREEZE) {

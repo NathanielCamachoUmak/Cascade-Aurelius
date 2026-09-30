@@ -9,7 +9,7 @@ This document lists all playable classes, their passives, active abilities (`[Q]
 
 | Slot | Name | Cooldown / Cost | Target | Effect |
 | :--- | :--- | :--- | :--- | :--- |
-| **Passive** | **Speed Block Guarantee** | Tetris (4-line clear) | Self | Clearing a Tetris guarantees a **Speed Block (`V`)** on your next piece *(slows drop speed by 25% when cleared)*. |
+| **Passive** | **Speed Block Guarantee** | Tetris (4-line clear) | Self | Clearing a Tetris guarantees a **Speed Block (`V`)** on your next piece *(slows drop speed by 50% for 5 seconds when cleared)*. |
 | **`[Q]`** | **Sprint** | 10s–12s Cooldown | Targeted Opponent | Causes the targeted opponent's **current active piece and next 3 pieces** to drop **50% faster**. |
 | **`[E]`** | **Time Warp** | 15s Cooldown | Self | Slows your own piece drop speed by **50%** for **6 seconds**. |
 | **`[R]`** | **Bullet Time** | **40 Lines** | All Opponents | Freezes **all opponents** in place (`QUICKSILVER` effect) for **5 seconds** while you continue playing normally. |
@@ -59,7 +59,7 @@ This document lists all playable classes, their passives, active abilities (`[Q]
 | **Bomb (`BOMB`)** | `B` | Explodes and clears a surrounding area centered on the cleared row. |
 | **Heavy (`HEAVY`)** | `W` | Crushes and destroys the row directly beneath the cleared line before the board compacts. |
 | **Multiplier (`MULTIPLIER`)** | `X` | Activates a **2x score multiplier** for a duration. |
-| **Speed (`SPEED`)** | `V` | **Slows down** your piece drop rate by **25%** (`dropInterval * 1.25`). |
+| **Speed (`SPEED`)** | `V` | **Slows down** your piece drop rate by **50%** for **5 seconds** (`dropInterval * 2`). |
 | **Shield (`SHIELD`)** | `S` | Activates a shield that blocks the next incoming garbage attack. |
 | **Freeze (`FREEZE`)** | `F` | Freezes all opponents' abilities (`[Q]`, `[E]`, `[R]`) for **3 seconds**. |
 | **Garbage Eater (`GARBAGE_EATER`)** | `G` | Immediately removes **1 garbage line** from the bottom of your board. |

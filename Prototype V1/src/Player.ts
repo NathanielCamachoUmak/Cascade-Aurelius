@@ -34,6 +34,7 @@ export class Player {
   public sprintBlocksRemaining = 0;
   public isCurrentBlockSprinted = false;
   public speedMultiplier = 1;
+  public speedBlockSlowTimer = 0;
   public selectedTargetIndex: number | null = null;
   public shieldActive = false;
   public abilityFreezeTimer = 0;
@@ -95,6 +96,7 @@ export class Player {
     this.sprintBlocksRemaining = 0;
     this.isCurrentBlockSprinted = false;
     this.speedMultiplier = 1;
+    this.speedBlockSlowTimer = 0;
     this.selectedTargetIndex = null;
     this.shieldActive = false;
     this.abilityFreezeTimer = 0;
