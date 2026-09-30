@@ -39,8 +39,17 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
     // User logged in, fetch settings from cloud
     const { data } = await supabase.from('profiles').select('settings_and_hotkeys').eq('id', currentUserId).single();
     if (data && data.settings_and_hotkeys) {
-      const cloudSettings = data.settings_and_hotkeys as Partial<SettingsData>;
-      Object.assign(settingsState, { ...defaultSettings(), ...cloudSettings });
+      const raw = data.settings_and_hotkeys as Record<string, any>;
+      const defaults = defaultSettings();
+      const cleaned: SettingsData = {
+        musicEnabled: typeof raw.musicEnabled === 'boolean' ? raw.musicEnabled : defaults.musicEnabled,
+        musicVolume: typeof raw.musicVolume === 'number' ? raw.musicVolume : defaults.musicVolume,
+        sfxEnabled: typeof raw.sfxEnabled === 'boolean' ? raw.sfxEnabled : defaults.sfxEnabled,
+        sfxVolume: typeof raw.sfxVolume === 'number' ? raw.sfxVolume : defaults.sfxVolume,
+        visualEffectsEnabled: typeof raw.visualEffectsEnabled === 'boolean' ? raw.visualEffectsEnabled : defaults.visualEffectsEnabled,
+        tutorialEnabled: typeof raw.tutorialEnabled === 'boolean' ? raw.tutorialEnabled : defaults.tutorialEnabled,
+      };
+      Object.assign(settingsState, cleaned);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsState));
       applyAudioSettings();
       if (settingsRefreshCallback) settingsRefreshCallback();
@@ -51,9 +60,17 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 async function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsState));
   if (currentUserId) {
-    // Push to Supabase quietly
+    const { data: existingRow } = await supabase
+      .from('profiles')
+      .select('settings_and_hotkeys')
+      .eq('id', currentUserId)
+      .single();
+    // Push to Supabase quietly while preserving progressionData, highScores, and completedTutorials
     await supabase.from('profiles').update({
-      settings_and_hotkeys: settingsState
+      settings_and_hotkeys: {
+        ...(existingRow?.settings_and_hotkeys || {}),
+        ...settingsState,
+      },
     }).eq('id', currentUserId);
   }
 }

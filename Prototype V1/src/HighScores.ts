@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export type HighScoreModeKey =
   | 'SOLO'
   | 'EASY'
@@ -13,9 +15,18 @@ export interface HighScoreEntry {
   timestamp: number;
 }
 
-type HighScoreMap = Partial<Record<HighScoreModeKey, HighScoreEntry[]>>;
+export type HighScoreMap = Partial<Record<HighScoreModeKey, HighScoreEntry[]>>;
 
 const STORAGE_KEY = 'cascade-aurelius-high-scores-v1';
+const ALL_MODES: HighScoreModeKey[] = [
+  'SOLO',
+  'EASY',
+  'HARD',
+  'classic-pvp',
+  'free-for-all',
+  'team-deathmatch',
+  'battle-royale',
+];
 
 function readStore(): HighScoreMap {
   try {
@@ -36,12 +47,127 @@ function writeStore(data: HighScoreMap) {
   }
 }
 
+function mergeHighScoreMaps(a: HighScoreMap, b: HighScoreMap): HighScoreMap {
+  const merged: HighScoreMap = {};
+  for (const mode of ALL_MODES) {
+    const listA = Array.isArray(a[mode]) ? a[mode]! : [];
+    const listB = Array.isArray(b[mode]) ? b[mode]! : [];
+    const combined = [...listA, ...listB].filter(
+      item => item && typeof item.score === 'number' && item.score > 0
+    );
+    // Deduplicate entries with identical score + lines + timestamp
+    const unique: HighScoreEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of combined) {
+      const key = `${entry.score}:${entry.lines}:${entry.timestamp}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(entry);
+      }
+    }
+    unique.sort((x, y) => y.score - x.score || y.lines - x.lines || y.timestamp - x.timestamp);
+    if (unique.length > 0) {
+      merged[mode] = unique.slice(0, 3);
+    }
+  }
+  return merged;
+}
+
+let currentUserId: string | null = null;
+
+async function pushHighScoresToSupabase(userId: string, store: HighScoreMap) {
+  try {
+    // Read existing settings_and_hotkeys so we never clobber other keys
+    const { data: existingRow } = await supabase
+      .from('profiles')
+      .select('settings_and_hotkeys')
+      .eq('id', userId)
+      .single();
+
+    const mergedJsonb = {
+      ...(existingRow?.settings_and_hotkeys || {}),
+      highScores: store,
+    };
+
+    // First try updating both the dedicated `high_scores` column and `settings_and_hotkeys`
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        high_scores: store,
+        settings_and_hotkeys: mergedJsonb,
+      })
+      .eq('id', userId);
+
+    // Fallback if the dedicated `high_scores` column hasn't been migrated yet
+    if (error) {
+      await supabase
+        .from('profiles')
+        .update({
+          settings_and_hotkeys: mergedJsonb,
+        })
+        .eq('id', userId);
+    }
+  } catch {
+    // Ignore network errors while offline
+  }
+}
+
+async function syncHighScoresWithCloud(userId: string | null) {
+  currentUserId = userId;
+  if (!userId) return;
+
+  try {
+    let cloudScores: HighScoreMap = {};
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('high_scores, settings_and_hotkeys')
+      .eq('id', userId)
+      .single();
+
+    if (!error && data) {
+      const fromDedicated = (data as any).high_scores as HighScoreMap | undefined;
+      const fromJsonb = (data.settings_and_hotkeys as any)?.highScores as HighScoreMap | undefined;
+      cloudScores = mergeHighScoreMaps(fromDedicated || {}, fromJsonb || {});
+    } else {
+      // Fallback if `high_scores` column does not exist yet
+      const { data: fallbackData } = await supabase
+        .from('profiles')
+        .select('settings_and_hotkeys')
+        .eq('id', userId)
+        .single();
+      if (fallbackData?.settings_and_hotkeys) {
+        cloudScores = ((fallbackData.settings_and_hotkeys as any).highScores as HighScoreMap) || {};
+      }
+    }
+
+    const localScores = readStore();
+    const merged = mergeHighScoreMaps(localScores, cloudScores);
+    writeStore(merged);
+    await pushHighScoresToSupabase(userId, merged);
+    window.dispatchEvent(new CustomEvent('highScoresUpdated'));
+  } catch {
+    // Ignore offline errors
+  }
+}
+
+supabase.auth.getSession().then(({ data: { session } }) => {
+  syncHighScoresWithCloud(session?.user?.id ?? null);
+});
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  syncHighScoresWithCloud(session?.user?.id ?? null);
+});
+
 export function getTopScores(mode: HighScoreModeKey): HighScoreEntry[] {
   const store = readStore();
   const list = Array.isArray(store[mode]) ? store[mode]! : [];
   return [...list]
     .sort((a, b) => b.score - a.score || b.lines - a.lines)
     .slice(0, 3);
+}
+
+export function getAllHighScores(): HighScoreMap {
+  return readStore();
 }
 
 export function recordModeScore(
@@ -66,6 +192,11 @@ export function recordModeScore(
 
   store[mode] = updated;
   writeStore(store);
+
+  if (currentUserId) {
+    void pushHighScoresToSupabase(currentUserId, store);
+  }
+  window.dispatchEvent(new CustomEvent('highScoresUpdated'));
 
   const idx = updated.findIndex(item => item === newEntry);
   return {

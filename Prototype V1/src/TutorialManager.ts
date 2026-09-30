@@ -65,28 +65,92 @@ function readCompletedTutorialsMap(): Record<string, boolean> {
 async function syncCompletedTutorialsToCloud(map: Record<string, boolean>) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await supabase.auth.updateUser({
-        data: { completed_tutorials: map },
-      });
+    const user = session?.user;
+    if (!user) return;
+
+    await supabase.auth.updateUser({
+      data: { completed_tutorials: map },
+    });
+
+    const { data: existingRow } = await supabase
+      .from('profiles')
+      .select('settings_and_hotkeys')
+      .eq('id', user.id)
+      .single();
+
+    const mergedJsonb = {
+      ...(existingRow?.settings_and_hotkeys || {}),
+      completedTutorials: map,
+    };
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        completed_tutorials: map,
+        settings_and_hotkeys: mergedJsonb,
+      })
+      .eq('id', user.id);
+
+    if (error) {
+      await supabase
+        .from('profiles')
+        .update({
+          settings_and_hotkeys: mergedJsonb,
+        })
+        .eq('id', user.id);
     }
   } catch {
     // ignore offline / cloud errors
   }
 }
 
-// Hydrate local tutorial completion map from Supabase user_metadata on login
-supabase.auth.onAuthStateChange((_event, session) => {
-  const cloudMap = session?.user?.user_metadata?.completed_tutorials;
-  if (cloudMap && typeof cloudMap === 'object') {
-    const merged = { ...readCompletedTutorialsMap(), ...cloudMap };
-    try {
-      localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(merged));
-      window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
-    } catch {
-      // ignore storage errors
+async function hydrateTutorialsFromCloud(user: any) {
+  if (!user) return;
+  try {
+    const metaMap =
+      user.user_metadata?.completed_tutorials && typeof user.user_metadata.completed_tutorials === 'object'
+        ? user.user_metadata.completed_tutorials
+        : {};
+
+    let profileMap: Record<string, boolean> = {};
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('completed_tutorials, settings_and_hotkeys')
+      .eq('id', user.id)
+      .single();
+
+    if (!error && data) {
+      profileMap = {
+        ...((data.settings_and_hotkeys as any)?.completedTutorials || {}),
+        ...((data as any).completed_tutorials || {}),
+      };
+    } else {
+      const { data: fallbackData } = await supabase
+        .from('profiles')
+        .select('settings_and_hotkeys')
+        .eq('id', user.id)
+        .single();
+      if (fallbackData?.settings_and_hotkeys) {
+        profileMap = (fallbackData.settings_and_hotkeys as any).completedTutorials || {};
+      }
     }
+
+    const merged = { ...readCompletedTutorialsMap(), ...metaMap, ...profileMap };
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
+    void syncCompletedTutorialsToCloud(merged);
+  } catch {
+    // ignore offline errors
   }
+}
+
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) void hydrateTutorialsFromCloud(session.user);
+});
+
+// Hydrate local tutorial completion map from Supabase on login
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (session?.user) void hydrateTutorialsFromCloud(session.user);
 });
 
 export function isTutorialCompleted(tutorialId: string): boolean {
