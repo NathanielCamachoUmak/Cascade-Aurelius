@@ -1648,7 +1648,8 @@ function render() {
       const qStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
       const eStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : ((p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
-      const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
+      const targetPlayer1 = p1.selectedTargetIndex !== null ? gameManager.players[p1.selectedTargetIndex] : null;
+      const targetName = targetPlayer1 ? targetPlayer1.id : (onlinePlayerSpecs[p1.selectedTargetIndex ?? -1]?.name ?? 'default target');
 
       // Visually dim the ability UI when locked out by a Freeze Block [F] (matches Stage 3 Tutorial Step 6)
       abilityMeterP1.classList.toggle('opacity-45', isFrozen1);
@@ -1710,7 +1711,8 @@ function render() {
       const qStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
       const eStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : ((p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p2.activeEffectTimer > 0 ? ` · ${p2.activeEffectType} ${Math.ceil(p2.activeEffectTimer / 1000)}s` : '';
-      const targetName = p2.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p2.selectedTargetIndex]?.name) ?? `P${p2.selectedTargetIndex + 1}`);
+      const targetPlayer2 = p2.selectedTargetIndex !== null ? gameManager.players[p2.selectedTargetIndex] : null;
+      const targetName = targetPlayer2 ? targetPlayer2.id : (onlinePlayerSpecs[p2.selectedTargetIndex ?? -1]?.name ?? 'default target');
 
       const abilityMeterP2El = safeGet('ability-meter-p2');
       if (abilityMeterP2El) {

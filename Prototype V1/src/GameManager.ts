@@ -113,10 +113,11 @@ export class GameManager {
     this.network = null;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
-    this.players = [
-      new Player("P1", false, 'HARD', true, humanClass),
-      new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass)
-    ];
+    const p1 = new Player("P1", false, 'HARD', true, humanClass);
+    const p2 = new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass);
+    p1.selectedTargetIndex = 1;
+    p2.selectedTargetIndex = 0;
+    this.players = [p1, p2];
     this.start(preGameDelayMs);
   }
 
@@ -196,6 +197,15 @@ export class GameManager {
       }
       (createdPlayer as any).socketId = spec.id;
       this.players.push(createdPlayer);
+    }
+
+    if (this.players[myIndex]) {
+      const defaultOpponentIdx = this.players.findIndex(
+        (p, idx) => idx !== myIndex && (!this.isTeamMode || playerSpecs[idx]?.team !== playerSpecs[myIndex]?.team)
+      );
+      if (defaultOpponentIdx >= 0) {
+        this.players[myIndex].selectedTargetIndex = defaultOpponentIdx;
+      }
     }
 
     // Wire up network callbacks for receiving opponent state
@@ -976,9 +986,10 @@ export class GameManager {
       player.selectedTargetIndex = this.players.length > 1 ? 1 : null;
       return;
     }
+    const myIndex = this.players.indexOf(player);
     const candidates = this.players
       .map((target, index) => ({ target, index }))
-      .filter(({ target }) => !target.isToppedOut)
+      .filter(({ target, index }) => !target.isToppedOut && (this.isTeamMode && player.playerClass === 'SUPPORT' ? true : index !== myIndex))
       .map(({ index }) => index);
     if (!candidates.length) {
       player.selectedTargetIndex = null;
