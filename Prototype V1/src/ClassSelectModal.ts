@@ -12,7 +12,7 @@ export interface ClassSelectModalOptions {
   isCertificationMode?: boolean;
 }
 
-const HOVER_DELAY_MS = 750; // 0.75 seconds
+const HOVER_DELAY_MS = 550; // 0.55 seconds
 
 function formatShortEffect(rawDescription: string): string {
   const cleaned = rawDescription
