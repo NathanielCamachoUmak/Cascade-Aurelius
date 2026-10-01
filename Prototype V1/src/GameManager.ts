@@ -1423,6 +1423,7 @@ export class GameManager {
         const heavyPos = specialBlockPositions.find(pos => pos.type === SpecialBlockType.HEAVY);
         const crushRow = Math.min(player.grid.height - 1, (heavyPos ? heavyPos.row : (clearedRows[0] ?? 18)) + 1);
         player.heavyCrushVisual = { row: crushRow, timer: 850, maxTimer: 850 };
+        AudioManager.playSfx('heavy');
         this.spawnBoardExplosionParticles(pIdx, 150, crushRow * 30, '#FFD700', '#00E5FF', 22);
         this.spawnBoardFloatingText(pIdx, '⬇ HEAVY CRUSH! +1 ROW', 150, Math.max(60, (crushRow - 1) * 30), '#FFD700', 13);
       } else if (special === SpecialBlockType.MULTIPLIER) {
@@ -1436,6 +1437,7 @@ export class GameManager {
           player.dropInterval *= 2;
         }
         player.speedBlockSlowTimer = 5000;
+        AudioManager.playSfx('speed');
         const speedRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, speedRow * 30, '#00E5FF', '#38BDF8', 20);
         this.spawnBoardFloatingText(pIdx, '⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, Math.max(60, (speedRow - 1) * 30), '#00E5FF', 12);
@@ -1458,6 +1460,7 @@ export class GameManager {
         player.grid.clearGarbageLines(4);
         const bonusPts = player.scoreManager.addFlatBonusScore(800);
         player.garbageEaterTimer = 950;
+        AudioManager.playSfx('garbageEater');
         if (this.isOnline) {
           if (player === this.players[this.myPlayerIndex]) {
             this.network?.sendScoreEvent('garbage_eater', 0, player.scoreManager.combo, undefined, player.scoreManager.scoreMultiplier);
