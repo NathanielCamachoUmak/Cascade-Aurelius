@@ -769,6 +769,7 @@ export class Stage3Tutorial {
 
       // Grid.clearLines() natively handles SpecialBlockType.HEAVY by destroying the row directly beneath it!
       this.grid.clearLines();
+      AudioManager.playSfx('heavy');
 
       this.spawnRowParticles(18, '#00E5FF', 16);
       this.spawnRowParticles(19, '#FFD700', 24);
@@ -814,6 +815,7 @@ export class Stage3Tutorial {
       this.lineFlashRow = 19;
       this.lineFlashTimer = 400;
       this.grid.clearLines();
+      AudioManager.playSfx('speed');
 
       this.speedBuffTimer = this.SPEED_BUFF_MAX;
       this.simulatedFastPiece = new Tetromino('T');
@@ -893,6 +895,7 @@ export class Stage3Tutorial {
       this.lineFlashRow = 19;
       this.lineFlashTimer = 400;
       this.grid.clearLines();
+      AudioManager.playSfx('garbageEater');
 
       this.garbageEaterConvertTimer = this.GARBAGE_EATER_CONVERT_MAX;
       this.incomingGarbageLines = 0; // Threat removed from visual queue!
