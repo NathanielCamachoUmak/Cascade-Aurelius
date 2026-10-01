@@ -754,10 +754,36 @@
                </div>
             </div>
             
-            <div id="team-match-strip" class="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 bg-card-bg/90 backdrop-blur-md px-6 py-2 rounded-full border border-card-border shadow-lg mt-2 hidden">
-              <div class="px-5 py-3 text-neon-cyan font-pixel text-xs text-right">CYAN <span id="team-score-cyan" class="text-lg ml-2">0</span></div>
-              <div id="team-match-timer" class="px-4 py-3 font-pixel text-[10px] text-neon-yellow border-x border-card-border">3:00</div>
-              <div class="px-5 py-3 text-neon-pink font-pixel text-xs"><span id="team-score-magenta" class="text-lg mr-2">0</span> MAGENTA</div>
+            <div id="team-match-strip" class="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-4 bg-slate-950/95 backdrop-blur-md px-6 py-2.5 rounded-full border border-card-border shadow-2xl mt-2 hidden min-w-[560px] justify-between">
+              <!-- Cyan Squad Info -->
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00E5FF]"></span>
+                <div class="text-left font-pixel text-[10px] text-cyan-400 leading-tight">
+                  <div>CYAN CIRCUIT</div>
+                  <div id="team-score-cyan" class="text-base text-white font-bold tracking-wider">0</div>
+                </div>
+              </div>
+              <!-- Center: Timer, Lead Pill & Dynamic Tug-of-War Momentum Bar -->
+              <div class="flex flex-col items-center flex-1 max-w-xs px-2">
+                <div class="flex items-center gap-3">
+                  <div id="team-match-timer" class="px-3 py-0.5 font-pixel text-xs text-neon-yellow bg-black/60 rounded border border-card-border tracking-wider transition-all">4:00</div>
+                  <div id="team-lead-pill" class="text-[8px] font-pixel text-gray-400 uppercase tracking-widest">TIED MATCH</div>
+                </div>
+                <!-- Tug-of-War Bar Container -->
+                <div class="w-full h-2.5 bg-slate-900 border border-card-border rounded-full overflow-hidden mt-1.5 flex relative shadow-inner">
+                  <div id="team-bar-cyan" class="h-full bg-gradient-to-r from-cyan-500 to-cyan-300 transition-all duration-300 rounded-l-full shadow-[0_0_8px_rgba(0,229,255,0.7)]" style="width: 50%;"></div>
+                  <div id="team-bar-needle" class="w-1 h-full bg-white shadow-[0_0_6px_#ffffff] z-10 -ml-0.5"></div>
+                  <div id="team-bar-magenta" class="h-full bg-gradient-to-r from-pink-400 to-pink-600 transition-all duration-300 rounded-r-full shadow-[0_0_8px_rgba(255,0,127,0.7)]" style="width: 50%;"></div>
+                </div>
+              </div>
+              <!-- Magenta Squad Info -->
+              <div class="flex items-center gap-2 text-right">
+                <div class="text-right font-pixel text-[10px] text-neon-pink leading-tight">
+                  <div>MAGENTA VOLTAGE</div>
+                  <div id="team-score-magenta" class="text-base text-white font-bold tracking-wider">0</div>
+                </div>
+                <span class="w-2.5 h-2.5 rounded-full bg-pink-500 shadow-[0_0_8px_#FF007F]"></span>
+              </div>
             </div>
 
             

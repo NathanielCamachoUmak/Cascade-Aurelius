@@ -27,6 +27,10 @@ export class Grid {
     return m;
   }
 
+  public clear(): void {
+    this.matrix = this.createEmptyMatrix();
+  }
+
   // AABB-style collision detection
   // Checks if the given tetromino in its current state at (tx, ty) overlaps solid grid or boundaries
   public checkCollision(tetromino: Tetromino, tx: number = tetromino.x, ty: number = tetromino.y): boolean {

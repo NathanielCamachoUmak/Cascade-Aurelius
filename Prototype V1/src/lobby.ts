@@ -543,15 +543,55 @@ function updateBattleRoyalHud() {
 }
 
 function formatTeamTimer() {
-  if (!teamMatchEndsAt) return '3:00';
+  if (!teamMatchEndsAt) return '4:00';
   const seconds = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
 function updateTeamScoreHud() {
-  teamScoreCyan.innerText = `${Math.round(onlineTeamScores.cyan)}`;
-  teamScoreMagenta.innerText = `${Math.round(onlineTeamScores.magenta)}`;
-  teamMatchTimer.innerText = formatTeamTimer();
+  const cyanScore = Math.round(onlineTeamScores.cyan || 0);
+  const magentaScore = Math.round(onlineTeamScores.magenta || 0);
+  if (teamScoreCyan) teamScoreCyan.innerText = cyanScore.toLocaleString();
+  if (teamScoreMagenta) teamScoreMagenta.innerText = magentaScore.toLocaleString();
+
+  const total = cyanScore + magentaScore;
+  const cyanPct = total > 0 ? Math.min(90, Math.max(10, Math.round((cyanScore / total) * 100))) : 50;
+  const magentaPct = 100 - cyanPct;
+
+  const barCyan = document.getElementById('team-bar-cyan');
+  const barMagenta = document.getElementById('team-bar-magenta');
+  if (barCyan) barCyan.style.width = `${cyanPct}%`;
+  if (barMagenta) barMagenta.style.width = `${magentaPct}%`;
+
+  const leadPill = document.getElementById('team-lead-pill');
+  if (leadPill) {
+    const diff = cyanScore - magentaScore;
+    if (diff > 0) {
+      leadPill.innerText = `CYAN +${diff.toLocaleString()}`;
+      leadPill.className = 'text-[8px] font-pixel text-cyan-400 uppercase tracking-widest';
+    } else if (diff < 0) {
+      leadPill.innerText = `MAGENTA +${(-diff).toLocaleString()}`;
+      leadPill.className = 'text-[8px] font-pixel text-neon-pink uppercase tracking-widest';
+    } else {
+      leadPill.innerText = 'TIED MATCH';
+      leadPill.className = 'text-[8px] font-pixel text-gray-400 uppercase tracking-widest';
+    }
+  }
+
+  if (teamMatchTimer) {
+    const timerStr = formatTeamTimer();
+    teamMatchTimer.innerText = timerStr;
+    if (teamMatchEndsAt) {
+      const secRemaining = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
+      if (secRemaining <= 30 && secRemaining > 0) {
+        teamMatchTimer.classList.add('text-red-500', 'border-red-500', 'animate-pulse');
+        teamMatchTimer.classList.remove('text-neon-yellow');
+      } else {
+        teamMatchTimer.classList.remove('text-red-500', 'border-red-500', 'animate-pulse');
+        teamMatchTimer.classList.add('text-neon-yellow');
+      }
+    }
+  }
 }
 
 const lobby = mountLobbyScreen({
@@ -711,6 +751,37 @@ function wireGameCallbacks(network: NetworkManager) {
   network.onTeamScoreUpdate = (data) => {
     onlineTeamScores = data.teamScores;
     updateTeamScoreHud();
+  };
+
+  network.onTdmPlayerRebooting = (data) => {
+    gameManager.applyTdmReboot(data.playerIndex, data.durationMs, data.score, data.koCount);
+    onlineTeamScores = data.teamScores;
+    updateTeamScoreHud();
+
+    const victimName = onlinePlayerSpecs[data.playerIndex]?.name || `P${data.playerIndex + 1}`;
+    const killerName = data.killerIndex !== null && data.killerIndex !== undefined && onlinePlayerSpecs[data.killerIndex]
+      ? onlinePlayerSpecs[data.killerIndex].name
+      : null;
+
+    if (killerName) {
+      showGlobalRibbon(`${killerName.toUpperCase()} K.O.'D ${victimName.toUpperCase()}! (+2,500 BOUNTY)`);
+    } else {
+      showGlobalRibbon(`${victimName.toUpperCase()} TOPPED OUT! (-20% PTS)`);
+    }
+  };
+
+  network.onTdmPlayerRespawned = (data) => {
+    gameManager.applyTdmRespawn(data.playerIndex);
+    if (data.playerIndex === gameManager.myPlayerIndex) {
+      showGlobalRibbon('SYSTEM REBOOT COMPLETE · RE-ENTERING MATCH');
+    }
+  };
+
+  network.onTeamAceWipeout = (data) => {
+    onlineTeamScores = data.teamScores;
+    updateTeamScoreHud();
+    const squadName = data.scoringTeam === 'cyan' ? 'CYAN CIRCUIT' : 'MAGENTA VOLTAGE';
+    showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
   };
 
   network.onMatchTimerStart = (data) => {
@@ -1148,9 +1219,71 @@ interface BoardLayoutEntry {
 }
 
 function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
-  const emphasizeOwnBoard = modeId === 'team-deathmatch' || modeId === 'battle-royale';
   const layout: BoardLayoutEntry[] = new Array(playerCount);
 
+  if (modeId === 'team-deathmatch' && myIndex >= 0) {
+    // 3v3 Squad Pod Layout
+    // Friendly Pod (Left): [YOU] [ALLY 1] [ALLY 2]
+    // VS Divider
+    // Enemy Pod (Right): [ENEMY 1] [ENEMY 2] [ENEMY 3]
+    const headerHeight = 36;
+    const cardHeight = 54;
+    const myTeam = onlinePlayerTeams[myIndex] || (gameManager.players[myIndex]?.team) || (myIndex < 3 ? 'cyan' : 'magenta');
+
+    const allyIndices: number[] = [];
+    const enemyIndices: number[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      if (i === myIndex) continue;
+      const pTeam = onlinePlayerTeams[i] || (gameManager.players[i]?.team) || (i < 3 ? 'cyan' : 'magenta');
+      if (pTeam === myTeam) allyIndices.push(i);
+      else enemyIndices.push(i);
+    }
+
+    let cursorX = 16;
+    // 1. Local Player ("YOU") - Prominent board
+    const ownBlockSize = 25; // 250px x 500px
+    layout[myIndex] = {
+      blockSize: ownBlockSize,
+      offsetX: cursorX,
+      offsetY: headerHeight + 8,
+      headerHeight,
+      cardHeight,
+    };
+    cursorX += COLS * ownBlockSize + 18;
+
+    // 2. Allies (Teammates)
+    const allyBlockSize = 20; // 200px x 400px
+    for (const allyIdx of allyIndices) {
+      layout[allyIdx] = {
+        blockSize: allyBlockSize,
+        offsetX: cursorX,
+        offsetY: headerHeight + 8,
+        headerHeight,
+        cardHeight,
+      };
+      cursorX += COLS * allyBlockSize + 16;
+    }
+
+    // 3. Gap / Divider between Friendly and Enemy squads
+    cursorX += 28;
+
+    // 4. Enemies (Opponents)
+    const enemyBlockSize = 20; // 200px x 400px
+    for (const enemyIdx of enemyIndices) {
+      layout[enemyIdx] = {
+        blockSize: enemyBlockSize,
+        offsetX: cursorX,
+        offsetY: headerHeight + 8,
+        headerHeight,
+        cardHeight,
+      };
+      cursorX += COLS * enemyBlockSize + 16;
+    }
+
+    return layout;
+  }
+
+  const emphasizeOwnBoard = modeId === 'battle-royale';
   if (!emphasizeOwnBoard || myIndex < 0) {
     // Classic side-by-side layout for 1v1 / FFA / local play
     let cursorX = 14;
@@ -1171,7 +1304,7 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
   const otherIndices: number[] = [];
   for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
 
-  const otherScale = modeId === 'battle-royale' ? OTHER_BOARD_SCALE_BR : OTHER_BOARD_SCALE_TEAM;
+  const otherScale = OTHER_BOARD_SCALE_BR;
   const otherBlockSize = BLOCK_SIZE * otherScale;
   const otherWidth = COLS * otherBlockSize;
   const otherHeight = ROWS * otherBlockSize;
@@ -1437,6 +1570,37 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
   const isTargeted = Boolean(myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut);
 
+  // Faction awareness for 3v3 Team Deathmatch
+  const isTeamMode = Boolean(gameManager.isTeamMode || activeOnlineMode === 'team-deathmatch');
+  const myPlayerTeam = onlinePlayerTeams[gameManager.myPlayerIndex ?? 0] || (gameManager.players[gameManager.myPlayerIndex ?? 0]?.team);
+  const targetPlayerTeam = onlinePlayerTeams[index] || player.team;
+  const isAlly = Boolean(isTeamMode && myPlayerTeam && targetPlayerTeam && myPlayerTeam === targetPlayerTeam && !isMyPlayer);
+  const isEnemy = Boolean(isTeamMode && myPlayerTeam && targetPlayerTeam && myPlayerTeam !== targetPlayerTeam);
+  const isAllyInDanger = Boolean(isAlly && !player.isToppedOut && gameManager.getMaxColumnHeight(player) >= 14);
+
+  // Squad Glow Border around player board
+  if (isAllyInDanger) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+    tCtx.lineWidth = 2.5;
+    tCtx.shadowColor = '#F59E0B';
+    tCtx.shadowBlur = 12;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  } else if (isAlly) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
+    tCtx.lineWidth = 1.5;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  } else if (isEnemy && !isTargeted) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.35)';
+    tCtx.lineWidth = 1.5;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  }
+
   // 1. Board Header Badge (Multi-board layout / FFA / TDM)
   if (!isDuo && blockSize >= 20) {
     const hx = offsetX;
@@ -1462,6 +1626,26 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
       tCtx.shadowColor = '#00E5FF';
       tCtx.shadowBlur = 8;
       tCtx.stroke();
+    } else if (isAllyInDanger) {
+      tCtx.fillStyle = 'rgba(40, 20, 8, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#F59E0B';
+      tCtx.lineWidth = 2.5;
+      tCtx.shadowColor = '#F59E0B';
+      tCtx.shadowBlur = 10;
+      tCtx.stroke();
+    } else if (isAlly) {
+      tCtx.fillStyle = 'rgba(6, 24, 40, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.65)';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+    } else if (isEnemy) {
+      tCtx.fillStyle = 'rgba(28, 8, 20, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.55)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
     } else if (player.isToppedOut) {
       tCtx.fillStyle = 'rgba(28, 10, 16, 0.88)';
       tCtx.fill();
@@ -1479,7 +1663,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
 
     // Content inside Header Badge
     tCtx.save();
-    // Left Status Tag (YOU, ▼ TARGET, K.O., or P#)
+    // Left Status Tag (YOU, ▼ TARGET, REBOOT, K.O., ALLY, RIVAL, or P#)
     let tagText = `P${index + 1}`;
     let tagColor = '#94A3B8';
     if (isMyPlayer) {
@@ -1488,9 +1672,21 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     } else if (isTargeted) {
       tagText = '▼ TARGET';
       tagColor = '#FF007F';
+    } else if (player.tdmRespawnTimer > 0) {
+      tagText = 'REBOOT';
+      tagColor = '#FF3366';
     } else if (player.isToppedOut) {
       tagText = 'K.O.';
       tagColor = '#EF4444';
+    } else if (isAllyInDanger) {
+      tagText = '⚠️ DANGER';
+      tagColor = '#F59E0B';
+    } else if (isAlly) {
+      tagText = 'ALLY';
+      tagColor = '#00E5FF';
+    } else if (isEnemy) {
+      tagText = 'RIVAL';
+      tagColor = '#FF007F';
     }
 
     tCtx.font = 'bold 9px "Press Start 2P", monospace';
@@ -1565,18 +1761,27 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.shadowBlur = 14;
     tCtx.stroke();
 
-    tCtx.font = 'bold 13px "Press Start 2P", monospace';
+    tCtx.font = 'bold 12px "Press Start 2P", monospace';
     tCtx.fillStyle = '#FF3366';
     tCtx.textAlign = 'center';
     tCtx.textBaseline = 'middle';
     tCtx.shadowColor = '#FF3366';
     tCtx.shadowBlur = 10;
-    tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
 
-    tCtx.font = 'bold 9px "Inter", sans-serif';
-    tCtx.fillStyle = '#FDA4AF';
-    tCtx.shadowBlur = 0;
-    tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+    if (player.tdmRespawnTimer > 0) {
+      const secLeft = Math.ceil(player.tdmRespawnTimer / 1000);
+      tCtx.fillText('REBOOTING', bx + bannerW / 2, by + 16);
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#FCA5A5';
+      tCtx.shadowBlur = 0;
+      tCtx.fillText(`RESPAWN IN ${secLeft}s · -20% PTS`, bx + bannerW / 2, by + 32);
+    } else {
+      tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#FDA4AF';
+      tCtx.shadowBlur = 0;
+      tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+    }
     tCtx.restore();
   }
 
@@ -1621,6 +1826,18 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
       tCtx.stroke();
     } else if (isMyPlayer) {
       tCtx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (isAllyInDanger) {
+      tCtx.strokeStyle = '#F59E0B';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+    } else if (isAlly) {
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (isEnemy) {
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.45)';
       tCtx.lineWidth = 1.5;
       tCtx.stroke();
     } else if (player.isToppedOut) {
@@ -1708,12 +1925,24 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     // Right: Live Status
     tCtx.textAlign = 'right';
     tCtx.font = 'bold 9px "Press Start 2P", monospace';
-    if (player.isToppedOut) {
+    if (player.tdmRespawnTimer > 0) {
+      tCtx.fillStyle = '#F59E0B';
+      tCtx.fillText('● REBOOT', cx + cw - 12, cy + 42);
+    } else if (player.isToppedOut) {
       tCtx.fillStyle = '#EF4444';
       tCtx.fillText('● OUT', cx + cw - 12, cy + 42);
     } else if (isTargeted) {
       tCtx.fillStyle = '#FF007F';
-      tCtx.fillText('● LOCKED', cx + cw - 12, cy + 42);
+      tCtx.fillText('● TARGET', cx + cw - 12, cy + 42);
+    } else if (isAllyInDanger) {
+      tCtx.fillStyle = '#F59E0B';
+      tCtx.fillText('● DANGER', cx + cw - 12, cy + 42);
+    } else if (isAlly) {
+      tCtx.fillStyle = '#00E5FF';
+      tCtx.fillText('● ALLY', cx + cw - 12, cy + 42);
+    } else if (isEnemy) {
+      tCtx.fillStyle = '#FF007F';
+      tCtx.fillText('● RIVAL', cx + cw - 12, cy + 42);
     } else if (isMyPlayer) {
       tCtx.fillStyle = '#00E5FF';
       tCtx.fillText('● ACTIVE', cx + cw - 12, cy + 42);
@@ -1798,6 +2027,57 @@ function render() {
 
   for (let i = 0; i < gameManager.players.length; i++) {
     renderPlayer(gameManager.players[i], i, isDuo);
+  }
+
+  // 3v3 Team Deathmatch: Render glowing VS Divider between friendly & enemy squad pods
+  if (gameManager.isOnline && activeOnlineMode === 'team-deathmatch' && boardLayout.length >= 6) {
+    const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] || (gameManager.myPlayerIndex < 3 ? 'cyan' : 'magenta');
+    const friendlyIndices = boardLayout.map((_, idx) => idx).filter(idx => (onlinePlayerTeams[idx] || (idx < 3 ? 'cyan' : 'magenta')) === myTeam);
+    const enemyIndices = boardLayout.map((_, idx) => idx).filter(idx => (onlinePlayerTeams[idx] || (idx < 3 ? 'cyan' : 'magenta')) !== myTeam);
+
+    if (friendlyIndices.length > 0 && enemyIndices.length > 0) {
+      const friendlyRight = Math.max(...friendlyIndices.map(idx => boardLayout[idx].offsetX + COLS * boardLayout[idx].blockSize));
+      const enemyLeft = Math.min(...enemyIndices.map(idx => boardLayout[idx].offsetX));
+      const dividerX = Math.round((friendlyRight + enemyLeft) / 2);
+
+      ctx.save();
+      // Glowing neon divider line
+      const grad = ctx.createLinearGradient(dividerX, 10, dividerX, 480);
+      grad.addColorStop(0, 'rgba(0, 229, 255, 0.1)');
+      grad.addColorStop(0.3, 'rgba(0, 229, 255, 0.7)');
+      grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
+      grad.addColorStop(0.7, 'rgba(255, 0, 127, 0.7)');
+      grad.addColorStop(1, 'rgba(255, 0, 127, 0.1)');
+
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#00E5FF';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(dividerX, 10);
+      ctx.lineTo(dividerX, 480);
+      ctx.stroke();
+
+      // VS Badge in center
+      const vsY = 240;
+      ctx.beginPath();
+      ctx.arc(dividerX, vsY, 15, 0, Math.PI * 2);
+      ctx.fillStyle = '#090D16';
+      ctx.fill();
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#F59E0B';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+
+      ctx.font = 'bold 9px "Press Start 2P", monospace';
+      ctx.fillStyle = '#FBBF24';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowBlur = 0;
+      ctx.fillText('VS', dividerX, vsY + 1);
+      ctx.restore();
+    }
   }
 
   // Render visual effects

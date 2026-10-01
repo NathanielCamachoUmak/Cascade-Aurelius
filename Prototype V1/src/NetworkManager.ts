@@ -38,7 +38,7 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   ready: boolean;
-  state: 'lobby' | 'playing' | 'spectating';
+  state: 'lobby' | 'playing' | 'rebooting' | 'spectating';
   index: number;
   team: 'cyan' | 'magenta' | null;
   score: number;
@@ -139,6 +139,9 @@ export class NetworkManager {
   public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
   public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
+  public onTdmPlayerRebooting?: (data: { playerId: string; playerIndex: number; team: 'cyan' | 'magenta' | null; killerIndex: number | null; score: number; koCount: number; durationMs: number; teamScores: { cyan: number; magenta: number } }) => void;
+  public onTdmPlayerRespawned?: (data: { playerId: string; playerIndex: number; team: 'cyan' | 'magenta' | null }) => void;
+  public onTeamAceWipeout?: (data: { victimTeam: string; scoringTeam: string; bonusPoints: number; teamScores: { cyan: number; magenta: number } }) => void;
 
   constructor() {
     this.socket = io(SERVER_URL, { transports: ['websocket'] });
@@ -208,6 +211,9 @@ export class NetworkManager {
     this.socket.on('ko-recover', (data: any) => this.onKoRecover?.(data));
     this.socket.on('player-knocked-out', (data: any) => this.onPlayerKnockedOut?.(data));
     this.socket.on('battle-royale-event', (data: any) => this.onBattleRoyalEvent?.(data));
+    this.socket.on('tdm-player-rebooting', (data: any) => this.onTdmPlayerRebooting?.(data));
+    this.socket.on('tdm-player-respawned', (data: any) => this.onTdmPlayerRespawned?.(data));
+    this.socket.on('team-ace-wipeout', (data: any) => this.onTeamAceWipeout?.(data));
 
     // --- Game events ---
 

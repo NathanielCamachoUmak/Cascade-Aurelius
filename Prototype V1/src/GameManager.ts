@@ -196,12 +196,14 @@ export class GameManager {
         createdPlayer = new Player(pName, false, 'HARD', false, pClass);
       }
       (createdPlayer as any).socketId = spec.id;
+      createdPlayer.team = spec.team ?? null;
       this.players.push(createdPlayer);
     }
 
     if (this.players[myIndex]) {
+      const myTeam = this.players[myIndex].team;
       const defaultOpponentIdx = this.players.findIndex(
-        (p, idx) => idx !== myIndex && (!this.isTeamMode || playerSpecs[idx]?.team !== playerSpecs[myIndex]?.team)
+        (p, idx) => idx !== myIndex && (!this.isTeamMode || p.team !== myTeam)
       );
       if (defaultOpponentIdx >= 0) {
         this.players[myIndex].selectedTargetIndex = defaultOpponentIdx;
@@ -310,6 +312,10 @@ export class GameManager {
       if (targetPlayer && !targetPlayer.isToppedOut) {
         // If it's a remote player we don't own, ignore it (we only process our own state and our bots' state)
         if (targetPlayer !== this.players[myIndex] && !(targetPlayer as any).botId) return;
+
+        if (fromIndex !== undefined) {
+          targetPlayer.lastAttackerIndex = fromIndex;
+        }
 
         const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
         if (!isSolidSuddenDeath && targetPlayer.shieldActive) {
@@ -497,6 +503,9 @@ export class GameManager {
 
     for (let i = 0; i < this.players.length; i++) {
       const player = this.players[i];
+      if (player.tdmRespawnTimer > 0) {
+        player.tdmRespawnTimer = Math.max(0, player.tdmRespawnTimer - dt);
+      }
       if (player.isToppedOut) continue;
 
       // In online mode, only update our own player's game logic and our own bots
@@ -515,10 +524,11 @@ export class GameManager {
         this.handleSpawning(player);
         if (player.isToppedOut) {
           if (this.isOnline) {
+            const killer = player.lastAttackerIndex ?? undefined;
             if ((player as any).botId) {
-              this.network?.sendEliminated(undefined, (player as any).botId);
+              this.network?.sendEliminated(killer, (player as any).botId);
             } else {
-              this.network?.sendToppedOut();
+              this.network?.sendEliminated(killer);
             }
           }
           this.checkGameOver();
@@ -630,7 +640,7 @@ export class GameManager {
           .map(p => p.scoreManager.score);
 
         const teamAllyInDanger = this.isTeamMode ? this.players.some(p =>
-          p !== player && !p.isToppedOut && p.playerClass !== undefined &&
+          p !== player && !p.isToppedOut && p.team === player.team &&
           this.getMaxColumnHeight(p) >= 15
         ) : false;
 
@@ -745,6 +755,37 @@ export class GameManager {
     me.inputHandler.clear();
 
     if (this.state === GameState.GAME_OVER) {
+      this.state = GameState.PLAYING;
+    }
+  }
+
+  public applyTdmReboot(playerIndex: number, durationMs: number, score: number, koCount: number) {
+    const player = this.players[playerIndex];
+    if (!player) return;
+    player.isToppedOut = true;
+    player.tdmRespawnTimer = durationMs;
+    player.tdmRespawnMax = durationMs;
+    player.koCount = koCount;
+    player.scoreManager.score = score;
+    player.scoreManager.combo = 0;
+    player.currentPiece = null;
+    player.inputHandler.clear();
+    this.handlePlayerToppedOutTargeting(player);
+  }
+
+  public applyTdmRespawn(playerIndex: number) {
+    const player = this.players[playerIndex];
+    if (!player) return;
+    player.isToppedOut = false;
+    player.tdmRespawnTimer = 0;
+    player.grid.clear();
+    player.currentPiece = null;
+    player.spawnDelayTimer = 500;
+    player.dropTimer = 0;
+    player.lastAttackerIndex = null;
+    player.inputHandler.clear();
+
+    if (playerIndex === this.myPlayerIndex && this.state === GameState.GAME_OVER) {
       this.state = GameState.PLAYING;
     }
   }
@@ -1001,17 +1042,50 @@ export class GameManager {
     }
   }
 
-  private cycleClassTarget(player: Player) {
+  public cycleClassTarget(player: Player) {
     if (this.state === GameState.TUTORIAL) {
       // Task 1.3: Force targeting pointer to stay locked exclusively onto the Dummy Board during tutorial
       player.selectedTargetIndex = this.players.length > 1 ? 1 : null;
       return;
     }
     const myIndex = this.players.indexOf(player);
-    const candidates = this.players
-      .map((target, index) => ({ target, index }))
-      .filter(({ target, index }) => !target.isToppedOut && (this.isTeamMode && player.playerClass === 'SUPPORT' ? true : index !== myIndex))
-      .map(({ index }) => index);
+    if (myIndex < 0) return;
+
+    let candidates: number[] = [];
+
+    if (this.isTeamMode) {
+      const myTeam = player.team;
+      if (player.playerClass === 'SUPPORT') {
+        // Support class in TDM: Cycle living teammates first for heals/saves
+        const allyCandidates = this.players
+          .map((target, index) => ({ target, index }))
+          .filter(({ target, index }) => !target.isToppedOut && target.team === myTeam && index !== myIndex)
+          .map(({ index }) => index);
+
+        if (allyCandidates.length > 0) {
+          candidates = allyCandidates;
+        } else {
+          // If all teammates are safe/topped out, cycle enemies
+          candidates = this.players
+            .map((target, index) => ({ target, index }))
+            .filter(({ target, index }) => !target.isToppedOut && target.team !== myTeam)
+            .map(({ index }) => index);
+        }
+      } else {
+        // Offensive classes (Tank, Speedster, Saboteur, Mage): STRICTLY cycle living enemies!
+        candidates = this.players
+          .map((target, index) => ({ target, index }))
+          .filter(({ target, index }) => !target.isToppedOut && target.team !== myTeam)
+          .map(({ index }) => index);
+      }
+    } else {
+      // Free For All / 1v1: cycle any other living player
+      candidates = this.players
+        .map((target, index) => ({ target, index }))
+        .filter(({ target, index }) => !target.isToppedOut && index !== myIndex)
+        .map(({ index }) => index);
+    }
+
     if (!candidates.length) {
       player.selectedTargetIndex = null;
       return;
@@ -1137,7 +1211,7 @@ export class GameManager {
   private applyAbilityFreeze(source: Player, durationMs: number) {
     const opponents = this.players
       .map((p, idx) => ({ p, idx }))
-      .filter(({ p }) => p.id !== source.id && !p.isToppedOut);
+      .filter(({ p }) => p.id !== source.id && !p.isToppedOut && (!this.isTeamMode || p.team !== source.team));
     if (opponents.length > 0) {
       const targetEntry = (source.selectedTargetIndex !== null && opponents.find(o => o.idx === source.selectedTargetIndex)) || opponents[0];
       source.freezeTetherVisual = { targetPlayerIndex: targetEntry.idx, timer: 650, maxTimer: 650 };
@@ -1388,10 +1462,11 @@ export class GameManager {
       this.handleSpawning(player);
       if (player.isToppedOut) {
         if (this.isOnline) {
+          const killer = player.lastAttackerIndex ?? undefined;
           if ((player as any).botId) {
-            this.network?.sendEliminated(undefined, (player as any).botId);
+            this.network?.sendEliminated(killer, (player as any).botId);
           } else {
-            this.network?.sendToppedOut();
+            this.network?.sendEliminated(killer);
           }
         }
         this.checkGameOver();
@@ -1400,7 +1475,7 @@ export class GameManager {
   }
 
   private distributeGarbage(sender: Player, count: number) {
-    const validOpponents = this.players.filter(p => p.id !== sender.id && !p.isToppedOut);
+    const validOpponents = this.players.filter(p => p.id !== sender.id && !p.isToppedOut && (!this.isTeamMode || p.team !== sender.team));
     if (validOpponents.length === 0) return;
 
     let target = validOpponents[Math.floor(Math.random() * validOpponents.length)];
@@ -1462,7 +1537,7 @@ export class GameManager {
   // Board Analysis Helpers (for bot ability context)
   // ==============================
 
-  private getMaxColumnHeight(player: Player): number {
+  public getMaxColumnHeight(player: Player): number {
     const grid = player.grid;
     let maxHeight = 0;
     for (let c = 0; c < grid.width; c++) {

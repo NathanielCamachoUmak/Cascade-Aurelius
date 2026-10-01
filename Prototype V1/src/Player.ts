@@ -65,6 +65,10 @@ export class Player {
   public spawnDelayTimer = 0;
   public kills = 0;
   public battleRoyalEliminated = false;
+  public team: 'cyan' | 'magenta' | null = null;
+  public tdmRespawnTimer = 0; // ms remaining on 3s TDM reboot
+  public tdmRespawnMax = 3000;
+  public lastAttackerIndex: number | null = null;
 
   constructor(id: string, isBot = false, botDifficulty: Difficulty = 'HARD', listenToKeyboard = true, playerClass: PlayerClass = 'TANK') {
     this.id = id;
@@ -93,6 +97,8 @@ export class Player {
     this.isToppedOut = false;
     this.kills = 0;
     this.battleRoyalEliminated = false;
+    this.tdmRespawnTimer = 0;
+    this.lastAttackerIndex = null;
     this.classMeter = 0;
     this.activeEffectType = null;
     this.activeEffectTimer = 0;

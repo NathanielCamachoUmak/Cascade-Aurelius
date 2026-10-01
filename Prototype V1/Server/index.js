@@ -116,6 +116,12 @@ function clearTimers(room) {
   if (room.battleRoyalSuddenDeathTimer) clearInterval(room.battleRoyalSuddenDeathTimer);
   if (room.dynamicRuleTimer) clearTimeout(room.dynamicRuleTimer);
   if (room.idleSweepTimer) clearInterval(room.idleSweepTimer);
+  for (const p of room.players?.values() || []) {
+    if (p.tdmRespawnTimeout) {
+      clearTimeout(p.tdmRespawnTimeout);
+      p.tdmRespawnTimeout = null;
+    }
+  }
   room.countdownTimer = null;
   room.matchTimer = null;
   room.pregameTimer = null;
@@ -330,6 +336,114 @@ function handleKnockout(roomId, socketId) {
   }); //[cite: 4]
 
   emitRoomState(roomId); //[cite: 4]
+  return true;
+}
+
+function handleTdmKnockout(roomId, socketId, killerIndex) {
+  const room = rooms.get(roomId);
+  const player = room?.players.get(socketId);
+  if (!room || !player || room.phase !== 'in-game' || !room.mode.isTeamMode) return false;
+
+  const now = Date.now();
+  if (player.lastKoAt && now - player.lastKoAt < 1500) {
+    return false;
+  }
+  player.lastKoAt = now;
+
+  player.koCount = (player.koCount || 0) + 1;
+  // Apply -20% score penalty on topped-out player
+  player.score = Math.max(0, Math.round((player.score || 0) * 0.8));
+
+  const opposingTeam = player.team === 'cyan' ? 'magenta' : 'cyan';
+  const BOUNTY_POINTS = 2500;
+
+  let killer = null;
+  if (Number.isInteger(killerIndex)) {
+    killer = Array.from(room.players.values()).find(
+      candidate => candidate.index === killerIndex && candidate.team === opposingTeam
+    );
+  }
+  if (!killer) {
+    const livingEnemies = Array.from(room.players.values()).filter(
+      candidate => candidate.team === opposingTeam && candidate.state === 'playing'
+    );
+    if (livingEnemies.length > 0) {
+      killer = livingEnemies[0];
+    }
+  }
+
+  if (killer) {
+    killer.kills = (killer.kills || 0) + 1;
+    killer.score = (killer.score || 0) + BOUNTY_POINTS;
+  } else {
+    const anyEnemy = Array.from(room.players.values()).find(p => p.team === opposingTeam);
+    if (anyEnemy) {
+      anyEnemy.score = (anyEnemy.score || 0) + BOUNTY_POINTS;
+    }
+  }
+
+  player.state = 'rebooting';
+
+  const rebootDurationMs = 3000;
+  const teamScores = calculateTeamScores(room);
+
+  io.to(roomId).emit('tdm-player-rebooting', {
+    playerId: socketId,
+    playerIndex: player.index,
+    team: player.team,
+    killerIndex: killer ? killer.index : null,
+    score: player.score,
+    koCount: player.koCount,
+    durationMs: rebootDurationMs,
+    teamScores,
+  });
+
+  // Check for Team Ace Wipeout (all members of this squad currently down)
+  const teamMembers = Array.from(room.players.values()).filter(p => p.team === player.team);
+  const allTeamKnockedOut = teamMembers.length > 0 && teamMembers.every(p => p.state === 'rebooting' || p.state === 'spectating');
+
+  if (allTeamKnockedOut) {
+    const ACE_BONUS = 10000;
+    const enemyMembers = Array.from(room.players.values()).filter(p => p.team === opposingTeam);
+    if (enemyMembers.length > 0) {
+      const perPlayer = Math.round(ACE_BONUS / enemyMembers.length);
+      for (const ep of enemyMembers) {
+        ep.score = (ep.score || 0) + perPlayer;
+      }
+    }
+    const updatedTeamScores = calculateTeamScores(room);
+    io.to(roomId).emit('team-ace-wipeout', {
+      victimTeam: player.team,
+      scoringTeam: opposingTeam,
+      bonusPoints: ACE_BONUS,
+      teamScores: updatedTeamScores,
+    });
+  }
+
+  emitRoomState(roomId);
+
+  if (player.tdmRespawnTimeout) {
+    clearTimeout(player.tdmRespawnTimeout);
+  }
+
+  player.tdmRespawnTimeout = setTimeout(() => {
+    player.tdmRespawnTimeout = null;
+    const currentRoom = rooms.get(roomId);
+    if (!currentRoom || currentRoom.phase !== 'in-game') return;
+    const currentPlayer = currentRoom.players.get(socketId);
+    if (!currentPlayer || currentPlayer.state !== 'rebooting') return;
+
+    currentPlayer.state = 'playing';
+
+    io.to(roomId).emit('tdm-player-respawned', {
+      playerId: socketId,
+      playerIndex: currentPlayer.index,
+      team: currentPlayer.team,
+    });
+
+    emitRoomState(roomId);
+  }, rebootDurationMs);
+
   return true;
 }
 
@@ -859,7 +973,12 @@ io.on('connection', socket => {
       if (handleKnockout(roomId, botId || socket.id)) return;
     }
 
-    // Otherwise (> 4 players remaining), trigger Elimination and allow Spectator / Lobby Choice
+    // In 3v3 Team Deathmatch, topped-out players suffer -20% score penalty, enemy team gets bounty, and player reboots for 3s
+    if (room.mode.isTeamMode) {
+      if (handleTdmKnockout(roomId, botId || socket.id, killerIndex)) return;
+    }
+
+    // Otherwise (> 4 players remaining in elimination modes), trigger Elimination and allow Spectator / Lobby Choice
     player.state = 'spectating';
     player.eliminatedAt = Date.now();
 
