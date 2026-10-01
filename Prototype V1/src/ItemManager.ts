@@ -23,6 +23,18 @@ export const SPECIAL_BLOCK_ICONS: Record<SpecialBlockType, string> = {
   [SpecialBlockType.NONE]: '',
 };
 
+export const SPECIAL_BLOCK_COLORS: Record<SpecialBlockType, string> = {
+  [SpecialBlockType.BOMB]: '#FF4444',
+  [SpecialBlockType.HEAVY]: '#00E5FF',
+  [SpecialBlockType.MULTIPLIER]: '#FFD700',
+  [SpecialBlockType.SPEED]: '#00FFFF',
+  [SpecialBlockType.SHIELD]: '#00FF88',
+  [SpecialBlockType.FREEZE]: '#38BDF8',
+  [SpecialBlockType.GARBAGE_EATER]: '#F59E0B',
+  [SpecialBlockType.NONE]: '#FFFFFF',
+};
+
+
 interface ItemWeight {
   type: SpecialBlockType;
   weight: number;

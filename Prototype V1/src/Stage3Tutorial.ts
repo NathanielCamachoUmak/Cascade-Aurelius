@@ -1,6 +1,6 @@
 import { Grid } from './Grid';
 import { Tetromino, type ShapeType } from './Tetromino';
-import { SpecialBlockType, SPECIAL_BLOCK_ICONS } from './ItemManager';
+import { SpecialBlockType, SPECIAL_BLOCK_ICONS, SPECIAL_BLOCK_COLORS } from './ItemManager';
 import { AudioManager } from './AudioManager';
 import { markTutorialCompleted } from './TutorialManager';
 
@@ -1592,6 +1592,14 @@ export class Stage3Tutorial {
       const specialSprite = SPECIAL_BLOCK_SPRITES[specialType];
       if (specialSprite && specialSprite.complete && specialSprite.naturalWidth > 0) {
         targetCtx.drawImage(specialSprite, finalX, finalY, blockSize, blockSize);
+        const glowColor = SPECIAL_BLOCK_COLORS[specialType as SpecialBlockType] || '#FFD700';
+        targetCtx.save();
+        targetCtx.shadowColor = glowColor;
+        targetCtx.shadowBlur = 8;
+        targetCtx.strokeStyle = glowColor;
+        targetCtx.lineWidth = 1.5;
+        targetCtx.strokeRect(finalX + 0.5, finalY + 0.5, blockSize - 1, blockSize - 1);
+        targetCtx.restore();
         return;
       }
       targetCtx.fillStyle = '#FFD700';

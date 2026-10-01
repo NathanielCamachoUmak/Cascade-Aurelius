@@ -3,6 +3,7 @@ import { ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect';
 import { GameState } from './GameManager';
 import { PLAYER_CLASSES } from './PlayerClass';
 import { showClassSelectModal } from './ClassSelectModal';
+import { AudioManager } from './AudioManager';
 
 export interface LobbyScreenOptions {
   onBack: () => void;
@@ -53,11 +54,15 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   const footerStatus = document.getElementById('lobby-footer-status')!;
   
   const yourClassDisplay = document.getElementById('your-class-display')!;
+  const yourClassIcon = document.getElementById('your-class-icon') as HTMLImageElement | null;
   const toggleReady = document.getElementById('lobby-ready-toggle') as HTMLInputElement;
   const btnStartMatch = document.getElementById('btn-lobby-start-match') as HTMLButtonElement;
   const btnLeaveLobby = document.getElementById('btn-lobby-leave')!;
   const btnChangeLoadout = document.getElementById('btn-lobby-change-loadout')!;
   
+  const countdownBox = document.getElementById('lobby-countdown-box');
+  const countdownNum = document.getElementById('lobby-countdown-num');
+
   const chatMessages = document.getElementById('chat-messages')!;
   const chatInput = document.getElementById('chat-input') as HTMLInputElement;
   const btnChatSend = document.getElementById('btn-chat-send')!;
@@ -71,6 +76,38 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   let onlineTeamScores = { cyan: 0, magenta: 0 };
   let currentRoomState: RoomState | null = null;
   let defaultNickname = '';
+  let countdownTimerId: any = null;
+
+  function showCountdown(seconds: number) {
+    if (countdownBox && countdownNum) {
+      countdownBox.classList.remove('hidden');
+      countdownBox.classList.add('flex');
+      countdownNum.innerText = String(seconds);
+    }
+    if (countdownTimerId) clearInterval(countdownTimerId);
+    let remaining = seconds;
+    countdownTimerId = setInterval(() => {
+      remaining--;
+      if (remaining >= 1) {
+        if (countdownNum) countdownNum.innerText = String(remaining);
+        AudioManager.playSfx('menuSelect');
+      } else {
+        if (countdownTimerId) clearInterval(countdownTimerId);
+        countdownTimerId = null;
+      }
+    }, 1000);
+  }
+
+  function hideCountdown() {
+    if (countdownTimerId) {
+      clearInterval(countdownTimerId);
+      countdownTimerId = null;
+    }
+    if (countdownBox) {
+      countdownBox.classList.remove('flex');
+      countdownBox.classList.add('hidden');
+    }
+  }
 
   function getSelectedOnlineModeInfo() {
     return ONLINE_GAME_MODES.find(m => m.id === selectedOnlineMode) ?? ONLINE_GAME_MODES[0];
@@ -104,6 +141,9 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         toggleReady.checked = myReady;
         const cInfo = getPlayerClassInfo(me.classId);
         yourClassDisplay.innerText = `${cInfo.name} - ${cInfo.tagline}`;
+        if (yourClassIcon && cInfo.iconUrl) {
+          yourClassIcon.src = cInfo.iconUrl;
+        }
         if (me.classId) {
           options.onClassChange?.(me.classId);
         }
@@ -112,9 +152,27 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       renderLobbyPlayers(state);
     };
 
-    network.onPreGameCountdown = (count: number) => {
-      footerStatus.innerText = `Match starting in ${count}...`;
+    network.onCountdownStart = (seconds: number) => {
+      showCountdown(seconds);
+      footerStatus.innerText = `Match starting in ${seconds}...`;
+      AudioManager.playSfx('menuSelect');
     };
+
+    network.onCountdownCancel = () => {
+      hideCountdown();
+      footerStatus.innerText = 'Match countdown cancelled.';
+    };
+
+    network.onPreGameCountdown = (count: number) => {
+      if (countdownBox && countdownNum) {
+        countdownBox.classList.remove('hidden');
+        countdownBox.classList.add('flex');
+        countdownNum.innerText = String(count);
+      }
+      footerStatus.innerText = `Match starting in ${count}...`;
+      AudioManager.playSfx('menuSelect');
+    };
+
     
     network.onKicked = () => {
       alert("You have been kicked from the lobby.");
@@ -190,7 +248,9 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded border border-gray-600 bg-black/40 flex items-center justify-center shrink-0"></div>
+            <div class="w-8 h-8 rounded border border-gray-600 bg-black/40 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
+              <img src="${cInfo.iconUrl}" alt="${cInfo.name}" class="w-full h-full object-contain" />
+            </div>
             <div>
               <div class="${nameColor} font-bold flex items-center gap-2">
                 ${p.name}
@@ -414,9 +474,11 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
   function hide() {
     screenLobby.classList.remove('flex');
     screenLobby.classList.add('hidden');
+    hideCountdown();
   }
 
   function reset() {
+    hideCountdown();
     if (network) {
       network.leaveRoom();
       network = null;

@@ -548,6 +548,12 @@ export class GameManager {
       player.koStampTimer = Math.max(0, player.koStampTimer - dt);
       player.abilityFreezeTimer = Math.max(0, player.abilityFreezeTimer - dt);
       player.shieldDeflectTimer = Math.max(0, player.shieldDeflectTimer - dt);
+      if (player.shieldTimer > 0) {
+        player.shieldTimer = Math.max(0, player.shieldTimer - dt);
+        if (player.shieldTimer === 0 && player.shieldActive) {
+          player.shieldActive = false;
+        }
+      }
       player.garbageEaterTimer = Math.max(0, player.garbageEaterTimer - dt);
 
       if (player.bombBlastVisual) {
@@ -1425,10 +1431,14 @@ export class GameManager {
         this.spawnBoardFloatingText(pIdx, '⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, Math.max(60, (speedRow - 1) * 30), '#00E5FF', 12);
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
+        const isSinglePlayer = !this.isOnline && this.players.length === 1;
+        if (isSinglePlayer) {
+          player.shieldTimer = 1000;
+        }
         AudioManager.playSfx('shield');
         const shieldRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, shieldRow * 30, '#00FF88', '#00E5FF', 20);
-        this.spawnBoardFloatingText(pIdx, '🛡 SHIELD AURA RAISED!', 150, Math.max(60, (shieldRow - 1) * 30), '#00FF88', 13);
+        this.spawnBoardFloatingText(pIdx, isSinglePlayer ? '🛡 SHIELD AURA (1s)!' : '🛡 SHIELD AURA RAISED!', 150, Math.max(60, (shieldRow - 1) * 30), '#00FF88', 13);
       } else if (special === SpecialBlockType.FREEZE) {
         this.applyAbilityFreeze(player, 3000);
         const freezeRow = clearedRows[0] ?? 18;

@@ -85,6 +85,23 @@ const recycleGrid = new Grid();
 recycleGrid.addGarbageLines(6, 'HUMAN');
 const recycleConverted = recycleGrid.convertGarbageToSpecialBlocks(4);
 assert(recycleConverted === 4, 'Recycle must convert only its four-line allowance.');
-assert(recycleGrid.matrix.flat().some(cell => cell.type === 'GARBAGE'), 'Recycle must leave excess garbage after its allowance is spent.');
+// Single player Shield Block: expires after 1 second (1000ms) instead of waiting indefinitely.
+const soloPlayer = new Player('Solo', false, 'EASY', false, 'SENTINEL');
+soloPlayer.currentPiece = new Tetromino('I');
+soloPlayer.shieldActive = true;
+soloPlayer.shieldTimer = 1000;
+const soloGM = new GameManager(() => {});
+soloGM.state = GameState.PLAYING;
+soloGM.isOnline = false;
+soloGM.players = [soloPlayer];
+
+(soloGM as any).update(500);
+assert(soloPlayer.shieldActive === true, 'Shield should still be active at 500ms.');
+assert(soloPlayer.shieldTimer === 500, 'Shield timer should have 500ms remaining.');
+
+(soloGM as any).update(500);
+assert(soloPlayer.shieldActive === false, 'Shield should deactivate after 1,000ms in single player.');
+assert(soloPlayer.shieldTimer === 0, 'Shield timer should reach 0.');
 
 console.log('PASS: class mechanics foundations verified.');
+

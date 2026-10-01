@@ -40,6 +40,7 @@ export class Player {
   public speedBlockSlowTimer = 0;
   public selectedTargetIndex: number | null = null;
   public shieldActive = false;
+  public shieldTimer = 0;
   public abilityFreezeTimer = 0;
 
   // Visual effect state matching Stage 2 & Stage 3 Tutorials
@@ -120,6 +121,7 @@ export class Player {
     this.speedBlockSlowTimer = 0;
     this.selectedTargetIndex = null;
     this.shieldActive = false;
+    this.shieldTimer = 0;
     this.abilityFreezeTimer = 0;
     this.bombBlastVisual = null;
     this.heavyCrushVisual = null;

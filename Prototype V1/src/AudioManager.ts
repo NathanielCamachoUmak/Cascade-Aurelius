@@ -124,6 +124,7 @@ const audioCache = new Map<string, HTMLAudioElement>();
 // ---------------------------------------------------------------------------
 
 function getOrCreate(src: string): HTMLAudioElement {
+  if (typeof Audio === 'undefined') return {} as HTMLAudioElement;
   let audio = audioCache.get(src);
   if (!audio) {
     audio = new Audio(src);
@@ -135,6 +136,7 @@ function getOrCreate(src: string): HTMLAudioElement {
 
 /** Preload all tracks so they're ready when needed. */
 function preload() {
+  if (typeof Audio === 'undefined') return;
   for (const group of Object.values(MUSIC_TRACKS)) {
     for (const src of group) getOrCreate(src);
   }
@@ -154,7 +156,7 @@ export const AudioManager = {
    * the Web Audio autoplay policy. Safe to call multiple times.
    */
   resumeContext() {
-    if (unlocked) return;
+    if (typeof Audio === 'undefined' || unlocked) return;
     unlocked = true;
 
     // Play + immediately pause a silent buffer to unlock the audio context
@@ -173,6 +175,7 @@ export const AudioManager = {
    * it will be stopped and replaced.
    */
   playMusic(track: MusicTrack) {
+    if (typeof Audio === 'undefined') return;
     const group: readonly string[] = track === 'game' ? getAllowedGameMusicSources() : MUSIC_TRACKS[track];
     if (currentTrack === track && currentMusic && !currentMusic.paused) {
       const isCurrentAllowed = group.some(src => currentMusic === audioCache.get(src));
@@ -213,9 +216,10 @@ export const AudioManager = {
    * (e.g. consecutive line clears) overlap instead of cutting off.
    */
   playSfx(name: SfxClip) {
-    if (!unlocked) return;
+    if (typeof Audio === 'undefined' || !unlocked) return;
     const src = SFX_CLIPS[name];
     const base = getOrCreate(src);
+    if (!base || typeof base.cloneNode !== 'function') return;
     const clone = base.cloneNode() as HTMLAudioElement;
     clone.volume = sfxVolume;
     clone.play().catch(() => {});

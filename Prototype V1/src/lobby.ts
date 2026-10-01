@@ -15,7 +15,7 @@ import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
 import { TutorialManager } from './TutorialManager'
 import { recordModeScore } from './HighScores'
-import { SPECIAL_BLOCK_ICONS } from './ItemManager'
+import { SPECIAL_BLOCK_ICONS, SPECIAL_BLOCK_COLORS, SpecialBlockType } from './ItemManager'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -1037,8 +1037,17 @@ function drawBlock(
   // Draw custom special item block sprite if available
   if (isSpecial && SPECIAL_BLOCK_SPRITES[isSpecial] && SPECIAL_BLOCK_SPRITES[isSpecial].complete && SPECIAL_BLOCK_SPRITES[isSpecial].naturalWidth > 0) {
     targetCtx.drawImage(SPECIAL_BLOCK_SPRITES[isSpecial], finalX, finalY, blockSize, blockSize);
+    const glowColor = SPECIAL_BLOCK_COLORS[isSpecial as SpecialBlockType] || '#FFD700';
+    targetCtx.save();
+    targetCtx.shadowColor = glowColor;
+    targetCtx.shadowBlur = 8;
+    targetCtx.strokeStyle = glowColor;
+    targetCtx.lineWidth = 1.5;
+    targetCtx.strokeRect(finalX + 0.5, finalY + 0.5, blockSize - 1, blockSize - 1);
+    targetCtx.restore();
     return;
   }
+
 
   if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
     targetCtx.drawImage(BLOCK_SPRITES[shapeType], finalX, finalY, blockSize, blockSize);
@@ -1094,6 +1103,14 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
           const specialType = (i === 0 && nextPiece) ? nextPiece.specialBlocks.get(`${r},${c}`) : undefined;
           if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
             tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+            const glowColor = SPECIAL_BLOCK_COLORS[specialType as SpecialBlockType] || '#FFD700';
+            tCtx.save();
+            tCtx.shadowColor = glowColor;
+            tCtx.shadowBlur = 4;
+            tCtx.strokeStyle = glowColor;
+            tCtx.lineWidth = 1;
+            tCtx.strokeRect(fx + 0.5, fy + 0.5, MINI_BLOCK_SIZE - 1, MINI_BLOCK_SIZE - 1);
+            tCtx.restore();
           } else {
             if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
               tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
@@ -1143,6 +1160,14 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
 
         if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
           tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+          const glowColor = SPECIAL_BLOCK_COLORS[specialType as SpecialBlockType] || '#FFD700';
+          tCtx.save();
+          tCtx.shadowColor = glowColor;
+          tCtx.shadowBlur = 4;
+          tCtx.strokeStyle = glowColor;
+          tCtx.lineWidth = 1;
+          tCtx.strokeRect(fx + 0.5, fy + 0.5, MINI_BLOCK_SIZE - 1, MINI_BLOCK_SIZE - 1);
+          tCtx.restore();
         } else {
           tCtx.fillStyle = '#000000';
           tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);

@@ -221,22 +221,25 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
 
       card.innerHTML = `
         <div class='flex flex-col h-full'>
-          <div class='flex justify-between items-start gap-2 mb-3'>
+          <div class='flex justify-between items-center gap-2 mb-3 min-h-[58px]'>
             <div class='flex items-center gap-3'>
-              <img src='${playerClass.iconUrl}' alt='${playerClass.name}' class='w-11 h-11 object-contain rounded-lg p-1 bg-white/5 border border-white/10 shrink-0' />
-              <div>
-                <h3 class='text-lg font-bold uppercase tracking-wider' style='color: ${color}'>${playerClass.name}</h3>
-                <span class='text-[9px] text-gray-400 tracking-widest uppercase'>${playerClass.tagline}</span>
+              <div class='w-12 h-12 rounded-lg p-1 bg-white/5 border border-white/10 shrink-0 flex items-center justify-center'>
+                <img src='${playerClass.iconUrl}' alt='${playerClass.name}' class='w-full h-full object-contain' />
+              </div>
+              <div class='min-h-[46px] flex flex-col justify-center'>
+                <h3 class='text-lg font-bold uppercase tracking-wider leading-tight' style='color: ${color}'>${playerClass.name}</h3>
+                <span class='text-[9px] text-gray-400 tracking-widest uppercase leading-snug'>${playerClass.tagline}</span>
               </div>
             </div>
             ${badgeHtml}
           </div>
-          <div class='text-xs text-gray-300 mb-4 flex-1'>
+          <div class='text-xs text-gray-300 mb-4 min-h-[56px] flex flex-col justify-start'>
             <p class='mb-2'><b>Passive:</b> ${passiveText}</p>
           </div>
           <div class='ability-list flex flex-col gap-2 mt-auto'></div>
         </div>
       `;
+
 
       const abilityList = card.querySelector('.ability-list')!;
       abilityList.appendChild(
