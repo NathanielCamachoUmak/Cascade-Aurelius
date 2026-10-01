@@ -201,14 +201,33 @@ function ensureStatisticsStyles() {
       letter-spacing: 0.12em;
     }
     .bq-stats-section {
-      margin-top: 1.25rem;
+      margin-top: 1.35rem;
     }
     .bq-stats-section h3 {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0 0 0.75rem;
       color: #00e5ff;
-      font-size: 0.75rem;
-      letter-spacing: 0.12em;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      margin: 0 0 0.65rem;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+    }
+    .bq-stats-section h3::before {
+      content: '◆';
+      font-size: 0.65rem;
+      color: #00e5ff;
+      text-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
+      opacity: 0.9;
+    }
+    .bq-stats-section h3::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(0, 229, 255, 0.4) 0%, rgba(169, 176, 255, 0.12) 60%, transparent 100%);
+      margin-left: 0.35rem;
     }
     .bq-stats-grid {
       display: grid;
