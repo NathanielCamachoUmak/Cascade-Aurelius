@@ -2024,7 +2024,10 @@ export class TutorialManager {
       const done = certified.includes(cls.id);
       return `
         <div class="flex items-center justify-between px-3 py-2 rounded-lg border ${done ? 'border-neon-green/50 bg-neon-green/10 text-neon-green' : 'border-card-border bg-black/30 text-gray-400'}">
-          <span class="font-bold uppercase tracking-wider text-xs">${cls.name}</span>
+          <div class="flex items-center gap-2">
+            <img src="${cls.iconUrl}" alt="${cls.name}" class="w-5 h-5 object-contain p-0.5 rounded bg-white/5 border border-white/10 shrink-0" />
+            <span class="font-bold uppercase tracking-wider text-xs">${cls.name}</span>
+          </div>
           <span class="text-[10px] font-bold tracking-widest uppercase">${done ? '★ CERTIFIED' : 'PENDING'}</span>
         </div>
       `;
@@ -2032,8 +2035,9 @@ export class TutorialManager {
 
     this.conclusionModal.innerHTML = `
       <div class="bg-card-bg border-2 border-neon-cyan rounded-2xl max-w-lg w-full p-8 text-center shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col items-center gap-5">
-        <div class="px-4 py-1.5 rounded-full bg-neon-yellow/15 border border-neon-yellow text-neon-yellow text-xs font-extrabold tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(255,215,0,0.3)]">
-          ★ ${info.name.toUpperCase()} CERTIFIED
+        <div class="flex items-center gap-2 px-4 py-1.5 rounded-full bg-neon-yellow/15 border border-neon-yellow text-neon-yellow text-xs font-extrabold tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(255,215,0,0.3)]">
+          <img src="${info.iconUrl}" alt="${info.name}" class="w-5 h-5 object-contain" />
+          <span>★ ${info.name.toUpperCase()} CERTIFIED</span>
         </div>
         <div>
           <p class="text-neon-cyan text-[10px] font-bold tracking-[0.3em] uppercase mb-1">STAGE 2 PROGRESS: ${certified.length} / 4 CLASSES</p>

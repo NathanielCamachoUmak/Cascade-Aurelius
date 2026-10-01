@@ -222,9 +222,12 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
       card.innerHTML = `
         <div class='flex flex-col h-full'>
           <div class='flex justify-between items-start gap-2 mb-3'>
-            <div>
-              <h3 class='text-lg font-bold uppercase tracking-wider' style='color: ${color}'>${playerClass.name}</h3>
-              <span class='text-[9px] text-gray-400 tracking-widest uppercase'>${playerClass.tagline}</span>
+            <div class='flex items-center gap-3'>
+              <img src='${playerClass.iconUrl}' alt='${playerClass.name}' class='w-11 h-11 object-contain rounded-lg p-1 bg-white/5 border border-white/10 shrink-0' />
+              <div>
+                <h3 class='text-lg font-bold uppercase tracking-wider' style='color: ${color}'>${playerClass.name}</h3>
+                <span class='text-[9px] text-gray-400 tracking-widest uppercase'>${playerClass.tagline}</span>
+              </div>
             </div>
             ${badgeHtml}
           </div>

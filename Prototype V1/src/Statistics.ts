@@ -602,10 +602,13 @@ export function mountStatistics(statsNav: HTMLElement, store: ProgressionStore) 
         return `
           <article class="bq-stats-card ${certified ? '' : 'locked'}" style="${certified ? `border-color:${accent}66` : ''}">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-              <h4 style="color:${accent}">${cls.name}</h4>
+              <div style="display:flex;align-items:center;gap:8px">
+                <img src="${cls.iconUrl}" alt="${cls.name}" style="width:24px;height:24px;object-fit:contain;border-radius:4px;background:rgba(255,255,255,0.06);padding:2px" />
+                <h4 style="color:${accent};margin:0">${cls.name}</h4>
+              </div>
               <small style="color:${certified ? '#00ff88' : '#9da6c8'};font-weight:800">${certified ? '★ CERTIFIED' : 'UNCERTIFIED'}</small>
             </div>
-            <p>[Q] ${cls.abilityQName} · [E] ${cls.abilityEName} · [R] ${cls.ultimateName}</p>
+            <p style="margin-top:0.4rem">[Q] ${cls.abilityQName} · [E] ${cls.abilityEName} · [R] ${cls.ultimateName}</p>
           </article>
         `;
       }).join('');

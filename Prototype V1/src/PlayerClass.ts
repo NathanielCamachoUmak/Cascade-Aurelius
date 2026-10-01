@@ -7,6 +7,7 @@ export interface PlayerClassInfo {
   id: PlayerClass;
   name: string;
   tagline: string;
+  iconUrl: string;
   passiveDescription: string;
   abilityQName: string;
   abilityQDescription: string;
@@ -23,6 +24,7 @@ export const PLAYER_CLASSES: PlayerClassInfo[] = [
     id: 'SPEEDSTER',
     name: 'Speedster',
     tagline: 'Built for fast, technical play.',
+    iconUrl: '/class/Speedster.png',
     passiveDescription: 'Passive: A Tetris guarantees a Speed Block on your next piece.',
     abilityQName: 'Sprint',
     abilityQDescription: "Q · 12s cooldown: target's current piece and next 3 pieces drop 50% faster.",
@@ -37,6 +39,7 @@ export const PLAYER_CLASSES: PlayerClassInfo[] = [
     id: 'TANK',
     name: 'Sentinel',
     tagline: 'Built to take a hit.',
+    iconUrl: '/class/Sentinel.png',
     passiveDescription: 'Passive: A Tetris guarantees a Shield Block on your next piece.',
     abilityQName: 'Fortify',
     abilityQDescription: 'Q · 10s cooldown: ignore your next 2 garbage attacks.',
@@ -51,6 +54,7 @@ export const PLAYER_CLASSES: PlayerClassInfo[] = [
     id: 'SABOTEUR',
     name: 'Saboteur',
     tagline: 'Plays the long game.',
+    iconUrl: '/class/Saboteur.png',
     passiveDescription: 'Passive: A Tetris guarantees a Freeze Block on your next piece.',
     abilityQName: 'Scramble',
     abilityQDescription: "Q · 12s cooldown: scramble a target's next 5 upcoming pieces.",
@@ -65,6 +69,7 @@ export const PLAYER_CLASSES: PlayerClassInfo[] = [
     id: 'SUPPORT',
     name: 'Support',
     tagline: 'Turns pressure into recovery.',
+    iconUrl: '/class/Support.png',
     passiveDescription: 'Passive: A Tetris arms your next incoming garbage conversion into special blocks.',
     abilityQName: 'Recycle',
     abilityQDescription: 'Q · 10s cooldown: convert the next 4 garbage lines into special blocks on your board, or a targeted ally in 3v3.',

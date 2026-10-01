@@ -271,7 +271,10 @@ function renderClassCards() {
     const passDesc = info.passiveDescription.replace(/^Passive:\s*/i, '');
 
     card.innerHTML = `
-      <span class="${accentColorClass} text-[0.72rem] font-black uppercase tracking-[0.16em] mb-2">${roleText}</span>
+      <div class="flex items-center justify-between w-full mb-2">
+        <span class="${accentColorClass} text-[0.72rem] font-black uppercase tracking-[0.16em]">${roleText}</span>
+        <img src="${info.iconUrl}" alt="${info.name}" class="w-10 h-10 object-contain p-1 rounded-lg bg-white/5 border border-white/10" />
+      </div>
       <h3 class="text-[clamp(1.4rem,2.5vw,1.75rem)] font-extrabold leading-tight mb-2 text-white">${info.name}</h3>
       <p class="text-gray-400 text-[0.92rem] leading-relaxed mb-4">${info.tagline}</p>
       
@@ -328,8 +331,13 @@ function renderTutorialClasses() {
     const card = document.createElement('div');
     card.className = `bg-deep-purple/40 border ${accent.border} rounded-lg p-4`;
     card.innerHTML = `
-      <h4 class="${accent.text} font-extrabold text-sm mb-1">${info.name}</h4>
-      <p class="text-gray-500 text-xs mb-3">${info.tagline}</p>
+      <div class="flex items-center gap-3 mb-2">
+        <img src="${info.iconUrl}" alt="${info.name}" class="w-8 h-8 object-contain p-1 rounded bg-white/5 border border-white/10 shrink-0" />
+        <div>
+          <h4 class="${accent.text} font-extrabold text-sm leading-tight">${info.name}</h4>
+          <p class="text-gray-500 text-[10px]">${info.tagline}</p>
+        </div>
+      </div>
       <ul class="space-y-1.5 text-xs text-gray-300">
         <li><span class="text-gray-400 font-bold">Passive —</span> ${info.passiveDescription.replace(/^Passive:\s*/i, '')}</li>
         <li><span class="${accent.text} font-bold">[Q] ${info.abilityQName} —</span> ${info.abilityQDescription.replace(/^Q [·\-] .*?cooldown:?\s*/i, '')}</li>
