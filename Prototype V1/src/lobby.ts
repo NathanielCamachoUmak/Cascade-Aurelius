@@ -750,8 +750,10 @@ function wireGameCallbacks(network: NetworkManager) {
   network.onGameStart = (data: GameStartData) => {
     activeOnlineMode = data.modeId;
     battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
-    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
+    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening Battle' : '';
     battleRoyalStartedAt = null;
+    battleRoyalPhaseEndsAt = null;
+    battleRoyalCullThreshold = 0;
     updateBattleRoyalHud();
     selectedOnlineMode = data.modeId;
     lobby.selectedMode = data.modeId;
@@ -1867,7 +1869,6 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     const hy = offsetY - headerH - 2;
     const hw = boardPixelW;
     const hh = headerH;
-    const myScore = gameManager.players[gameManager.myPlayerIndex]?.scoreManager.score ?? 0;
     const isOut = player.isToppedOut;
     const isDanger = !isOut && gameManager.getMaxColumnHeight(player) >= 15;
 
