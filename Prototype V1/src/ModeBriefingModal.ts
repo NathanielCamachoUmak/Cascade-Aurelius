@@ -184,68 +184,278 @@ export const MODE_BRIEFINGS: Record<ModeTutorialId, ModeBriefingData> = {
     title: '3v3 Team Deathmatch',
     format: '3V3 SQUAD DUEL',
     playerCount: '6 PLAYERS',
-    accent: '#ff1493',
-    tagline: 'Cyan Circuit vs Magenta Voltage Team Score Battle',
-    objective: 'Combine forces with 2 teammates. The team with the highest combined cumulative score at the final horn wins!',
-    keyHazard: 'Ally Neglect. When a teammate tops out, your squad suffers a score penalty and loses offensive momentum while they respawn.',
-    proTip: 'Coordinate class abilities! Sentinel shields and Support recoveries should be targeted at teammates nearing top-out to keep all 3 boards active.',
+    accent: '#00e5ff',
+    tagline: 'Cyan Circuit vs Magenta Voltage Team Tug-of-War Score Battle',
+    objective: 'Work in unison with 2 squadmates to accumulate the highest combined pooled team score before the 4:00 final horn.',
+    keyHazard: 'Ally Neglect & K.O. Penalties. When a teammate tops out, your squad suffers a 20% score deduction and loses momentum during their 3-second reboot.',
+    proTip: 'Coordinate roles! Support classes should monitor squadmate stack alerts and deploy clutch line-clears to keep all 3 boards alive and scoring.',
     hotspots: [
       {
         id: 'team-bar',
         pinNumber: 1,
         title: 'Team Tug-of-War Score Bar',
-        description: 'Prominent header banner displaying Cyan Circuit vs Magenta Voltage live pooled points. Every line cleared by any member contributes.',
+        description: 'Live pooled scoring. All lines cleared, combos, and enemy K.O. bounties (+2,500 pts) feed directly into your squad total, shifting the momentum bar in real time.',
         xPercent: 50,
-        yPercent: 18,
+        yPercent: 8,
       },
       {
-        id: 'ally-health',
+        id: 'squad-monitors',
         pinNumber: 2,
-        title: 'Squadmate Health Monitors',
-        description: 'Mini board views showing your 2 teammates. Keep an eye on their stack height to trigger Support/Sentinel clutch saves.',
-        xPercent: 18,
-        yPercent: 62,
+        title: 'Squadmate Vitals & Stack Alerts',
+        description: 'Your friendly squad pod. When a teammate reaches 14+ rows, a pulsing danger alert warns Support and Sentinel to execute a clutch rescue before they top out.',
+        xPercent: 12,
+        yPercent: 44,
       },
       {
-        id: 'horn-timer',
+        id: 'targeting-crossfire',
         pinNumber: 3,
-        title: 'Match Countdown Clock',
-        description: 'Timed round duration. When time strikes 0:00, the match horn sounds and the highest squad total wins the match.',
-        xPercent: 50,
-        yPercent: 86,
+        title: 'Dynamic Enemy Reticle & Crossfire',
+        description: 'Offensive classes cycle strictly between the 3 enemy boards. Focus attacks on vulnerable rivals to break their defenses and claim high-value K.O. bounties.',
+        xPercent: 74,
+        yPercent: 32,
+      },
+      {
+        id: 'rescue-beacon',
+        pinNumber: 4,
+        title: 'Clutch Squad Rescue Beacons',
+        description: 'Support (Recycle & Guardian Angel) and Sentinel (Fortify) can target squadmates nearing top-out to instantly clear lines and rescue their boards.',
+        xPercent: 34,
+        yPercent: 54,
+      },
+      {
+        id: 'ko-respawn',
+        pinNumber: 5,
+        title: 'K.O. Bounty & 3s Respawn Reboot',
+        description: 'Topping out triggers a 20% score deduction and a 3s reboot before respawning. Knocking out all 3 enemies simultaneously awards a massive +10,000 pt SQUAD ACE!',
+        xPercent: 88,
+        yPercent: 54,
       },
     ],
     schematicSvg: `
-      <svg viewBox="0 0 600 340" class="w-full h-full" style="background:#090b1e;border-radius:8px">
-        <!-- Team Tug of War Header Bar -->
-        <rect x="50" y="20" width="500" height="34" rx="6" fill="#0d112d" stroke="rgba(169,176,255,0.3)" />
-        <rect x="52" y="22" width="280" height="30" rx="4" fill="#00e5ff" fill-opacity="0.35" />
-        <rect x="332" y="22" width="216" height="30" rx="4" fill="#ff1493" fill-opacity="0.35" />
-        <text x="110" y="42" fill="#00e5ff" font-size="12" font-family="Inter,sans-serif" font-weight="900">CYAN CIRCUIT: 42,500</text>
-        <text x="490" y="42" fill="#ff1493" font-size="12" font-family="Inter,sans-serif" font-weight="900" text-anchor="end">MAGENTA: 38,100</text>
-        <line x1="332" y1="20" x2="332" y2="54" stroke="#ffffff" stroke-width="3" />
+      <svg viewBox="0 0 640 350" class="w-full h-full" style="background:#07091a;border-radius:10px" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="tdm-cyan-fill" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.6" />
+            <stop offset="100%" stop-color="#00a8ff" stop-opacity="0.85" />
+          </linearGradient>
+          <linearGradient id="tdm-mag-fill" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#ff007f" stop-opacity="0.85" />
+            <stop offset="100%" stop-color="#7928ca" stop-opacity="0.6" />
+          </linearGradient>
+          <linearGradient id="tdm-board-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#141a3a" />
+            <stop offset="100%" stop-color="#0a0d24" />
+          </linearGradient>
+          <filter id="tdm-glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+          <filter id="tdm-glow-pink" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+          <style>
+            @keyframes laser-stream {
+              0% { stroke-dashoffset: 48; opacity: 0.3; }
+              50% { opacity: 1; stroke-width: 3.5; }
+              100% { stroke-dashoffset: -48; opacity: 0.3; }
+            }
+            @keyframes rescue-beam {
+              0%, 100% { stroke-opacity: 0.4; stroke-width: 2.5; filter: drop-shadow(0 0 2px #00ff88); }
+              50% { stroke-opacity: 1; stroke-width: 4.5; filter: drop-shadow(0 0 8px #00ff88); }
+            }
+            @keyframes reticle-pulse {
+              0%, 100% { transform: scale(1); stroke-opacity: 0.8; }
+              50% { transform: scale(1.12); stroke-opacity: 1; }
+            }
+            @keyframes danger-alert {
+              0%, 100% { fill: rgba(239, 68, 68, 0.2); stroke: #ef4444; }
+              50% { fill: rgba(239, 68, 68, 0.65); stroke: #ff7878; }
+            }
+            @keyframes piece-drop {
+              0% { transform: translateY(-16px); opacity: 0.7; }
+              60% { transform: translateY(0px); opacity: 1; }
+              100% { transform: translateY(0px); opacity: 1; }
+            }
+            @keyframes reboot-pulse {
+              0%, 100% { opacity: 0.75; transform: scale(0.98); }
+              50% { opacity: 1; transform: scale(1.02); }
+            }
+            @keyframes tug-pulse {
+              0%, 100% { filter: drop-shadow(0 0 4px #00e5ff); }
+              50% { filter: drop-shadow(0 0 10px #00e5ff); }
+            }
+            .anim-laser { animation: laser-stream 1.2s linear infinite; stroke-dasharray: 12, 6; }
+            .anim-rescue { animation: rescue-beam 1.4s ease-in-out infinite; }
+            .anim-danger { animation: danger-alert 1.2s ease-in-out infinite; }
+            .anim-piece { animation: piece-drop 2s ease-in-out infinite; }
+            .anim-reboot { animation: reboot-pulse 1.8s ease-in-out infinite; transform-origin: center; }
+            .anim-tug { animation: tug-pulse 2s ease-in-out infinite; }
+          </style>
+        </defs>
 
-        <!-- 3 Ally Boards (Left) -->
-        <rect x="50" y="80" width="75" height="130" rx="4" fill="#12173d" stroke="#00e5ff" stroke-width="1.5" />
-        <text x="87" y="73" fill="#00e5ff" font-size="9" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">ALLY 1</text>
+        <!-- 1. Team Tug-of-War Score Bar (Header) -->
+        <g id="svg-team-score-bar" class="anim-tug">
+          <rect x="35" y="12" width="570" height="34" rx="7" fill="#0b0e27" stroke="rgba(169,176,255,0.3)" stroke-width="1.5" />
+          <!-- Cyan Fill (55%) -->
+          <rect x="37" y="14" width="313" height="30" rx="5" fill="url(#tdm-cyan-fill)" />
+          <!-- Magenta Fill (45%) -->
+          <rect x="350" y="14" width="253" height="30" rx="5" fill="url(#tdm-mag-fill)" />
+          <!-- Tug Divider Line -->
+          <line x1="350" y1="12" x2="350" y2="46" stroke="#ffffff" stroke-width="3.5" filter="drop-shadow(0 0 6px #fff)" />
+          
+          <!-- Team Score Labels -->
+          <text x="48" y="33" fill="#ffffff" font-size="11" font-family="'Press Start 2P', monospace" font-weight="900">CYAN 48,200</text>
+          <text x="180" y="32" fill="#00e5ff" font-size="9" font-family="Inter, sans-serif" font-weight="800">[+1,200 SPIKE]</text>
+          <text x="592" y="33" fill="#ffffff" font-size="11" font-family="'Press Start 2P', monospace" font-weight="900" text-anchor="end">39,800 MAGENTA</text>
+        </g>
 
-        <rect x="140" y="80" width="105" height="180" rx="6" fill="#171e4d" stroke="#00e5ff" stroke-width="2.5" />
-        <text x="192" y="73" fill="#00e5ff" font-size="11" font-family="Inter,sans-serif" font-weight="900" text-anchor="middle">YOU</text>
+        <!-- Pod Category Banners -->
+        <g id="svg-pod-headers">
+          <rect x="35" y="52" width="265" height="18" rx="4" fill="rgba(0, 229, 255, 0.12)" stroke="#00e5ff" stroke-width="1" />
+          <text x="167" y="64" fill="#00e5ff" font-size="8.5" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">FRIENDLY SQUAD POD</text>
 
-        <rect x="260" y="80" width="75" height="130" rx="4" fill="#12173d" stroke="#00e5ff" stroke-width="1.5" />
-        <text x="297" y="73" fill="#00e5ff" font-size="9" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">ALLY 2</text>
+          <rect x="340" y="52" width="265" height="18" rx="4" fill="rgba(255, 0, 127, 0.12)" stroke="#ff007f" stroke-width="1" />
+          <text x="472" y="64" fill="#ff007f" font-size="8.5" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">ENEMY SQUAD POD</text>
+        </g>
 
-        <!-- VS Divider -->
-        <text x="355" y="160" fill="#ffd700" font-size="18" font-family="Inter,sans-serif" font-weight="900" text-anchor="middle">VS</text>
+        <!-- Center VS Energy Gateway -->
+        <g id="svg-vs-divider">
+          <line x1="320" y1="72" x2="320" y2="280" stroke="rgba(255, 215, 0, 0.35)" stroke-width="1.5" stroke-dasharray="4,4" />
+          <circle cx="320" cy="170" r="16" fill="#0c102a" stroke="#ffd700" stroke-width="2" />
+          <text x="320" y="175" fill="#ffd700" font-size="10" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">VS</text>
+        </g>
 
-        <!-- 3 Enemy Boards (Right) -->
-        <rect x="380" y="95" width="60" height="110" rx="4" fill="#1e1026" stroke="#ff1493" stroke-width="1.5" />
-        <rect x="450" y="95" width="60" height="110" rx="4" fill="#1e1026" stroke="#ff1493" stroke-width="1.5" />
-        <rect x="520" y="95" width="60" height="110" rx="4" fill="#1e1026" stroke="#ff1493" stroke-width="1.5" />
+        <!-- ================= FRIENDLY SQUAD (LEFT) ================= -->
+        <!-- Ally 1: Sentinel -->
+        <g id="svg-ally-1">
+          <rect x="35" y="78" width="76" height="142" rx="5" fill="url(#tdm-board-grad)" stroke="#00e5ff" stroke-width="1.5" />
+          <rect x="35" y="78" width="76" height="20" rx="5" fill="rgba(0,229,255,0.2)" />
+          <text x="73" y="92" fill="#00e5ff" font-size="8" font-family="'Press Start 2P', monospace" text-anchor="middle">ALLY 1</text>
+          <!-- Stack (Safe) -->
+          <rect x="39" y="170" width="68" height="46" rx="2" fill="#00e5ff" fill-opacity="0.35" />
+          <!-- Shield Block Indicator -->
+          <rect x="42" y="174" width="14" height="14" rx="2" fill="#00ff88" />
+          <text x="49" y="184" fill="#07091c" font-size="8" font-family="monospace" font-weight="bold" text-anchor="middle">S</text>
+          <text x="73" y="210" fill="#9da6c8" font-size="7.5" font-family="Inter,sans-serif" text-anchor="middle">SENTINEL [SAFE]</text>
+        </g>
 
-        <!-- Match Timer Horn Banner -->
-        <rect x="220" y="280" width="160" height="34" rx="6" fill="#101538" stroke="#ffd700" stroke-width="1.5" />
-        <text x="300" y="302" fill="#ffd700" font-size="12" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">⏱️ 01:45 REMAINING</text>
+        <!-- Local Player: YOU (Center Prominent) -->
+        <g id="svg-player-you">
+          <rect x="119" y="72" width="98" height="162" rx="6" fill="#0f1535" stroke="#00e5ff" stroke-width="2.5" filter="url(#tdm-glow-cyan)" />
+          <rect x="119" y="72" width="98" height="22" rx="6" fill="rgba(0, 229, 255, 0.3)" />
+          <text x="168" y="87" fill="#ffffff" font-size="9" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">YOU (P1)</text>
+          
+          <!-- Matrix Grid Lines -->
+          <line x1="123" y1="120" x2="213" y2="120" stroke="#00e5ff" stroke-opacity="0.2" stroke-dasharray="2,2" />
+          <line x1="123" y1="160" x2="213" y2="160" stroke="#00e5ff" stroke-opacity="0.2" stroke-dasharray="2,2" />
+          
+          <!-- Dropping Cyan Tetromino (Animated) -->
+          <g class="anim-piece">
+            <rect x="151" y="105" width="14" height="14" rx="2" fill="#00e5ff" stroke="#fff" stroke-width="1" />
+            <rect x="165" y="105" width="14" height="14" rx="2" fill="#00e5ff" stroke="#fff" stroke-width="1" />
+            <rect x="179" y="105" width="14" height="14" rx="2" fill="#00e5ff" stroke="#fff" stroke-width="1" />
+            <rect x="165" y="91" width="14" height="14" rx="2" fill="#00e5ff" stroke="#fff" stroke-width="1" />
+          </g>
+
+          <!-- Stack at bottom -->
+          <rect x="123" y="175" width="90" height="54" rx="2" fill="#00e5ff" fill-opacity="0.4" stroke="#00e5ff" stroke-width="1" />
+          <!-- Scorecard Under Board -->
+          <rect x="119" y="238" width="98" height="26" rx="4" fill="#0a0d26" stroke="#00e5ff" stroke-width="1" />
+          <text x="168" y="248" fill="#ffffff" font-size="7.5" font-family="'Press Start 2P', monospace" text-anchor="middle">18,400 PTS</text>
+          <text x="168" y="259" fill="#00e5ff" font-size="8" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">SPEEDSTER · 14 L</text>
+        </g>
+
+        <!-- Ally 2: Support (Critical Stack Alert) -->
+        <g id="svg-ally-2">
+          <rect x="225" y="78" width="76" height="142" rx="5" fill="url(#tdm-board-grad)" stroke="#ff4444" stroke-width="2" class="anim-danger" />
+          <rect x="225" y="78" width="76" height="20" rx="5" fill="rgba(239, 68, 68, 0.4)" />
+          <text x="263" y="92" fill="#ffffff" font-size="8" font-family="'Press Start 2P', monospace" text-anchor="middle">ALLY 2</text>
+          <!-- Dangerous High Stack (16 Rows) -->
+          <rect x="229" y="112" width="68" height="104" rx="2" fill="#ff4444" fill-opacity="0.45" stroke="#ef4444" stroke-width="1" />
+          <!-- Warning Badge -->
+          <rect x="233" y="118" width="60" height="14" rx="3" fill="#1f0a10" stroke="#ef4444" stroke-width="1" />
+          <text x="263" y="128" fill="#ff7878" font-size="6.5" font-family="'Press Start 2P', monospace" text-anchor="middle">STACK 16!</text>
+          <text x="263" y="210" fill="#ffb4b4" font-size="7.5" font-family="Inter,sans-serif" text-anchor="middle">SUPPORT [DANGER]</text>
+        </g>
+
+        <!-- Clutch Rescue Beam (You -> Ally 2) -->
+        <g id="svg-rescue-tether">
+          <path d="M 217 145 C 220 145, 222 145, 229 145" fill="none" stroke="#00ff88" stroke-width="3" class="anim-rescue" />
+          <circle cx="217" cy="145" r="4" fill="#00ff88" />
+          <circle cx="229" cy="145" r="4" fill="#00ff88" />
+          <rect x="180" y="152" width="80" height="15" rx="3" fill="#051c12" stroke="#00ff88" stroke-width="1" />
+          <text x="220" y="163" fill="#00ff88" font-size="7" font-family="Inter,sans-serif" font-weight="900" text-anchor="middle">RESCUE -4 LINES</text>
+        </g>
+
+        <!-- Attack Laser Vector (You -> Enemy 2) -->
+        <g id="svg-attack-lasers">
+          <path d="M 217 122 Q 320 85 423 118" fill="none" stroke="#00e5ff" stroke-width="3" class="anim-laser" />
+          <polygon points="423,118 412,112 415,124" fill="#00e5ff" />
+          <text x="320" y="100" fill="#00e5ff" font-size="8" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">GARBAGE SPIKE →</text>
+        </g>
+
+        <!-- ================= ENEMY SQUAD (RIGHT) ================= -->
+        <!-- Enemy 1 -->
+        <g id="svg-enemy-1">
+          <rect x="340" y="78" width="76" height="142" rx="5" fill="url(#tdm-board-grad)" stroke="#ff007f" stroke-width="1.5" />
+          <rect x="340" y="78" width="76" height="20" rx="5" fill="rgba(255,0,127,0.2)" />
+          <text x="378" y="92" fill="#ff007f" font-size="8" font-family="'Press Start 2P', monospace" text-anchor="middle">RIVAL 1</text>
+          <!-- Stack -->
+          <rect x="344" y="165" width="68" height="51" rx="2" fill="#ff007f" fill-opacity="0.3" />
+          <text x="378" y="210" fill="#9da6c8" font-size="7.5" font-family="Inter,sans-serif" text-anchor="middle">TANK [ACTIVE]</text>
+        </g>
+
+        <!-- Enemy 2: Targeted Rival with Crosshair Reticle -->
+        <g id="svg-enemy-2">
+          <rect x="424" y="72" width="98" height="162" rx="6" fill="#1a0c20" stroke="#ff007f" stroke-width="2.5" filter="url(#tdm-glow-pink)" />
+          <rect x="424" y="72" width="98" height="22" rx="6" fill="rgba(255, 0, 127, 0.4)" />
+          <text x="473" y="87" fill="#ffffff" font-size="9" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">RIVAL 2</text>
+          
+          <!-- Targeting Reticle Header Badge -->
+          <rect x="430" y="97" width="86" height="16" rx="3" fill="#38061a" stroke="#ff007f" stroke-width="1" />
+          <text x="473" y="108" fill="#ff007f" font-size="7" font-family="'Press Start 2P', monospace" font-weight="900" text-anchor="middle">▼ LOCKED TARGET</text>
+
+          <!-- Impact Sparks & Stack -->
+          <rect x="428" y="145" width="90" height="84" rx="2" fill="#ff007f" fill-opacity="0.45" stroke="#ff007f" stroke-width="1" />
+          <!-- Incoming Garbage Red Lines -->
+          <rect x="430" y="210" width="86" height="16" rx="2" fill="#ff3366" />
+          <text x="473" y="222" fill="#ffffff" font-size="7.5" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">INCOMING GARBAGE</text>
+          
+          <!-- Scorecard Under Board -->
+          <rect x="424" y="238" width="98" height="26" rx="4" fill="#0a0d26" stroke="#ff007f" stroke-width="1" />
+          <text x="473" y="248" fill="#ffffff" font-size="7.5" font-family="'Press Start 2P', monospace" text-anchor="middle">12,100 PTS</text>
+          <text x="473" y="259" fill="#ff007f" font-size="8" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">SABOTEUR · 9 L</text>
+        </g>
+
+        <!-- Enemy 3: Topped Out / 3s Reboot Banner -->
+        <g id="svg-enemy-3" class="anim-reboot">
+          <rect x="530" y="78" width="76" height="142" rx="5" fill="#140a18" stroke="rgba(239, 68, 68, 0.6)" stroke-width="1.5" />
+          <rect x="530" y="78" width="76" height="20" rx="5" fill="rgba(28, 10, 16, 0.85)" />
+          <text x="568" y="92" fill="#ef4444" font-size="8" font-family="'Press Start 2P', monospace" text-anchor="middle">RIVAL 3</text>
+          
+          <!-- Topped-out Stack -->
+          <rect x="534" y="102" width="68" height="114" rx="2" fill="#2d0a14" fill-opacity="0.8" />
+          
+          <!-- 3-Second Reboot Stamp -->
+          <rect x="536" y="138" width="64" height="34" rx="4" fill="#3b0816" stroke="#ef4444" stroke-width="1.5" />
+          <text x="568" y="151" fill="#ff3366" font-size="7" font-family="'Press Start 2P', monospace" font-weight="900" text-anchor="middle">REBOOT</text>
+          <text x="568" y="164" fill="#fca5a5" font-size="7.5" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">⏱️ 02s LEFT</text>
+          
+          <!-- K.O. Bounty Floating Text -->
+          <rect x="533" y="180" width="70" height="16" rx="3" fill="#101538" stroke="#ffd700" stroke-width="1" />
+          <text x="568" y="191" fill="#ffd700" font-size="7" font-family="Inter,sans-serif" font-weight="bold" text-anchor="middle">+2,500 BOUNTY</text>
+        </g>
+
+        <!-- ================= BOTTOM HUD STRIP ================= -->
+        <!-- Match Timer Clock & Tactical Cues -->
+        <g id="svg-bottom-timer">
+          <rect x="220" y="278" width="200" height="32" rx="6" fill="#0d112d" stroke="#ffd700" stroke-width="1.5" filter="drop-shadow(0 0 8px rgba(255,215,0,0.3))" />
+          <text x="320" y="298" fill="#ffd700" font-size="10.5" font-family="'Press Start 2P', monospace" font-weight="bold" text-anchor="middle">⏱️ 02:45 REMAINING</text>
+
+          <text x="40" y="300" fill="#9da6c8" font-size="9" font-family="Inter,sans-serif" font-weight="600">CYCLE TARGETS: <tspan fill="#00e5ff" font-weight="bold">[W] OR CLICK</tspan></text>
+          <text x="600" y="300" fill="#9da6c8" font-size="9" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">ACE WIPEOUT: <tspan fill="#ffd700" font-weight="bold">+10,000 PTS</tspan></text>
+        </g>
       </svg>
     `,
   },
@@ -481,9 +691,13 @@ function ensureBriefingStyles() {
       color: #07091c;
       box-shadow: 0 0 20px rgba(255, 215, 0, 0.9);
     }
+    .bq-stepper-btn:hover {
+      filter: brightness(1.25);
+      transform: scale(1.03);
+    }
     .bq-briefing-hotspots-bar {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 0.75rem;
     }
     .bq-briefing-hotspot-card {
@@ -686,6 +900,19 @@ function renderModalContent(): void {
           </div>
         </div>
 
+        <!-- Guided Concept Walkthrough Stepper -->
+        <div class="bq-briefing-stepper" style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.45rem 0.8rem;background:rgba(255,255,255,0.04);border:1px solid rgba(169,176,255,0.2);border-radius:0.5rem">
+          <button type="button" class="bq-stepper-btn" id="btn-stepper-prev" style="padding:0.35rem 0.8rem;border:1px solid rgba(0,229,255,0.4);border-radius:0.4rem;background:rgba(0,229,255,0.1);color:#00e5ff;font-size:0.72rem;font-weight:800;letter-spacing:0.08em;cursor:pointer;transition:all 0.15s">
+            ◀ PREV CONCEPT
+          </button>
+          <span id="bq-stepper-title" style="font-size:0.74rem;font-weight:700;color:#eef2ff;letter-spacing:0.08em;text-transform:uppercase;text-align:center">
+            <span style="color:${data.accent}">CONCEPT PIN ${(data.hotspots.findIndex(h => h.id === activeHotspotId) + 1) || 1} OF ${data.hotspots.length}:</span> ${data.hotspots.find(h => h.id === activeHotspotId)?.title || ''}
+          </span>
+          <button type="button" class="bq-stepper-btn" id="btn-stepper-next" style="padding:0.35rem 0.8rem;border:1px solid rgba(0,229,255,0.4);border-radius:0.4rem;background:rgba(0,229,255,0.1);color:#00e5ff;font-size:0.72rem;font-weight:800;letter-spacing:0.08em;cursor:pointer;transition:all 0.15s">
+            NEXT CONCEPT ▶
+          </button>
+        </div>
+
         <!-- Hotspot Intel Callouts -->
         <div class="bq-briefing-hotspots-bar">
           ${data.hotspots
@@ -757,7 +984,28 @@ function renderModalContent(): void {
     activeOverlay?.querySelectorAll('.bq-briefing-hotspot-card').forEach((card) => {
       card.classList.toggle('active', (card as HTMLElement).dataset.cardHotspot === hId);
     });
+    const stepperTitle = activeOverlay?.querySelector('#bq-stepper-title');
+    if (stepperTitle) {
+      const pinIdx = data.hotspots.findIndex(h => h.id === hId);
+      const hot = data.hotspots[pinIdx];
+      if (hot) {
+        stepperTitle.innerHTML = `<span style="color:${data.accent}">CONCEPT PIN ${pinIdx + 1} OF ${data.hotspots.length}:</span> ${hot.title}`;
+      }
+    }
   };
+
+  const prevBtn = activeOverlay.querySelector<HTMLButtonElement>('#btn-stepper-prev');
+  const nextBtn = activeOverlay.querySelector<HTMLButtonElement>('#btn-stepper-next');
+  prevBtn?.addEventListener('click', () => {
+    const idx = data.hotspots.findIndex(h => h.id === activeHotspotId);
+    const prevIdx = (idx - 1 + data.hotspots.length) % data.hotspots.length;
+    updateActiveHotspot(data.hotspots[prevIdx].id);
+  });
+  nextBtn?.addEventListener('click', () => {
+    const idx = data.hotspots.findIndex(h => h.id === activeHotspotId);
+    const nextIdx = (idx + 1) % data.hotspots.length;
+    updateActiveHotspot(data.hotspots[nextIdx].id);
+  });
 
   activeOverlay.querySelectorAll<HTMLButtonElement>('.bq-briefing-hotspot').forEach((pin) => {
     pin.addEventListener('click', () => {
