@@ -984,15 +984,18 @@ export class GameManager {
         player.abilityCooldowns.Q = 12_000;
         this.spawnBoardFloatingText(pIdx, '🎲 [Q] SCRAMBLE SENT!', 150, 12 * 30, '#B026FF', 12);
       } else if (player.playerClass === 'SUPPORT') {
-        if (this.isOnline && this.isTeamMode && player.selectedTargetIndex !== null && player.selectedTargetIndex !== this.myPlayerIndex) {
-          this.sendOrApplyClassEffect(player, { type: 'RECYCLE', amount: 4, targetIndex: player.selectedTargetIndex });
-        } else {
-          // Immediately convert up to 4 garbage blocks on the board into Special Blocks,
-          // and arm any remaining charges for future incoming garbage lines (matches Stage 2 Support Tutorial)
-          const convertedNow = player.grid.convertGarbageToSpecialBlocks(4);
-          player.recycleGarbageLines = Math.max(0, 4 - convertedNow);
-          this.spawnBoardFloatingText(pIdx, '♻ [Q] RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 12);
+        const isAllyTarget = this.isTeamMode && player.selectedTargetIndex !== null && this.players[player.selectedTargetIndex]?.team === player.team;
+        const targetIdx = isAllyTarget ? player.selectedTargetIndex! : undefined;
+        this.sendOrApplyClassEffect(player, { type: 'RECYCLE', amount: 4, targetIndex: targetIdx });
+        
+        // Apply locally immediately if NOT online or if it's the tutorial
+        if (!this.isOnline || this.state === GameState.TUTORIAL) {
+            const allyTarget = targetIdx !== undefined ? this.players[targetIdx] : player;
+            const convertedNow = allyTarget.grid.convertGarbageToSpecialBlocks(4);
+            allyTarget.recycleGarbageLines = Math.max(0, 4 - convertedNow);
         }
+        
+        this.spawnBoardFloatingText(pIdx, '♻ [Q] RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 12);
         player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
       }
       return;
@@ -1047,7 +1050,9 @@ export class GameManager {
       this.sendOrApplyClassEffect(player, { type: 'CHAOS', durationMs: CHAOS_DURATION_MS });
       this.spawnBoardFloatingText(pIdx, '🌀 [R] CHAOS MODE! [E] RESET', 150, 10 * 30, '#FF1493', 13);
     } else if (player.playerClass === 'SUPPORT') {
-      this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: player.selectedTargetIndex ?? undefined });
+      const isAllyTarget = this.isTeamMode && player.selectedTargetIndex !== null && this.players[player.selectedTargetIndex]?.team === player.team;
+      const targetIdx = isAllyTarget ? player.selectedTargetIndex! : undefined;
+      this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: targetIdx });
       this.spawnBoardFloatingText(pIdx, '👼 [R] GUARDIAN ANGEL!', 150, 10 * 30, '#00FF88', 14);
     }
   }
@@ -1223,18 +1228,23 @@ export class GameManager {
       .map((p, idx) => ({ p, idx }))
       .filter(({ p }) => p.id !== source.id && !p.isToppedOut && (!this.isTeamMode || p.team !== source.team));
     if (opponents.length > 0) {
-      const targetEntry = (source.selectedTargetIndex !== null && opponents.find(o => o.idx === source.selectedTargetIndex)) || opponents[0];
+      // In BR (FFA), randomly auto-target an opponent. Otherwise use selected target or first opponent.
+      const isBR = !this.isTeamMode && this.players.length > 2; // Approximate BR check
+      const targetEntry = isBR 
+        ? opponents[Math.floor(Math.random() * opponents.length)]
+        : ((source.selectedTargetIndex !== null && opponents.find(o => o.idx === source.selectedTargetIndex)) || opponents[0]);
+        
       source.freezeTetherVisual = { targetPlayerIndex: targetEntry.idx, timer: 650, maxTimer: 650 };
       AudioManager.playSfx('freeze');
-    }
 
-    if (this.isOnline && this.state !== GameState.TUTORIAL) {
-      this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs });
-      return;
-    }
-    for (const { p: target, idx } of opponents) {
+      if (this.isOnline && this.state !== GameState.TUTORIAL) {
+        this.network?.sendClassAbility({ type: 'ABILITY_FREEZE', durationMs, targetIndex: targetEntry.idx });
+        return;
+      }
+      // Local apply
+      const target = targetEntry.p;
       target.abilityFreezeTimer = durationMs;
-      this.spawnBoardFloatingText(idx, '❄ ABILITIES LOCKED!', 150, 11 * 30, '#38BDF8', 13);
+      this.spawnBoardFloatingText(targetEntry.idx, '❄ ABILITIES LOCKED!', 150, 11 * 30, '#38BDF8', 13);
     }
   }
 
