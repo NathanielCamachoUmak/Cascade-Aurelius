@@ -534,79 +534,79 @@
 
             <!-- Section: Mode Tutorials -->
             <div class="space-y-3">
-              <div class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-pink px-1">Mode Tutorials</div>
+              <div class="text-[10px] font-bold tracking-[0.25em] uppercase text-neon-pink px-1">Mode Tutorials (Tactical Intel)</div>
 
               <!-- Row: 1v1 Tutorial -->
-              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="bg-card-bg/70 backdrop-blur-md border-2 border-card-border hover:border-neon-cyan/60 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5 mb-1">
-                    <h3 class="text-lg font-bold text-white">1v1 Tutorial</h3>
-                    <span class="border border-neon-yellow/50 text-neon-yellow text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">DUEL</span>
+                    <h3 class="text-lg font-bold text-white">1v1 Classic PvP</h3>
+                    <span class="border border-neon-cyan/50 text-neon-cyan text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">DUEL</span>
                   </div>
-                  <p class="text-gray-400 text-xs">Head-to-head block battles, sending garbage lines, and defensive counterplay.</p>
+                  <p class="text-gray-400 text-xs">Direct head-to-head combat, garbage meter queue management, and line cancellation counter-attacks.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
-                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                  <button id="btn-start-mode-1v1" type="button" class="px-6 py-2.5 bg-neon-cyan text-deep-purple font-bold text-xs tracking-widest uppercase rounded-lg transition-all duration-200 hover:brightness-110 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
                     START
                   </button>
-                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                  <div id="status-mode-1v1" class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
                     NOT COMPLETED
                   </div>
                 </div>
               </div>
 
               <!-- Row: FFA Tutorial -->
-              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="bg-card-bg/70 backdrop-blur-md border-2 border-card-border hover:border-neon-cyan/60 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5 mb-1">
-                    <h3 class="text-lg font-bold text-white">FFA Tutorial</h3>
-                    <span class="border border-neon-green/50 text-neon-green text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">4 PLAYER</span>
+                    <h3 class="text-lg font-bold text-white">Free For All</h3>
+                    <span class="border border-neon-yellow/50 text-neon-yellow text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">4 PLAYER</span>
                   </div>
-                  <p class="text-gray-400 text-xs">Free-For-All multi-opponent targeting, survival, and scoreboard pressure.</p>
+                  <p class="text-gray-400 text-xs">4-player survival, dynamic targeting reticle switching, and surviving multi-board crossfire.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
-                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                  <button id="btn-start-mode-ffa" type="button" class="px-6 py-2.5 bg-neon-cyan text-deep-purple font-bold text-xs tracking-widest uppercase rounded-lg transition-all duration-200 hover:brightness-110 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
                     START
                   </button>
-                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                  <div id="status-mode-ffa" class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
                     NOT COMPLETED
                   </div>
                 </div>
               </div>
 
               <!-- Row: TDM (Team Deathmatch) Tutorial -->
-              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="bg-card-bg/70 backdrop-blur-md border-2 border-card-border hover:border-neon-cyan/60 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5 mb-1">
-                    <h3 class="text-lg font-bold text-white">TDM (Team Deathmatch) Tutorial</h3>
-                    <span class="border border-neon-cyan/50 text-neon-cyan text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">3V3 TEAM</span>
+                    <h3 class="text-lg font-bold text-white">3v3 Team Deathmatch</h3>
+                    <span class="border border-neon-pink/50 text-neon-pink text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">3V3 TEAM</span>
                   </div>
-                  <p class="text-gray-400 text-xs">Team coordination, shared Cyan vs. Magenta score races, and timed match rules.</p>
+                  <p class="text-gray-400 text-xs">Team coordination, shared Cyan vs. Magenta score bar, ally health monitoring, and timed match horn.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
-                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                  <button id="btn-start-mode-tdm" type="button" class="px-6 py-2.5 bg-neon-cyan text-deep-purple font-bold text-xs tracking-widest uppercase rounded-lg transition-all duration-200 hover:brightness-110 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
                     START
                   </button>
-                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                  <div id="status-mode-tdm" class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
                     NOT COMPLETED
                   </div>
                 </div>
               </div>
 
               <!-- Row: Battle Royale Tutorial -->
-              <div class="bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="bg-card-bg/70 backdrop-blur-md border-2 border-card-border hover:border-neon-cyan/60 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2.5 mb-1">
-                    <h3 class="text-lg font-bold text-white">Battle Royale Tutorial</h3>
-                    <span class="border border-neon-pink/50 text-neon-pink text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">SURVIVAL</span>
+                    <h3 class="text-lg font-bold text-white">Battle Royale</h3>
+                    <span class="border border-neon-yellow/50 text-neon-yellow text-[9px] px-2.5 py-0.5 rounded-full tracking-widest font-semibold uppercase">30 PLAYERS</span>
                   </div>
-                  <p class="text-gray-400 text-xs">Large-lobby survival, K.O. recoveries, phase eliminations, and sudden death.</p>
+                  <p class="text-gray-400 text-xs">Large-lobby survival, culling threshold lines, phase transitions, and sudden death race to 1M points.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
-                  <button type="button" class="px-6 py-2.5 bg-card-bg border border-card-border text-gray-300 font-bold text-xs tracking-widest uppercase rounded-lg cursor-default">
+                  <button id="btn-start-mode-br" type="button" class="px-6 py-2.5 bg-neon-cyan text-deep-purple font-bold text-xs tracking-widest uppercase rounded-lg transition-all duration-200 hover:brightness-110 hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(0,255,255,0.25)]">
                     START
                   </button>
-                  <div class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
+                  <div id="status-mode-br" class="min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase">
                     NOT COMPLETED
                   </div>
                 </div>

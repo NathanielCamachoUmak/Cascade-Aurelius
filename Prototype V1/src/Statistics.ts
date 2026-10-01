@@ -34,6 +34,13 @@ const TUTORIAL_STAGES_INFO = [
     description: '7 interactive scenarios for Bomb, Heavy, Multiplier, Speed, Shield, Freeze, and Garbage Eater.',
     accent: '#ff1493',
   },
+  {
+    id: 'mode-briefings',
+    stageLabel: 'TACTICAL',
+    title: 'Mode Intel Briefings',
+    description: 'Tactical mechanics for 1v1 PvP, Free For All, 3v3 Deathmatch, and 30-Player Battle Royale.',
+    accent: '#00ff88',
+  },
 ];
 
 export interface RankTierInfo {
@@ -622,6 +629,20 @@ export function mountStatistics(statsNav: HTMLElement, store: ProgressionStore) 
             statusColor = '#00e5ff';
           } else {
             statusLabel = '0 / 4 CERTIFIED';
+          }
+        } else if (stage.id === 'mode-briefings') {
+          const modeKeys = ['mode-briefing-classic-pvp', 'mode-briefing-free-for-all', 'mode-briefing-team-deathmatch', 'mode-briefing-battle-royale'];
+          const reviewedCount = modeKeys.filter(k => isTutorialCompleted(k)).length;
+          completed = reviewedCount >= 4;
+          if (completed) {
+            statusLabel = '✓ 4 / 4 REVIEWED';
+            statusColor = '#00ff88';
+          } else if (reviewedCount > 0) {
+            statusLabel = `${reviewedCount} / 4 REVIEWED`;
+            statusColor = '#00e5ff';
+          } else {
+            statusLabel = '0 / 4 REVIEWED';
+            statusColor = '#9da6c8';
           }
         }
 

@@ -8,6 +8,7 @@ import { mountSettings, settingsState } from './Settings'
 import { mountAuth } from './Auth'
 import { isTutorialCompleted, getCertifiedClasses } from './TutorialManager'
 import { attachHighScoreHoverPopup } from './HighScores'
+import { openModeBriefing } from './ModeBriefingModal'
 
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
@@ -38,6 +39,14 @@ const btnStartBasicsStage2 = document.getElementById('btn-start-basics-stage-2')
 const statusBasicsStage2 = document.getElementById('status-basics-stage-2');
 const btnStartBasicsStage3 = document.getElementById('btn-start-basics-stage-3');
 const statusBasicsStage3 = document.getElementById('status-basics-stage-3');
+const btnStartMode1v1 = document.getElementById('btn-start-mode-1v1');
+const statusMode1v1 = document.getElementById('status-mode-1v1');
+const btnStartModeFfa = document.getElementById('btn-start-mode-ffa');
+const statusModeFfa = document.getElementById('status-mode-ffa');
+const btnStartModeTdm = document.getElementById('btn-start-mode-tdm');
+const statusModeTdm = document.getElementById('status-mode-tdm');
+const btnStartModeBr = document.getElementById('btn-start-mode-br');
+const statusModeBr = document.getElementById('status-mode-br');
 const btnTutorialMenuBack = document.getElementById('btn-tutorial-menu-back');
 const btnTutorialClose = document.getElementById('btn-tutorial-close')!;
 const tutorialModal = document.getElementById('tutorial-modal')!;
@@ -132,6 +141,30 @@ function refreshTutorialMenuStatuses() {
       statusBasicsStage3.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
     }
   }
+
+  // Tactical Mode Tutorials Statuses
+  const modeTutorials: Array<{ key: string; btn: HTMLElement | null; status: HTMLElement | null }> = [
+    { key: 'mode-briefing-classic-pvp', btn: btnStartMode1v1, status: statusMode1v1 },
+    { key: 'mode-briefing-free-for-all', btn: btnStartModeFfa, status: statusModeFfa },
+    { key: 'mode-briefing-team-deathmatch', btn: btnStartModeTdm, status: statusModeTdm },
+    { key: 'mode-briefing-battle-royale', btn: btnStartModeBr, status: statusModeBr },
+  ];
+
+  modeTutorials.forEach(({ key, btn, status }) => {
+    const isComp = isTutorialCompleted(key);
+    if (btn) {
+      btn.textContent = isComp ? 'REVIEW' : 'START';
+    }
+    if (status) {
+      if (isComp) {
+        status.textContent = '✓ COMPLETED';
+        status.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-neon-green/50 bg-neon-green/10 text-neon-green text-[10px] font-bold tracking-widest uppercase';
+      } else {
+        status.textContent = 'NOT COMPLETED';
+        status.className = 'min-w-[130px] text-center px-3 py-2 rounded-lg border border-card-border bg-deep-purple/80 text-gray-400 text-[10px] font-bold tracking-widest uppercase';
+      }
+    }
+  });
 }
 
 window.addEventListener('tutorialProgressUpdated', refreshTutorialMenuStatuses);
@@ -188,6 +221,22 @@ if (btnStartBasicsStage3) {
     bootGame({ mode: 'TUTORIAL', stage: 3 });
   });
 }
+
+btnStartMode1v1?.addEventListener('click', () => {
+  openModeBriefing('classic-pvp');
+});
+
+btnStartModeFfa?.addEventListener('click', () => {
+  openModeBriefing('free-for-all');
+});
+
+btnStartModeTdm?.addEventListener('click', () => {
+  openModeBriefing('team-deathmatch');
+});
+
+btnStartModeBr?.addEventListener('click', () => {
+  openModeBriefing('battle-royale');
+});
 
 if (btnTutorialMenuBack) {
   btnTutorialMenuBack.addEventListener('click', () => {

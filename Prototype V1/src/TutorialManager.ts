@@ -168,6 +168,7 @@ export function markTutorialCompleted(tutorialId: string): void {
     // ignore storage errors
   }
   void syncCompletedTutorialsToCloud(map);
+  window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
 }
 
 export function getClassCertTutorialId(playerClass: PlayerClass): string {
@@ -194,6 +195,7 @@ export function markClassCertified(playerClass: PlayerClass): void {
     // ignore storage errors
   }
   void syncCompletedTutorialsToCloud(map);
+  window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
 }
 
 // Deterministic sequence for Stage 1 so every run is predictable:

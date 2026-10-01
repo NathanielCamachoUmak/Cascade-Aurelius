@@ -19,6 +19,7 @@
  */
 
 import { attachHighScoreHoverPopup } from './HighScores';
+import { openModeBriefing } from './ModeBriefingModal';
 
 export type OnlineModeId = 'classic-pvp' | 'free-for-all' | 'team-deathmatch' | 'battle-royale';
 
@@ -184,6 +185,8 @@ function ensureStyles() {
     .bq-mode-select__button:active { transform: scale(.97); }
     .bq-mode-select__button:focus-visible { outline: 3px solid var(--bq-cyan); outline-offset: 3px; }
     .bq-mode-select__button--back { background: transparent; border: 1px solid var(--bq-line); color: var(--bq-text); margin-right: auto; }
+    .bq-mode-select__button--briefing { background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.4); color: var(--bq-cyan); display: inline-flex; align-items: center; gap: 0.4rem; }
+    .bq-mode-select__button--briefing:hover:not(:disabled) { background: rgba(0, 229, 255, 0.16); border-color: var(--bq-cyan); }
     .bq-mode-select__button--confirm { background: var(--bq-cyan); border: 1px solid var(--bq-cyan); color: #061019; }
     .bq-mode-select__button:hover:not(:disabled) { filter: brightness(1.1); }
     .bq-mode-select__button:disabled { cursor: not-allowed; opacity: .5; }
@@ -248,6 +251,15 @@ export function mountOnlineModeSelect(options: OnlineModeSelectOptions): OnlineM
     if (availability.get(selected.id)?.enabled) options.onConfirm(selected);
   });
 
+  const briefingButton = document.createElement('button');
+  briefingButton.type = 'button';
+  briefingButton.className = 'bq-mode-select__button bq-mode-select__button--briefing';
+  briefingButton.innerHTML = '<span>ℹ️</span> <span>Tactical Intel</span>';
+  briefingButton.title = 'View Mode Rules, Mechanics & Strategy';
+  briefingButton.addEventListener('click', () => {
+    openModeBriefing(selectedId);
+  });
+
   if (options.onBack) {
     const backButton = document.createElement('button');
     backButton.type = 'button';
@@ -256,6 +268,7 @@ export function mountOnlineModeSelect(options: OnlineModeSelectOptions): OnlineM
     backButton.addEventListener('click', options.onBack);
     actions.appendChild(backButton);
   }
+  actions.appendChild(briefingButton);
   actions.appendChild(confirmButton);
 
   function updateSelection() {
