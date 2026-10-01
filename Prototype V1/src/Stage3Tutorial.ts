@@ -101,7 +101,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
       'Two rows sit at the bottom of the grid. Lock the I-piece containing the Heavy Block [W] into the top row to trigger its crush effect.',
     effectTitle: '⬇ Heavy Crush! Bottom Line Destroyed!',
     effectDesc:
-      'Cleared the completed top row AND automatically crushed & cleared the single row directly beneath it!',
+      'Clears the completed top row AND automatically crushed & cleared the single row directly beneath it!',
   },
   {
     stepNumber: 3,
@@ -129,7 +129,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
       'Lock the I-piece containing the Speed Block [V] to clear the line and trigger the visual speed buff on the grid.',
     effectTitle: '⚡ Visual Speed Buff Active (5.0s)!',
     effectDesc:
-      'Speed buff applied to the grid — slows your falling block drop speed by 50% for 5 seconds, giving you extra control!',
+      'Speed buff gets applied to the grid — slows your falling block drop speed by 50% for 5 seconds, giving you extra control!',
   },
   {
     stepNumber: 5,
@@ -143,7 +143,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
       'Lock the I-piece containing the Shield Block [S] to raise a defensive aura before an incoming garbage attack hits.',
     effectTitle: '🛡 Shield Aura Blocked Incoming Garbage Attack!',
     effectDesc:
-      'Temporary defensive aura surrounded your grid and completely blocked the incoming 4-line garbage attack!',
+      'Temporary defensive aura surrounds your grid and completely blocks the incoming 4-line garbage attack!',
   },
   {
     stepNumber: 6,
@@ -157,7 +157,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
       'A Dummy Opponent grid is active on the right with Ready [Q], [E], and [R] abilities. Clear the line with the Freeze Block [F]!',
     effectTitle: '❄ Opponent Abilities [Q / E / R] Locked Out!',
     effectDesc:
-      'Targeting tether struck the opponent’s grid, applying a frost debuff and dimming their [Q], [E], and [R] ability UI!',
+      'Targeting tether strikes the opponent’s grid, applying a frost debuff and dimming their [Q], [E], and [R] ability UI!',
   },
   {
     stepNumber: 7,
@@ -171,7 +171,7 @@ const STAGE_3_STEPS: StepMetadata[] = [
       'Your incoming garbage bar on the left is loaded with a 4-line pending attack. Clear the line with the Garbage Eater [G]!',
     effectTitle: '🍽 Incoming Garbage Converted Into +800 Points!',
     effectDesc:
-      'The Garbage Eater devoured the pending garbage queue and converted the threat directly into bonus score!',
+      'The Garbage Eater devours the pending garbage queue and converts the threat directly into bonus score!',
   },
 ];
 
