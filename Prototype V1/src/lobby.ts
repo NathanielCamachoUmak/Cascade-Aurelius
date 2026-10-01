@@ -516,13 +516,46 @@ let battleRoyalRemainingPlayers = 0;
 let battleRoyalPhaseLabel = '';
 let battleRoyalStartedAt: number | null = null;
 let battleRoyalHud: HTMLElement | null = null;
+let battleRoyalPhaseEndsAt: number | null = null;  // when the NEXT phase break fires
+let battleRoyalCullThreshold = 0;                   // minimum score to survive current phase
 
 function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
   const hud = document.createElement('section');
   hud.id = 'battle-royale-hud';
-  hud.className = 'hidden fixed top-28 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
-  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
+  hud.className = 'hidden fixed top-16 left-1/2 -translate-x-1/2 z-40 min-w-[520px] max-w-[calc(100vw-1.5rem)] bg-black/90 border border-neon-yellow/60 backdrop-blur rounded-lg shadow-[0_0_28px_rgba(255,193,7,0.22)]';
+  hud.innerHTML = `
+    <div class="flex items-stretch gap-0">
+      <!-- Phase Name + Label -->
+      <div class="flex flex-col justify-center px-4 py-2 border-r border-neon-yellow/25 min-w-[160px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">PHASE</span>
+        <span id="br-phase" class="text-neon-yellow font-pixel text-[10px] mt-0.5 leading-tight">Opening Battle</span>
+      </div>
+      <!-- Phase Countdown -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[110px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">NEXT PHASE</span>
+        <span id="br-phase-timer" class="text-white font-pixel text-[13px] mt-0.5 tabular-nums">—</span>
+      </div>
+      <!-- Survivor Count -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[100px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">SURVIVING</span>
+        <span id="br-remaining" class="text-neon-cyan font-pixel text-[13px] mt-0.5 tabular-nums">—</span>
+      </div>
+      <!-- Cull Threshold -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 flex-1">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">CULL THRESHOLD</span>
+        <span id="br-threshold" class="text-red-400 font-pixel text-[10px] mt-0.5 tabular-nums">—</span>
+      </div>
+      <!-- My K.O. Count -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 min-w-[80px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">K.O.</span>
+        <span id="br-kills" class="text-neon-green font-pixel text-[13px] mt-0.5 tabular-nums">0</span>
+      </div>
+    </div>
+    <!-- Phase Progress Bar -->
+    <div class="h-[3px] bg-gray-800 rounded-b-lg overflow-hidden">
+      <div id="br-progress" class="h-full bg-gradient-to-r from-neon-yellow to-amber-500 transition-none" style="width:0%"></div>
+    </div>`;
   document.body.appendChild(hud);
   battleRoyalHud = hud;
   return hud;
@@ -530,17 +563,45 @@ function ensureBattleRoyalHud() {
 
 function updateBattleRoyalHud() {
   const hud = ensureBattleRoyalHud();
-  const remaining = hud.querySelector('#br-remaining');
-  const phase = hud.querySelector('#br-phase');
-  const progress = hud.querySelector('#br-progress') as HTMLElement | null;
-  const kills = hud.querySelector('#br-kills');
-  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers} LEFT`;
-  if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
-  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (5 * 60 * 1000)) * 100))}%`;
+  const isActive = activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING;
+  hud.classList.toggle('hidden', !isActive);
+  if (!isActive) return;
+
+  const phaseEl = hud.querySelector('#br-phase');
+  const timerEl = hud.querySelector('#br-phase-timer') as HTMLElement | null;
+  const remainEl = hud.querySelector('#br-remaining');
+  const threshEl = hud.querySelector('#br-threshold');
+  const killsEl = hud.querySelector('#br-kills');
+  const progressEl = hud.querySelector('#br-progress') as HTMLElement | null;
+
+  if (phaseEl) phaseEl.textContent = battleRoyalPhaseLabel || 'Opening Battle';
+  if (remainEl) remainEl.textContent = String(battleRoyalRemainingPlayers);
+  if (threshEl) threshEl.textContent = battleRoyalCullThreshold > 0 ? `MIN ${battleRoyalCullThreshold.toLocaleString()} PTS` : 'NO CULL YET';
+
+  // Phase countdown timer
+  if (timerEl) {
+    if (battleRoyalPhaseEndsAt && battleRoyalPhaseEndsAt > Date.now()) {
+      const secLeft = Math.ceil((battleRoyalPhaseEndsAt - Date.now()) / 1000);
+      const m = Math.floor(secLeft / 60);
+      const s = secLeft % 60;
+      timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      timerEl.classList.toggle('text-red-400', secLeft <= 10);
+      timerEl.classList.toggle('text-white', secLeft > 10);
+    } else {
+      timerEl.textContent = battleRoyalPhaseEndsAt === null ? '—' : 'FINAL';
+    }
+  }
+
+  // Match progress bar (0→100% over 4 minutes)
+  if (progressEl && battleRoyalStartedAt) {
+    const elapsed = Date.now() - battleRoyalStartedAt;
+    progressEl.style.width = `${Math.min(100, (elapsed / (4 * 60 * 1000)) * 100).toFixed(1)}%`;
+  }
+
   const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
-  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 1,000,000`;
-  hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
+  if (killsEl) killsEl.textContent = String(localKills ?? 0);
 }
+
 
 function formatTeamTimer() {
   if (!teamMatchEndsAt) return '4:00';
@@ -701,8 +762,13 @@ function wireGameCallbacks(network: NetworkManager) {
 
   network.onBattleRoyalPhase = (data) => {
     battleRoyalPhaseLabel = data.label;
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
+    battleRoyalRemainingPlayers = data.remainingPlayers ?? battleRoyalRemainingPlayers;
+    if (!battleRoyalStartedAt) {
+      battleRoyalStartedAt = Date.now();
+    }
+    // data.atMs: the ms-offset of THIS phase; next phase is atMs + phase duration (server sends nextAtMs)
+    battleRoyalPhaseEndsAt = data.nextAtMs ? (battleRoyalStartedAt + data.nextAtMs) : null;
+    battleRoyalCullThreshold = data.cullThreshold ?? 0;
     updateBattleRoyalHud();
   };
   network.onBattleRoyalCull = (data) => {
@@ -716,7 +782,8 @@ function wireGameCallbacks(network: NetworkManager) {
   };
   network.onBattleRoyalSuddenDeath = (data) => {
     battleRoyalRemainingPlayers = data.remainingPlayers;
-    battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
+    battleRoyalPhaseLabel = '⚡ SUDDEN DEATH · Solid Garbage Incoming';
+    battleRoyalPhaseEndsAt = null; // Final phase — no next break
     updateBattleRoyalHud();
   };
   const showGlobalRibbon = (message: string) => {
@@ -1235,7 +1302,8 @@ function drawRoundedCard(
 // you (Tetris 99 style) instead of one long horizontal strip.
 const OWN_BOARD_SCALE = 1.3;
 const OTHER_BOARD_SCALE_TEAM = 0.6;  // 3v3: only 5 opponents, keep them legible
-const OTHER_BOARD_SCALE_BR = 0.22;   // Battle Royale: up to 29 opponents, go small
+const OTHER_BOARD_SCALE_BR = 0.26;   // Battle Royale: up to 29 opponents in compact mosaic
+
 const MOSAIC_GAP = 6;
 
 interface BoardLayoutEntry {
@@ -1324,36 +1392,56 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
     return layout;
   }
 
-  const ownBlockSize = BLOCK_SIZE * OWN_BOARD_SCALE;
+  // ─── Battle Royale: Tetris-99-style compact mosaic layout ───
+  // Canvas structure:
+  //   [PHASE STRIP · 32px]
+  //   [Your Board (large) | Mosaic Grid of up-to-29 rivals (right)]
+  //   [Your Scorecard]
+  //
+  const brPhaseStripH = 32;    // on-canvas phase strip height above boards
+  const ownHeaderH = 36;
+  const ownCardH   = 54;
+  const ownBlockSize = BLOCK_SIZE;   // 30px — own board at 1× (not scaled up, canvas needs to stay tight)
   const ownWidth = COLS * ownBlockSize;
   const ownHeight = ROWS * ownBlockSize;
-  layout[myIndex] = { blockSize: ownBlockSize, offsetX: 0, offsetY: 0 };
+  const ownOffsetY = brPhaseStripH + ownHeaderH + 4;
+
+  layout[myIndex] = {
+    blockSize: ownBlockSize,
+    offsetX: 8,
+    offsetY: ownOffsetY,
+    headerHeight: ownHeaderH,
+    cardHeight: ownCardH,
+  };
 
   const otherIndices: number[] = [];
   for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
 
-  const otherScale = OTHER_BOARD_SCALE_BR;
-  const otherBlockSize = BLOCK_SIZE * otherScale;
-  const otherWidth = COLS * otherBlockSize;
+  const otherBlockSize = BLOCK_SIZE * OTHER_BOARD_SCALE_BR;   // ~7.8px blocks
+  const otherWidth  = COLS * otherBlockSize;
   const otherHeight = ROWS * otherBlockSize;
-
-  // Tile opponents into a grid matching our board's height, wrapping into a
-  // new column once a column fills up rather than stretching sideways forever.
-  const rowsPerColumn = Math.max(1, Math.floor((ownHeight + MOSAIC_GAP) / (otherHeight + MOSAIC_GAP)));
-  const mosaicStartX = ownWidth + PADDING;
+  const mosaicHeaderH = 14;   // slim header for BR badge (rank + status pill)
+  const mosaicGap = 5;
+  const mosaicStartX = 8 + ownWidth + 18;
+  const mosaicTopY   = brPhaseStripH + mosaicHeaderH + 4;
+  const mosaicSlotH  = mosaicHeaderH + otherHeight + mosaicGap;
+  const rowsPerColumn = Math.max(1, Math.floor((ownOffsetY + ownHeight - mosaicTopY) / mosaicSlotH));
 
   otherIndices.forEach((playerIdx, i) => {
     const col = Math.floor(i / rowsPerColumn);
     const row = i % rowsPerColumn;
     layout[playerIdx] = {
       blockSize: otherBlockSize,
-      offsetX: mosaicStartX + col * (otherWidth + MOSAIC_GAP),
-      offsetY: row * (otherHeight + MOSAIC_GAP),
+      offsetX: mosaicStartX + col * (otherWidth + mosaicGap),
+      offsetY: mosaicTopY + row * mosaicSlotH,
+      headerHeight: mosaicHeaderH,
+      cardHeight: 0,   // no scorecard for mosaic — space too tight
     };
   });
 
   return layout;
 }
+
 
 // Recomputed once per render() call; renderPlayer() and the effects layer
 // both read from this instead of assuming a uniform board size.
@@ -1628,8 +1716,14 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  // 1. Board Header Badge (Multi-board layout / FFA / TDM)
-  if (!isDuo && blockSize >= 20) {
+  // 1. Board Header Badge
+  // Full badge (blockSize >= 20): name + class icon + status tag
+  // Slim badge (BR mosaic, headerHeight >= 14 but blockSize < 20): rank # + status pill only
+  const isBR = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
+  const showFullBadge = !isDuo && blockSize >= 20;
+  const showSlimBadge = !isDuo && !showFullBadge && (layoutEntry?.headerHeight ?? 0) >= 14 && isBR;
+
+  if (showFullBadge) {
     const hx = offsetX;
     const hy = offsetY - headerH - 5;
     const hw = boardPixelW;
@@ -1767,8 +1861,43 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
+  // 1b. Slim BR Mosaic Badge — rank + status pill for small opponent boards
+  if (showSlimBadge) {
+    const hx = offsetX;
+    const hy = offsetY - headerH - 2;
+    const hw = boardPixelW;
+    const hh = headerH;
+    const myScore = gameManager.players[gameManager.myPlayerIndex]?.scoreManager.score ?? 0;
+    const isOut = player.isToppedOut;
+    const isDanger = !isOut && gameManager.getMaxColumnHeight(player) >= 15;
+
+    tCtx.save();
+    // Slim background
+    tCtx.fillStyle = isOut ? 'rgba(30,8,12,0.90)' : isDanger ? 'rgba(30,18,4,0.90)' : 'rgba(8,12,28,0.88)';
+    tCtx.fillRect(hx, hy, hw, hh);
+    tCtx.strokeStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : 'rgba(80,100,140,0.5)';
+    tCtx.lineWidth = 1;
+    tCtx.strokeRect(hx + 0.5, hy + 0.5, hw - 1, hh - 1);
+
+    // Status pill text (right-aligned)
+    tCtx.font = 'bold 6px "Press Start 2P", monospace';
+    tCtx.textBaseline = 'middle';
+    tCtx.textAlign = 'right';
+    tCtx.fillStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : '#10B981';
+    const pillText = isOut ? 'OUT' : isDanger ? 'DANGER' : isTargeted ? 'TARGET' : 'ALIVE';
+    tCtx.fillText(pillText, hx + hw - 3, hy + hh / 2);
+
+    // Rank number or player index (left-aligned)
+    tCtx.textAlign = 'left';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.font = 'bold 6px "Press Start 2P", monospace';
+    tCtx.fillText(`P${index + 1}`, hx + 3, hy + hh / 2);
+    tCtx.restore();
+  }
+
   // 2. Draw topping out overlay and elimination banner
   if (player.isToppedOut) {
+
     tCtx.fillStyle = 'rgba(20, 8, 14, 0.76)';
     tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
 
@@ -2107,7 +2236,68 @@ function render() {
     }
   }
 
+  // Battle Royale: Render on-canvas Phase HUD strip across the top of the canvas
+  if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
+    const stripH = 30;
+    const stripW = canvas.width;
+    ctx.save();
+
+    // Dark background
+    ctx.fillStyle = 'rgba(4, 6, 18, 0.92)';
+    ctx.fillRect(0, 0, stripW, stripH);
+
+    // Bottom border line
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, stripH - 0.5);
+    ctx.lineTo(stripW, stripH - 0.5);
+    ctx.stroke();
+
+    ctx.textBaseline = 'middle';
+    const cy = stripH / 2 + 1;
+
+    // Left: BATTLE ROYALE label
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'left';
+    ctx.fillText('BATTLE ROYALE', 10, cy);
+
+    // Centre: Phase name
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#E5E7EB';
+    ctx.textAlign = 'center';
+    ctx.fillText(battleRoyalPhaseLabel || 'OPENING BATTLE', stripW / 2, cy);
+
+    // Right side — survivor count + phase timer
+    ctx.textAlign = 'right';
+    // Survivor count
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#00E5FF';
+    ctx.fillText(`${battleRoyalRemainingPlayers} ALIVE`, stripW - 10, cy - 6);
+
+    // Phase countdown
+    if (battleRoyalPhaseEndsAt && battleRoyalPhaseEndsAt > Date.now()) {
+      const secLeft = Math.ceil((battleRoyalPhaseEndsAt - Date.now()) / 1000);
+      const m = Math.floor(secLeft / 60);
+      const s = secLeft % 60;
+      const timeStr = `${m}:${String(s).padStart(2, '0')}`;
+      ctx.font = 'bold 8px "Press Start 2P", monospace';
+      ctx.fillStyle = secLeft <= 10 ? '#EF4444' : '#94A3B8';
+      ctx.fillText(`NEXT: ${timeStr}`, stripW - 10, cy + 7);
+    } else if (battleRoyalPhaseEndsAt === null && battleRoyalStartedAt) {
+      ctx.font = 'bold 8px "Press Start 2P", monospace';
+      ctx.fillStyle = '#EF4444';
+      ctx.fillText('FINAL PHASE', stripW - 10, cy + 7);
+    }
+
+    ctx.restore();
+    // Keep the floating HUD ticker refreshed while playing
+    updateBattleRoyalHud();
+  }
+
   // Render visual effects
+
   const effects = gameManager.getEffects();
   const eCanvas = safeGet('effects-canvas', 'canvas') as HTMLCanvasElement;
   let eCtx = ctx;

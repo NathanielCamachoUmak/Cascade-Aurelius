@@ -1692,7 +1692,7 @@ export class GameManager {
     const comboCount = this.players[pIdx]?.scoreManager.combo || 0;
     let text = '';
     if (linesCleared === 3) text = 'TRIPLE!';
-    else if (linesCleared >= 4) text = 'TETRIS!';
+    else if (linesCleared >= 4) text = 'QUAD!';
     if (comboCount > 1 && text) text += ` COMBO x${comboCount}`;
     else if (comboCount > 1) text = `COMBO x${comboCount}`;
 
