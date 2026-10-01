@@ -1,6 +1,6 @@
 import { Grid } from './Grid';
 import { Tetromino, type ShapeType } from './Tetromino';
-import { SpecialBlockType } from './ItemManager';
+import { SpecialBlockType, SPECIAL_BLOCK_ICONS } from './ItemManager';
 import { AudioManager } from './AudioManager';
 import { markTutorialCompleted } from './TutorialManager';
 
@@ -15,6 +15,15 @@ const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
   const img = new Image();
   img.src = `/blocks/${shape}-block.png`;
   BLOCK_SPRITES[shape] = img;
+});
+
+const SPECIAL_BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
+Object.entries(SPECIAL_BLOCK_ICONS).forEach(([type, url]) => {
+  if (url) {
+    const img = new Image();
+    img.src = url;
+    SPECIAL_BLOCK_SPRITES[type] = img;
+  }
 });
 
 function getSpecialLetter(special: string | undefined): string {
@@ -1579,6 +1588,11 @@ export class Stage3Tutorial {
     }
 
     if (specialType) {
+      const specialSprite = SPECIAL_BLOCK_SPRITES[specialType];
+      if (specialSprite && specialSprite.complete && specialSprite.naturalWidth > 0) {
+        targetCtx.drawImage(specialSprite, finalX, finalY, blockSize, blockSize);
+        return;
+      }
       targetCtx.fillStyle = '#FFD700';
       targetCtx.fillRect(finalX + 3, finalY + 3, blockSize - 6, blockSize - 6);
       targetCtx.fillStyle = '#0D0B1A';

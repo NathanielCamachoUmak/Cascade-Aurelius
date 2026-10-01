@@ -15,6 +15,7 @@ import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
 import { TutorialManager } from './TutorialManager'
 import { recordModeScore } from './HighScores'
+import { SPECIAL_BLOCK_ICONS } from './ItemManager'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -314,14 +315,14 @@ const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> =
   Support: { text: 'text-neon-green', border: 'border-neon-green/40' },
 };
 
-const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[] = [
-  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area surrounding the block, clearing nearby blocks too.' },
-  { letter: 'W', name: 'Heavy', description: 'When its line clears, automatically clears and crushes the single row directly beneath it.' },
-  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your point gains (2x) for 5 seconds.' },
-  { letter: 'V', name: 'Speed', description: 'When its line clears, slows your own piece drop speed by 50% for 5 seconds — giving you extra control.' },
-  { letter: 'S', name: 'Shield', description: 'When its line clears, raises a defensive aura that completely blocks the next incoming garbage attack.' },
-  { letter: 'F', name: 'Freeze', description: "When its line clears, launches a frost tether that locks out opponents' active Q/E/R class abilities for 3 seconds." },
-  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, devours garbage lines on your board and converts the threat into +800 bonus points.' },
+const SPECIAL_BLOCK_INFO: { letter: string; name: string; iconUrl: string; description: string }[] = [
+  { letter: 'B', name: 'Bomb', iconUrl: SPECIAL_BLOCK_ICONS.BOMB, description: 'When its line clears, blasts a 3×3 area surrounding the block, clearing nearby blocks too.' },
+  { letter: 'W', name: 'Heavy', iconUrl: SPECIAL_BLOCK_ICONS.HEAVY, description: 'When its line clears, automatically clears and crushes the single row directly beneath it.' },
+  { letter: 'X', name: 'Multiplier', iconUrl: SPECIAL_BLOCK_ICONS.MULTIPLIER, description: 'When its line clears, doubles your point gains (2x) for 5 seconds.' },
+  { letter: 'V', name: 'Speed', iconUrl: SPECIAL_BLOCK_ICONS.SPEED, description: 'When its line clears, slows your own piece drop speed by 50% for 5 seconds — giving you extra control.' },
+  { letter: 'S', name: 'Shield', iconUrl: SPECIAL_BLOCK_ICONS.SHIELD, description: 'When its line clears, raises a defensive aura that completely blocks the next incoming garbage attack.' },
+  { letter: 'F', name: 'Freeze', iconUrl: SPECIAL_BLOCK_ICONS.FREEZE, description: "When its line clears, launches a frost tether that locks out opponents' active Q/E/R class abilities for 3 seconds." },
+  { letter: 'G', name: 'Garbage Eater', iconUrl: SPECIAL_BLOCK_ICONS.GARBAGE_EATER, description: 'When its line clears, devours garbage lines on your board and converts the threat into +800 bonus points.' },
 ];
 
 function renderTutorialClasses() {
@@ -355,7 +356,7 @@ function renderTutorialBlocks() {
     const row = document.createElement('div');
     row.className = 'flex items-start gap-3 bg-deep-purple/40 border border-card-border rounded-lg p-3';
     row.innerHTML = `
-      <span class="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-black border-2 border-neon-cyan text-neon-cyan font-pixel text-sm">${block.letter}</span>
+      <img src="${block.iconUrl}" alt="${block.name}" class="shrink-0 w-9 h-9 object-contain rounded bg-black/40 border border-white/20 p-0.5 shadow-md" />
       <div>
         <h4 class="text-white font-bold text-xs mb-0.5">${block.name}</h4>
         <p class="text-gray-500 text-xs leading-relaxed">${block.description}</p>
@@ -915,6 +916,15 @@ const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
   BLOCK_SPRITES[shape] = img;
 });
 
+const SPECIAL_BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
+Object.entries(SPECIAL_BLOCK_ICONS).forEach(([type, url]) => {
+  if (url) {
+    const img = new Image();
+    img.src = url;
+    SPECIAL_BLOCK_SPRITES[type] = img;
+  }
+});
+
 function drawBlock(
   targetCtx: CanvasRenderingContext2D,
   x: number, 
@@ -947,6 +957,12 @@ function drawBlock(
     targetCtx.strokeStyle = '#555555';
     targetCtx.fillStyle = '#333333';
     targetCtx.fillRect(finalX + 2, finalY + 2, blockSize - 4, blockSize - 4);
+    return;
+  }
+
+  // Draw custom special item block sprite if available
+  if (isSpecial && SPECIAL_BLOCK_SPRITES[isSpecial] && SPECIAL_BLOCK_SPRITES[isSpecial].complete && SPECIAL_BLOCK_SPRITES[isSpecial].naturalWidth > 0) {
+    targetCtx.drawImage(SPECIAL_BLOCK_SPRITES[isSpecial], finalX, finalY, blockSize, blockSize);
     return;
   }
 
@@ -1002,23 +1018,27 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
           const fx = offsetX + c * MINI_BLOCK_SIZE;
           const fy = offsetY + r * MINI_BLOCK_SIZE;
           const specialType = (i === 0 && nextPiece) ? nextPiece.specialBlocks.get(`${r},${c}`) : undefined;
-          if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
-            tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-            tCtx.strokeStyle = color;
-            tCtx.lineWidth = 1;
-            tCtx.strokeRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+          if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
+            tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
           } else {
-            tCtx.fillStyle = color;
-            tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
-          }
-          if (specialType) {
-            tCtx.fillStyle = '#000000B3';
-            tCtx.fillRect(fx + 2, fy + 2, MINI_BLOCK_SIZE - 4, MINI_BLOCK_SIZE - 4);
-            tCtx.fillStyle = '#FFFFFF';
-            tCtx.font = 'bold 11px "Press Start 2P"';
-            tCtx.textAlign = 'center';
-            tCtx.textBaseline = 'middle';
-            tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2 + 1);
+            if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
+              tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+              tCtx.strokeStyle = color;
+              tCtx.lineWidth = 1;
+              tCtx.strokeRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+            } else {
+              tCtx.fillStyle = color;
+              tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+            }
+            if (specialType) {
+              tCtx.fillStyle = '#000000B3';
+              tCtx.fillRect(fx + 2, fy + 2, MINI_BLOCK_SIZE - 4, MINI_BLOCK_SIZE - 4);
+              tCtx.fillStyle = '#FFFFFF';
+              tCtx.font = 'bold 11px "Press Start 2P"';
+              tCtx.textAlign = 'center';
+              tCtx.textBaseline = 'middle';
+              tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2 + 1);
+            }
           }
         }
       }
@@ -1047,22 +1067,26 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
         const specialKey = `${r},${c}`;
         const specialType = piece.specialBlocks.get(specialKey);
 
-        tCtx.fillStyle = '#000000';
-        tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-        tCtx.strokeStyle = color;
-        tCtx.lineWidth = 2;
-        tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-
-        if (specialType) {
-          // Draw the special block letter indicator
-          tCtx.fillStyle = color;
-          tCtx.font = 'bold 12px "Press Start 2P"';
-          tCtx.textAlign = 'center';
-          tCtx.textBaseline = 'middle';
-          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+        if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
+          tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
         } else {
-          tCtx.fillStyle = color;
-          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+          tCtx.fillStyle = '#000000';
+          tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+          tCtx.strokeStyle = color;
+          tCtx.lineWidth = 2;
+          tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
+
+          if (specialType) {
+            // Draw the special block letter indicator
+            tCtx.fillStyle = color;
+            tCtx.font = 'bold 12px "Press Start 2P"';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+          } else {
+            tCtx.fillStyle = color;
+            tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+          }
         }
       }
     }

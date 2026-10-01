@@ -12,6 +12,17 @@ export const SpecialBlockType = {
 } as const;
 export type SpecialBlockType = typeof SpecialBlockType[keyof typeof SpecialBlockType];
 
+export const SPECIAL_BLOCK_ICONS: Record<SpecialBlockType, string> = {
+  [SpecialBlockType.BOMB]: '/blocks/bomb.png',
+  [SpecialBlockType.HEAVY]: '/blocks/heavy.png',
+  [SpecialBlockType.MULTIPLIER]: '/blocks/multiplier.png',
+  [SpecialBlockType.SPEED]: '/blocks/speed.png',
+  [SpecialBlockType.SHIELD]: '/blocks/shield.png',
+  [SpecialBlockType.FREEZE]: '/blocks/freeze.png',
+  [SpecialBlockType.GARBAGE_EATER]: '/blocks/garbage.png',
+  [SpecialBlockType.NONE]: '',
+};
+
 interface ItemWeight {
   type: SpecialBlockType;
   weight: number;
