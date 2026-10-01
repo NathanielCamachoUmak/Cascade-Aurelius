@@ -518,6 +518,11 @@ let battleRoyalStartedAt: number | null = null;
 let battleRoyalHud: HTMLElement | null = null;
 let battleRoyalPhaseEndsAt: number | null = null;  // when the NEXT phase break fires
 let battleRoyalCullThreshold = 0;                   // minimum score to survive current phase
+// Phase 2: Cull banner
+let brCullBannerEl: HTMLElement | null = null;
+let brCullBannerTimerId: number | null = null;
+// Tracks the standings panel width so canvas.width expands correctly
+const BR_STANDINGS_W = 148;
 
 function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
@@ -602,6 +607,61 @@ function updateBattleRoyalHud() {
   if (killsEl) killsEl.textContent = String(localKills ?? 0);
 }
 
+// ── Phase 2: Cull Elimination Banner ─────────────────────────────────────────
+function ensureCullBanner(): HTMLElement {
+  if (brCullBannerEl) return brCullBannerEl;
+  const el = document.createElement('div');
+  el.id = 'br-cull-banner';
+  el.className = 'hidden fixed inset-x-0 top-1/3 z-50 flex flex-col items-center pointer-events-none';
+  el.innerHTML = `
+    <div class="bg-black/95 border-2 border-red-500 rounded-xl px-8 py-5 shadow-[0_0_48px_rgba(239,68,68,0.5)] max-w-[520px] w-full mx-4">
+      <div class="text-red-500 font-pixel text-sm tracking-widest text-center mb-1" id="br-cull-headline">PHASE CULL</div>
+      <div class="text-white font-pixel text-xs text-center mb-3" id="br-cull-subline">— PLAYERS ELIMINATED —</div>
+      <div id="br-cull-list" class="flex flex-col gap-1 max-h-40 overflow-hidden"></div>
+      <div class="mt-3 text-center text-gray-400 font-pixel text-[9px]" id="br-cull-remaining"></div>
+    </div>`;
+  document.body.appendChild(el);
+  brCullBannerEl = el;
+  return el;
+}
+
+function showBrCullBanner(eliminated: Array<{ name: string; score: number }>, remainingPlayers: number, reason: string) {
+  const el = ensureCullBanner();
+  const headline = el.querySelector('#br-cull-headline')!;
+  const subline  = el.querySelector('#br-cull-subline')!;
+  const list     = el.querySelector('#br-cull-list')!;
+  const rem      = el.querySelector('#br-cull-remaining')!;
+
+  const reasonLabel = reason === 'score-cull' ? 'SCORE CULL' : reason === 'line-cull' ? 'LINE CULL' : 'PHASE CULL';
+  headline.textContent = `⚡ ${reasonLabel} — ${eliminated.length} ELIMINATED`;
+  subline.textContent  = `— BELOW SURVIVAL THRESHOLD —`;
+
+  list.innerHTML = eliminated.slice(0, 8).map(p =>
+    `<div class="flex justify-between items-center bg-red-950/60 border border-red-800/50 rounded px-3 py-1">
+       <span class="text-red-300 font-pixel text-[9px] truncate max-w-[200px]">${p.name}</span>
+       <span class="text-gray-400 font-pixel text-[9px] tabular-nums ml-2">${Math.round(p.score).toLocaleString()} PTS</span>
+     </div>`
+  ).join('');
+
+  if (eliminated.length > 8) {
+    list.innerHTML += `<div class="text-center text-gray-500 font-pixel text-[8px] mt-1">+${eliminated.length - 8} more eliminated</div>`;
+  }
+
+  rem.textContent = `${remainingPlayers} SURVIVORS REMAINING`;
+
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+
+  // Auto-hide after 4s
+  if (brCullBannerTimerId !== null) clearTimeout(brCullBannerTimerId);
+  brCullBannerTimerId = window.setTimeout(() => {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+    brCullBannerTimerId = null;
+  }, 4000);
+
+  AudioManager.playSfx('death');
+}
 
 function formatTeamTimer() {
   if (!teamMatchEndsAt) return '4:00';
@@ -781,6 +841,10 @@ function wireGameCallbacks(network: NetworkManager) {
         ? 'Culling lowest line count · tie-break score, kills'
         : 'Culling lowest kills · tie-break lines, score';
     updateBattleRoyalHud();
+    // Show the dramatic cull elimination banner
+    if (data.eliminated && data.eliminated.length > 0) {
+      showBrCullBanner(data.eliminated, data.remainingPlayers, data.reason);
+    }
   };
   network.onBattleRoyalSuddenDeath = (data) => {
     battleRoyalRemainingPlayers = data.remainingPlayers;
@@ -970,7 +1034,8 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   // mosaic grid beside it, so canvas.width/height must span every board's
   // actual bounding box rather than assuming one straight line of boards.
   const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
-  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize)) + 24;
+  const standingsExtra = mode?.id === 'battle-royale' ? BR_STANDINGS_W : 0;
+  canvas.width  = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize)) + 24 + standingsExtra;
   canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize + (l.cardHeight ? l.cardHeight + 16 : 0)));
 
   // Our own board is always pinned at (0,0) when emphasized, so make sure the
@@ -2295,6 +2360,132 @@ function render() {
     ctx.restore();
     // Keep the floating HUD ticker refreshed while playing
     updateBattleRoyalHud();
+  }
+
+  // Battle Royale: Live Standings Panel (right side of canvas)
+  if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
+    const players = gameManager.players;
+    const myIdx   = gameManager.myPlayerIndex;
+    // Build sorted standings — alive players by score desc, culled players appended at bottom
+    const ranked = players
+      .map((p, i) => ({
+        i,
+        score: Math.round(p.scoreManager?.score ?? 0),
+        name: (onlinePlayerSpecs[i]?.name || p.id || `P${i + 1}`).slice(0, 10),
+        alive: !p.isToppedOut,
+        height: gameManager.getMaxColumnHeight(p),
+        isMe: i === myIdx,
+      }))
+      .sort((a, b) => {
+        if (a.alive !== b.alive) return a.alive ? -1 : 1;
+        return b.score - a.score;
+      });
+
+    // Panel geometry
+    const panelX = canvas.width - BR_STANDINGS_W;
+    const panelY = 0;
+    const panelH = canvas.height;
+    const rowH   = Math.max(16, Math.min(22, Math.floor((panelH - 28) / Math.max(1, ranked.length))));
+    const headerH = 28;
+
+    ctx.save();
+
+    // Panel background + left border
+    ctx.fillStyle = 'rgba(4, 6, 20, 0.93)';
+    ctx.fillRect(panelX, panelY, BR_STANDINGS_W, panelH);
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 0.5, panelY);
+    ctx.lineTo(panelX + 0.5, panelY + panelH);
+    ctx.stroke();
+
+    // Header
+    ctx.fillStyle = 'rgba(255, 193, 7, 0.12)';
+    ctx.fillRect(panelX, panelY, BR_STANDINGS_W, headerH);
+    ctx.font = 'bold 7px "Press Start 2P", monospace';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('STANDINGS', panelX + BR_STANDINGS_W / 2, panelY + headerH / 2);
+
+    // Rows
+    ranked.forEach((entry, rank) => {
+      const ry = panelY + headerH + rank * rowH;
+      if (ry + rowH > panelH) return; // clamp
+
+      const isBelowThreshold = battleRoyalCullThreshold > 0 && entry.score < battleRoyalCullThreshold && entry.alive;
+      const isDanger = entry.alive && entry.height >= 15;
+      const isCulled = !entry.alive;
+
+      // Row background
+      const bg = entry.isMe   ? 'rgba(0, 229, 255, 0.10)' :
+                 isCulled     ? 'rgba(60, 10, 10, 0.65)'  :
+                 isBelowThreshold ? 'rgba(50, 10, 10, 0.55)' :
+                 isDanger     ? 'rgba(50, 30, 0, 0.55)'  :
+                                'rgba(8, 12, 30, 0.45)';
+      ctx.fillStyle = bg;
+      ctx.fillRect(panelX + 1, ry, BR_STANDINGS_W - 2, rowH);
+
+      // Left accent line for my row
+      if (entry.isMe) {
+        ctx.fillStyle = '#00E5FF';
+        ctx.fillRect(panelX + 1, ry, 2, rowH);
+      }
+
+      const midY = ry + rowH / 2;
+      ctx.textBaseline = 'middle';
+
+      // Rank number
+      ctx.font = `bold ${rowH >= 20 ? 7 : 6}px "Press Start 2P", monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isCulled ? '#4B0000' : entry.isMe ? '#00E5FF' : '#64748B';
+      ctx.fillText(`#${rank + 1}`, panelX + 5, midY);
+
+      // Player name (truncated)
+      ctx.font = `${rowH >= 20 ? 7 : 6}px "Inter", sans-serif`;
+      ctx.fillStyle = isCulled ? '#6B1111' : entry.isMe ? '#FFFFFF' : '#CBD5E1';
+      const nameMaxW = 60;
+      let displayName = entry.name;
+      while (displayName.length > 2 && ctx.measureText(displayName).width > nameMaxW) {
+        displayName = displayName.slice(0, -1);
+      }
+      ctx.fillText(displayName, panelX + 22, midY);
+
+      // Score (right-aligned, tabular)
+      ctx.textAlign = 'right';
+      ctx.font = `bold ${rowH >= 20 ? 7 : 6}px "Press Start 2P", monospace`;
+      const scoreStr = entry.score >= 1000 ? `${(entry.score / 1000).toFixed(1)}K` : String(entry.score);
+      ctx.fillStyle = isCulled ? '#6B1111' : isBelowThreshold ? '#EF4444' : entry.isMe ? '#FFD700' : '#94A3B8';
+      ctx.fillText(scoreStr, panelX + BR_STANDINGS_W - 5, midY);
+
+      // Status dot (far right, replaced by score — use a small colored square on the left instead)
+      const dotColor = isCulled ? '#6B1111' : isBelowThreshold ? '#EF4444' : isDanger ? '#F59E0B' : '#10B981';
+      ctx.fillStyle = dotColor;
+      ctx.fillRect(panelX + BR_STANDINGS_W - 5, midY - 3, 3, 6);
+
+      // Separator line
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(panelX + 1, ry + rowH - 0.5);
+      ctx.lineTo(panelX + BR_STANDINGS_W - 1, ry + rowH - 0.5);
+      ctx.stroke();
+    });
+
+    // Threshold label at bottom if active
+    if (battleRoyalCullThreshold > 0) {
+      const threshY = panelH - 18;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+      ctx.fillRect(panelX, threshY, BR_STANDINGS_W, 18);
+      ctx.font = 'bold 6px "Press Start 2P", monospace';
+      ctx.fillStyle = '#EF4444';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`MIN ${battleRoyalCullThreshold >= 1000 ? `${(battleRoyalCullThreshold/1000).toFixed(0)}K` : battleRoyalCullThreshold} TO SURVIVE`, panelX + BR_STANDINGS_W / 2, threshY + 9);
+    }
+
+    ctx.restore();
   }
 
   // Render visual effects
