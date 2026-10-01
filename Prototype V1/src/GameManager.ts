@@ -257,6 +257,10 @@ export class GameManager {
     net.onOpponentToppedOut = (playerIndex: number) => {
       if (playerIndex < this.players.length && playerIndex !== myIndex) {
         this.players[playerIndex].isToppedOut = true;
+        const myPlayer = this.players[myIndex];
+        if (myPlayer && myPlayer.selectedTargetIndex === playerIndex) {
+          this.cycleClassTarget(myPlayer);
+        }
       }
     };
 
@@ -271,12 +275,28 @@ export class GameManager {
       if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
         this.players[resolvedIndex].isToppedOut = true;
         this.players[resolvedIndex].battleRoyalEliminated = this.battleRoyalMode;
+        const myPlayer = this.players[myIndex];
+        if (myPlayer && myPlayer.selectedTargetIndex === resolvedIndex) {
+          this.cycleClassTarget(myPlayer);
+        }
       }
       if (playerId === net.mySocketId) {
         const localPlayer = this.players[myIndex];
         if (localPlayer) {
           localPlayer.isToppedOut = true;
           localPlayer.battleRoyalEliminated = this.battleRoyalMode;
+        }
+      }
+      this.renderFn();
+    };
+
+    net.onPlayerDisconnected = (data: { playerId: string }) => {
+      const discIndex = this.players.findIndex(player => (player as any).socketId === data.playerId || player.id === data.playerId);
+      if (discIndex >= 0 && this.players[discIndex]) {
+        this.players[discIndex].isToppedOut = true;
+        const myPlayer = this.players[myIndex];
+        if (myPlayer && myPlayer.selectedTargetIndex === discIndex) {
+          this.cycleClassTarget(myPlayer);
         }
       }
       this.renderFn();
@@ -779,6 +799,7 @@ export class GameManager {
 
     if (player.grid.checkCollision(player.currentPiece)) {
       player.isToppedOut = true;
+      this.handlePlayerToppedOutTargeting(player);
     }
   }
 
@@ -999,6 +1020,16 @@ export class GameManager {
     player.selectedTargetIndex = candidates[(current + 1) % candidates.length];
   }
 
+  private handlePlayerToppedOutTargeting(toppedOutPlayer: Player) {
+    const toppedIdx = this.players.indexOf(toppedOutPlayer);
+    if (toppedIdx < 0) return;
+    for (const p of this.players) {
+      if (p !== toppedOutPlayer && p.selectedTargetIndex === toppedIdx) {
+        this.cycleClassTarget(p);
+      }
+    }
+  }
+
   private sendOrApplyClassEffect(player: Player, effect: { type: 'QUICKSILVER' | 'CHAOS' | 'SCRAMBLE' | 'GRID_SHIFT' | 'EARTHQUAKE' | 'GUARDIAN_ANGEL' | 'ABILITY_FREEZE' | 'SPRINT' | 'RECYCLE'; durationMs?: number; amount?: number; direction?: -1 | 1; targetIndex?: number }) {
     if (this.isOnline && this.state !== GameState.TUTORIAL) {
       this.network?.sendClassAbility(effect);
@@ -1135,6 +1166,7 @@ export class GameManager {
       player.currentPiece.specialBlocks = new Map(temp.specialBlocks);
       if (player.grid.checkCollision(player.currentPiece)) {
         player.isToppedOut = true;
+        this.handlePlayerToppedOutTargeting(player);
       }
     } else {
       player.holdPiece = new Tetromino(player.currentPiece.type);

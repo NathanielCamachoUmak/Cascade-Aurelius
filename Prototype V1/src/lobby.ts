@@ -826,8 +826,8 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   // mosaic grid beside it, so canvas.width/height must span every board's
   // actual bounding box rather than assuming one straight line of boards.
   const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
-  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize));
-  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize));
+  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize)) + 24;
+  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize + (l.cardHeight ? l.cardHeight + 16 : 0)));
 
   // Our own board is always pinned at (0,0) when emphasized, so make sure the
   // container starts scrolled there instead of wherever it was left before.
@@ -1072,6 +1072,41 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
 // Assign colors per player index for multiplayer
 const PLAYER_COLORS = ['#00E5FF', '#40C4FF', '#80DEEA', '#FF007F', '#FF4081', '#FF80AB'];
 
+// Cache class icons for on-canvas HUD badges
+const classIconCache: Record<string, HTMLImageElement> = {};
+PLAYER_CLASSES.forEach((cls) => {
+  if (cls.iconUrl) {
+    const img = new Image();
+    img.src = cls.iconUrl;
+    classIconCache[cls.id] = img;
+  }
+});
+
+function drawRoundedCard(
+  tCtx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number = 6
+) {
+  tCtx.beginPath();
+  if (typeof (tCtx as any).roundRect === 'function') {
+    (tCtx as any).roundRect(x, y, w, h, radius);
+  } else {
+    tCtx.moveTo(x + radius, y);
+    tCtx.lineTo(x + w - radius, y);
+    tCtx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    tCtx.lineTo(x + w, y + h - radius);
+    tCtx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    tCtx.lineTo(x + radius, y + h);
+    tCtx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    tCtx.lineTo(x, y + radius);
+    tCtx.quadraticCurveTo(x, y, x + radius, y);
+    tCtx.closePath();
+  }
+}
+
 // In 3v3 Deathmatch and Battle Royale, your own board renders large and fixed
 // at top-left, and everyone else is tiled into a compact mosaic grid beside
 // you (Tetris 99 style) instead of one long horizontal strip.
@@ -1080,7 +1115,13 @@ const OTHER_BOARD_SCALE_TEAM = 0.6;  // 3v3: only 5 opponents, keep them legible
 const OTHER_BOARD_SCALE_BR = 0.22;   // Battle Royale: up to 29 opponents, go small
 const MOSAIC_GAP = 6;
 
-interface BoardLayoutEntry { blockSize: number; offsetX: number; offsetY: number; }
+interface BoardLayoutEntry {
+  blockSize: number;
+  offsetX: number;
+  offsetY: number;
+  headerHeight?: number;
+  cardHeight?: number;
+}
 
 function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
   const emphasizeOwnBoard = modeId === 'team-deathmatch' || modeId === 'battle-royale';
@@ -1088,9 +1129,11 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
 
   if (!emphasizeOwnBoard || myIndex < 0) {
     // Classic side-by-side layout for 1v1 / FFA / local play
-    let cursorX = 0;
+    let cursorX = 14;
+    const headerHeight = 36;
+    const cardHeight = 54;
     for (let i = 0; i < playerCount; i++) {
-      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: 0 };
+      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: headerHeight + 6, headerHeight, cardHeight };
       cursorX += COLS * BLOCK_SIZE + PADDING;
     }
     return layout;
@@ -1364,25 +1407,297 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  // Draw topping out overlay for this player
-  if (player.isToppedOut) {
-    tCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-    tCtx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+  const layoutEntry = boardLayout[index];
+  const headerH = layoutEntry?.headerHeight || 36;
+  const cardH = layoutEntry?.cardHeight || 54;
+  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
+  const isTargeted = Boolean(myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut);
+
+  // 1. Board Header Badge (Multi-board layout / FFA / TDM)
+  if (!isDuo && blockSize >= 20) {
+    const hx = offsetX;
+    const hy = offsetY - headerH - 5;
+    const hw = boardPixelW;
+    const hh = headerH;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, hx, hy, hw, hh, 6);
+    if (isTargeted) {
+      tCtx.fillStyle = 'rgba(52, 8, 30, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#FF007F';
+      tCtx.lineWidth = 2.5;
+      tCtx.shadowColor = '#FF007F';
+      tCtx.shadowBlur = 10;
+      tCtx.stroke();
+    } else if (isMyPlayer) {
+      tCtx.fillStyle = 'rgba(6, 28, 48, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#00E5FF';
+      tCtx.lineWidth = 2;
+      tCtx.shadowColor = '#00E5FF';
+      tCtx.shadowBlur = 8;
+      tCtx.stroke();
+    } else if (player.isToppedOut) {
+      tCtx.fillStyle = 'rgba(28, 10, 16, 0.88)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else {
+      tCtx.fillStyle = 'rgba(12, 16, 36, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    }
+    tCtx.restore();
+
+    // Content inside Header Badge
+    tCtx.save();
+    // Left Status Tag (YOU, ▼ TARGET, K.O., or P#)
+    let tagText = `P${index + 1}`;
+    let tagColor = '#94A3B8';
+    if (isMyPlayer) {
+      tagText = 'YOU';
+      tagColor = '#00E5FF';
+    } else if (isTargeted) {
+      tagText = '▼ TARGET';
+      tagColor = '#FF007F';
+    } else if (player.isToppedOut) {
+      tagText = 'K.O.';
+      tagColor = '#EF4444';
+    }
+
+    tCtx.font = 'bold 9px "Press Start 2P", monospace';
+    tCtx.fillStyle = tagColor;
+    tCtx.textAlign = 'left';
+    tCtx.textBaseline = 'middle';
+    tCtx.fillText(tagText, hx + 10, hy + hh / 2);
+
+    const tagWidth = tCtx.measureText(tagText).width;
+
+    // Player Name
+    const rawName = onlinePlayerSpecs[index]?.name || player.id || `Player ${index + 1}`;
+    tCtx.font = 'bold 12px "Inter", sans-serif';
+    tCtx.fillStyle = player.isToppedOut ? '#64748B' : '#FFFFFF';
+    
+    let displayName = rawName;
+    const maxNameWidth = hw - (tagWidth + 24) - 95;
+    if (tCtx.measureText(displayName).width > maxNameWidth && maxNameWidth > 20) {
+      while (displayName.length > 2 && tCtx.measureText(displayName + '…').width > maxNameWidth) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += '…';
+    }
+    tCtx.fillText(displayName, hx + 10 + tagWidth + 8, hy + hh / 2);
+
+    // Right: Class Name + Icon
+    const classInfo = PLAYER_CLASSES.find(c => c.id === player.playerClass);
+    const className = classInfo?.name || player.playerClass || '';
+    const classColor = player.playerClass === 'SPEEDSTER' ? '#00E5FF' :
+                       player.playerClass === 'TANK' ? '#00FF88' :
+                       player.playerClass === 'SABOTEUR' ? '#E879F9' :
+                       player.playerClass === 'SUPPORT' ? '#FFD700' : '#94A3B8';
+
+    const classIcon = classIconCache[player.playerClass];
+    const iconSz = 18;
+    const iconX = hx + hw - iconSz - 8;
+    const iconY = hy + (hh - iconSz) / 2;
+
+    if (classIcon && classIcon.complete && classIcon.naturalWidth > 0) {
+      tCtx.drawImage(classIcon, iconX, iconY, iconSz, iconSz);
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 10px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className.toUpperCase(), iconX - 6, hy + hh / 2);
+    } else {
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 10px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className.toUpperCase(), hx + hw - 10, hy + hh / 2);
+    }
+    tCtx.restore();
   }
 
-  // Target Indicator
-  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
-  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && true) {
+  // 2. Draw topping out overlay and elimination banner
+  if (player.isToppedOut) {
+    tCtx.fillStyle = 'rgba(20, 8, 14, 0.76)';
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+
+    // Cyberpunk Elimination Stamp Banner
+    const bannerW = Math.min(boardPixelW - 24, 240);
+    const bannerH = 46;
+    const bx = offsetX + (boardPixelW - bannerW) / 2;
+    const by = offsetY + (boardPixelH - bannerH) / 2;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, bx, by, bannerW, bannerH, 6);
+    tCtx.fillStyle = 'rgba(38, 10, 18, 0.96)';
+    tCtx.fill();
+    tCtx.strokeStyle = '#EF4444';
+    tCtx.lineWidth = 2.5;
+    tCtx.shadowColor = '#EF4444';
+    tCtx.shadowBlur = 14;
+    tCtx.stroke();
+
+    tCtx.font = 'bold 13px "Press Start 2P", monospace';
+    tCtx.fillStyle = '#FF3366';
+    tCtx.textAlign = 'center';
+    tCtx.textBaseline = 'middle';
+    tCtx.shadowColor = '#FF3366';
+    tCtx.shadowBlur = 10;
+    tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
+
+    tCtx.font = 'bold 9px "Inter", sans-serif';
+    tCtx.fillStyle = '#FDA4AF';
+    tCtx.shadowBlur = 0;
+    tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+    tCtx.restore();
+  }
+
+  // 3. Target Indicator & Glowing Border
+  if (isTargeted) {
+    tCtx.save();
     tCtx.fillStyle = '#FF007F';
     tCtx.beginPath();
-    const centerX = offsetX + (COLS * blockSize) / 2;
-    tCtx.moveTo(centerX - 12, offsetY); tCtx.lineTo(centerX + 12, offsetY); tCtx.lineTo(centerX, offsetY + 15);
+    const centerX = offsetX + boardPixelW / 2;
+    tCtx.moveTo(centerX - 10, offsetY - 2);
+    tCtx.lineTo(centerX + 10, offsetY - 2);
+    tCtx.lineTo(centerX, offsetY + 12);
     tCtx.fill();
     
     // Glowing border for targeted player
-    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
-    tCtx.lineWidth = 4;
-    tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.9)';
+    tCtx.lineWidth = 3.5;
+    tCtx.shadowColor = '#FF007F';
+    tCtx.shadowBlur = 12;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  }
+
+  // 4. Score Card Underneath Each Player Board
+  if (!isDuo && blockSize >= 20) {
+    const cx = offsetX;
+    const cy = offsetY + boardPixelH + 8;
+    const cw = boardPixelW;
+    const ch = cardH;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, cx, cy, cw, ch, 6);
+    tCtx.fillStyle = 'rgba(10, 14, 32, 0.94)';
+    tCtx.fill();
+
+    // Card Border
+    if (isTargeted) {
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.85)';
+      tCtx.lineWidth = 2;
+      tCtx.shadowColor = '#FF007F';
+      tCtx.shadowBlur = 8;
+      tCtx.stroke();
+    } else if (isMyPlayer) {
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (player.isToppedOut) {
+      tCtx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      tCtx.lineWidth = 1;
+      tCtx.stroke();
+    } else {
+      tCtx.strokeStyle = 'rgba(90, 105, 145, 0.4)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    }
+    tCtx.restore();
+
+    // Card Top Accent Line (2px)
+    tCtx.save();
+    const grad = tCtx.createLinearGradient(cx, cy, cx + cw, cy);
+    const accentCol = isTargeted ? '#FF007F' : isMyPlayer ? '#00E5FF' : (playerColor || '#FFD700');
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.3, accentCol);
+    grad.addColorStop(0.7, accentCol);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    tCtx.fillStyle = grad;
+    tCtx.fillRect(cx + 8, cy + 1, cw - 16, 2);
+    tCtx.restore();
+
+    // Card Content - Row 1 (Score + Class)
+    tCtx.save();
+    // Left: Score
+    tCtx.font = 'bold 9px "Inter", sans-serif';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.textAlign = 'left';
+    tCtx.textBaseline = 'alphabetic';
+    tCtx.fillText('SCORE', cx + 12, cy + 19);
+
+    const scoreVal = Math.round(player.scoreManager.score).toLocaleString();
+    tCtx.font = 'bold 12px "Press Start 2P", monospace';
+    tCtx.fillStyle = player.isToppedOut ? '#64748B' : '#FFD700';
+    tCtx.fillText(scoreVal, cx + 64, cy + 20);
+
+    // Right: Class Name + Icon
+    const classInfo = PLAYER_CLASSES.find(c => c.id === player.playerClass);
+    const className = classInfo?.name || player.playerClass || 'CLASS';
+    const classColor = player.playerClass === 'SPEEDSTER' ? '#00E5FF' :
+                       player.playerClass === 'TANK' ? '#00FF88' :
+                       player.playerClass === 'SABOTEUR' ? '#E879F9' :
+                       player.playerClass === 'SUPPORT' ? '#FFD700' : '#94A3B8';
+
+    const classIcon = classIconCache[player.playerClass];
+    const iconSz = 20;
+    const iconX = cx + cw - iconSz - 10;
+    const iconY = cy + 7;
+
+    if (classIcon && classIcon.complete && classIcon.naturalWidth > 0) {
+      tCtx.drawImage(classIcon, iconX, iconY, iconSz, iconSz);
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 11px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className, iconX - 6, cy + 21);
+    } else {
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 11px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className, cx + cw - 12, cy + 21);
+    }
+
+    // Card Content - Row 2 (Lines, Kills + Status Pill)
+    tCtx.font = 'bold 9px "Inter", sans-serif';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.textAlign = 'left';
+    tCtx.fillText('LINES', cx + 12, cy + 42);
+
+    tCtx.font = 'bold 11px "Press Start 2P", monospace';
+    tCtx.fillStyle = '#E2E8F0';
+    tCtx.fillText(String(player.scoreManager.totalLinesCleared), cx + 58, cy + 43);
+
+    if (player.kills > 0) {
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#94A3B8';
+      tCtx.fillText('K.O.', cx + 104, cy + 42);
+      tCtx.font = 'bold 11px "Press Start 2P", monospace';
+      tCtx.fillStyle = '#FF3366';
+      tCtx.fillText(String(player.kills), cx + 138, cy + 43);
+    }
+
+    // Right: Live Status
+    tCtx.textAlign = 'right';
+    tCtx.font = 'bold 9px "Press Start 2P", monospace';
+    if (player.isToppedOut) {
+      tCtx.fillStyle = '#EF4444';
+      tCtx.fillText('● OUT', cx + cw - 12, cy + 42);
+    } else if (isTargeted) {
+      tCtx.fillStyle = '#FF007F';
+      tCtx.fillText('● LOCKED', cx + cw - 12, cy + 42);
+    } else if (isMyPlayer) {
+      tCtx.fillStyle = '#00E5FF';
+      tCtx.fillText('● ACTIVE', cx + cw - 12, cy + 42);
+    } else {
+      tCtx.fillStyle = '#10B981';
+      tCtx.fillText('● ALIVE', cx + cw - 12, cy + 42);
+    }
+    tCtx.restore();
   }
 
   // Pre-game countdown indicator: show "YOU" only on this player's own board
