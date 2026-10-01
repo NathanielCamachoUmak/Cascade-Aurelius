@@ -469,6 +469,11 @@ export class GameManager {
       const player = this.players[i];
       if (player.isToppedOut) continue;
 
+      // In online mode, only update our own player's game logic and our own bots
+      if (this.isOnline && i !== this.myPlayerIndex && !(player as any).botId) {
+        continue; // Remote players are synced via network events
+      }
+
       // 1. Tick spawn delay timer if active
       if (player.spawnDelayTimer > 0) {
         player.spawnDelayTimer = Math.max(0, player.spawnDelayTimer - dt);
@@ -616,23 +621,6 @@ export class GameManager {
         });
 
         player.bot.update(player.currentPiece, player.nextPiece, dt, abilityCtx, worldState);
-      }
-
-      // Spawning
-      if (!player.currentPiece) {
-        this.handleSpawning(player);
-        if (player.isToppedOut) {
-          if (this.isOnline) {
-            // Tell server we (or our bot) topped out
-            if ((player as any).botId) {
-              this.network?.sendEliminated(undefined, (player as any).botId);
-            } else {
-              this.network?.sendToppedOut();
-            }
-          }
-          this.checkGameOver();
-          continue;
-        }
       }
 
       // Active Drop & Input
