@@ -522,7 +522,7 @@ let battleRoyalCullThreshold = 0;                   // minimum score to survive 
 let brCullBannerEl: HTMLElement | null = null;
 let brCullBannerTimerId: number | null = null;
 // Tracks the standings panel width so canvas.width expands correctly
-const BR_STANDINGS_W = 148;
+const BR_STANDINGS_W = 168;
 
 function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
@@ -1530,18 +1530,48 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
 
-  // Draw Grid background (optional faint lines)
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      tCtx.lineWidth = 1;
-      tCtx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+  // Draw Grid background (optional faint lines) — only for full-size boards (blockSize >= 20)
+  if (blockSize >= 20) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        tCtx.lineWidth = 1;
+        tCtx.strokeRect(offsetX + c * blockSize, offsetY + r * blockSize, blockSize, blockSize);
+      }
     }
   }
 
   // Draw Player Grid Border
-  tCtx.strokeStyle = playerColor;
-  tCtx.lineWidth = 2;
+  const isBROnline = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
+  const myPlayerObj = gameManager.players[gameManager.myPlayerIndex ?? 0];
+  const isCurrentTarget = Boolean(myPlayerObj && myPlayerObj.selectedTargetIndex === index && !player.isToppedOut);
+
+  let gridBorderColor = playerColor;
+  let gridBorderWidth = 2;
+  if (isBROnline) {
+    if (isCurrentTarget) {
+      gridBorderColor = '#FF007F';
+      gridBorderWidth = 2.5;
+    } else if (isMyPlayer) {
+      gridBorderColor = '#00E5FF';
+      gridBorderWidth = 2;
+    } else if (player.isToppedOut) {
+      gridBorderColor = 'rgba(239, 68, 68, 0.4)';
+      gridBorderWidth = 1;
+    } else if (gameManager.getMaxColumnHeight(player) >= 15) {
+      gridBorderColor = '#F59E0B';
+      gridBorderWidth = 2;
+    } else {
+      gridBorderColor = 'rgba(0, 229, 255, 0.45)';
+      gridBorderWidth = 1.5;
+    }
+  } else if (isCurrentTarget) {
+    gridBorderColor = '#FF007F';
+    gridBorderWidth = 2.5;
+  }
+
+  tCtx.strokeStyle = gridBorderColor;
+  tCtx.lineWidth = gridBorderWidth;
   tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
   // Speed Block [V] Visual Buff Lines on Grid (5s duration)
@@ -2302,14 +2332,16 @@ function render() {
     }
   }
 
-  // Battle Royale: Render on-canvas Phase HUD strip across the top of the canvas
+  // Battle Royale: Render on-canvas Phase HUD strip and Live Standings panel
   if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
     const stripH = 30;
-    const stripW = canvas.width;
+    const panelX = canvas.width - BR_STANDINGS_W;
+    const stripW = panelX; // Phase strip only covers the boards area, leaving right column for Standings
+
     ctx.save();
 
-    // Dark background
-    ctx.fillStyle = 'rgba(4, 6, 18, 0.92)';
+    // Dark background for boards top strip
+    ctx.fillStyle = 'rgba(4, 6, 18, 0.94)';
     ctx.fillRect(0, 0, stripW, stripH);
 
     // Bottom border line
@@ -2327,20 +2359,20 @@ function render() {
     ctx.font = 'bold 8px "Press Start 2P", monospace';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'left';
-    ctx.fillText('BATTLE ROYALE', 10, cy);
+    ctx.fillText('BATTLE ROYALE', 12, cy);
 
-    // Centre: Phase name
+    // Centre: Phase name (centered over the boards area)
     ctx.font = 'bold 8px "Press Start 2P", monospace';
     ctx.fillStyle = '#E5E7EB';
     ctx.textAlign = 'center';
     ctx.fillText(battleRoyalPhaseLabel || 'OPENING BATTLE', stripW / 2, cy);
 
-    // Right side — survivor count + phase timer
+    // Right side of Phase Strip — positioned cleanly before Standings panel
     ctx.textAlign = 'right';
     // Survivor count
     ctx.font = 'bold 8px "Press Start 2P", monospace';
     ctx.fillStyle = '#00E5FF';
-    ctx.fillText(`${battleRoyalRemainingPlayers} ALIVE`, stripW - 10, cy - 6);
+    ctx.fillText(`${battleRoyalRemainingPlayers} ALIVE`, stripW - 14, cy - 6);
 
     // Phase countdown
     if (battleRoyalPhaseEndsAt && battleRoyalPhaseEndsAt > Date.now()) {
@@ -2350,20 +2382,16 @@ function render() {
       const timeStr = `${m}:${String(s).padStart(2, '0')}`;
       ctx.font = 'bold 8px "Press Start 2P", monospace';
       ctx.fillStyle = secLeft <= 10 ? '#EF4444' : '#94A3B8';
-      ctx.fillText(`NEXT: ${timeStr}`, stripW - 10, cy + 7);
+      ctx.fillText(`NEXT: ${timeStr}`, stripW - 14, cy + 7);
     } else if (battleRoyalPhaseEndsAt === null && battleRoyalStartedAt) {
       ctx.font = 'bold 8px "Press Start 2P", monospace';
       ctx.fillStyle = '#EF4444';
-      ctx.fillText('FINAL PHASE', stripW - 10, cy + 7);
+      ctx.fillText('FINAL PHASE', stripW - 14, cy + 7);
     }
 
     ctx.restore();
-    // Keep the floating HUD ticker refreshed while playing
-    updateBattleRoyalHud();
-  }
 
-  // Battle Royale: Live Standings Panel (right side of canvas)
-  if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
+    // ── Live Standings Panel (right side of canvas) ──
     const players = gameManager.players;
     const myIdx   = gameManager.myPlayerIndex;
     // Build sorted standings — alive players by score desc, culled players appended at bottom
@@ -2382,111 +2410,127 @@ function render() {
       });
 
     // Panel geometry
-    const panelX = canvas.width - BR_STANDINGS_W;
     const panelY = 0;
     const panelH = canvas.height;
-    const rowH   = Math.max(16, Math.min(22, Math.floor((panelH - 28) / Math.max(1, ranked.length))));
-    const headerH = 28;
+    const headerH = stripH; // 30px so header matches strip height exactly
+    const rowCount = Math.max(1, ranked.length);
+    const hasThreshold = battleRoyalCullThreshold > 0;
+    const threshH = hasThreshold ? 20 : 0;
+    const availableRowH = panelH - headerH - threshH - 4;
+    const rowH = Math.max(16, Math.min(22, Math.floor(availableRowH / rowCount)));
 
     ctx.save();
 
-    // Panel background + left border
-    ctx.fillStyle = 'rgba(4, 6, 20, 0.93)';
+    // Panel background + left divider border
+    ctx.fillStyle = 'rgba(4, 6, 20, 0.95)';
     ctx.fillRect(panelX, panelY, BR_STANDINGS_W, panelH);
-    ctx.strokeStyle = 'rgba(255, 193, 7, 0.35)';
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(panelX + 0.5, panelY);
     ctx.lineTo(panelX + 0.5, panelY + panelH);
     ctx.stroke();
 
-    // Header
+    // Header (seamless alignment with Phase strip)
     ctx.fillStyle = 'rgba(255, 193, 7, 0.12)';
-    ctx.fillRect(panelX, panelY, BR_STANDINGS_W, headerH);
-    ctx.font = 'bold 7px "Press Start 2P", monospace';
+    ctx.fillRect(panelX + 1, panelY, BR_STANDINGS_W - 1, headerH);
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 1, headerH - 0.5);
+    ctx.lineTo(panelX + BR_STANDINGS_W, headerH - 0.5);
+    ctx.stroke();
+
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('STANDINGS', panelX + BR_STANDINGS_W / 2, panelY + headerH / 2);
+    ctx.fillText('STANDINGS', panelX + BR_STANDINGS_W / 2, headerH / 2 + 1);
 
     // Rows
     ranked.forEach((entry, rank) => {
       const ry = panelY + headerH + rank * rowH;
-      if (ry + rowH > panelH) return; // clamp
+      if (ry + rowH > panelH - threshH) return; // clamp
 
       const isBelowThreshold = battleRoyalCullThreshold > 0 && entry.score < battleRoyalCullThreshold && entry.alive;
       const isDanger = entry.alive && entry.height >= 15;
       const isCulled = !entry.alive;
 
       // Row background
-      const bg = entry.isMe   ? 'rgba(0, 229, 255, 0.10)' :
-                 isCulled     ? 'rgba(60, 10, 10, 0.65)'  :
-                 isBelowThreshold ? 'rgba(50, 10, 10, 0.55)' :
-                 isDanger     ? 'rgba(50, 30, 0, 0.55)'  :
-                                'rgba(8, 12, 30, 0.45)';
+      const bg = entry.isMe       ? 'rgba(0, 229, 255, 0.14)' :
+                 isCulled         ? 'rgba(50, 10, 14, 0.70)'  :
+                 isBelowThreshold ? 'rgba(45, 10, 10, 0.60)'  :
+                 isDanger         ? 'rgba(45, 25, 4, 0.60)'   :
+                                    (rank % 2 === 0 ? 'rgba(10, 14, 34, 0.50)' : 'rgba(6, 10, 26, 0.50)');
       ctx.fillStyle = bg;
-      ctx.fillRect(panelX + 1, ry, BR_STANDINGS_W - 2, rowH);
+      ctx.fillRect(panelX + 1, ry, BR_STANDINGS_W - 1, rowH);
 
       // Left accent line for my row
       if (entry.isMe) {
         ctx.fillStyle = '#00E5FF';
-        ctx.fillRect(panelX + 1, ry, 2, rowH);
+        ctx.fillRect(panelX + 1, ry, 2.5, rowH);
       }
 
       const midY = ry + rowH / 2;
       ctx.textBaseline = 'middle';
 
-      // Rank number
-      ctx.font = `bold ${rowH >= 20 ? 7 : 6}px "Press Start 2P", monospace`;
-      ctx.textAlign = 'left';
-      ctx.fillStyle = isCulled ? '#4B0000' : entry.isMe ? '#00E5FF' : '#64748B';
-      ctx.fillText(`#${rank + 1}`, panelX + 5, midY);
+      // 1. Status dot indicator
+      const dotColor = isCulled ? '#EF4444' : isBelowThreshold ? '#EF4444' : isDanger ? '#F59E0B' : '#10B981';
+      ctx.fillStyle = dotColor;
+      ctx.beginPath();
+      ctx.arc(panelX + 8, midY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Player name (truncated)
-      ctx.font = `${rowH >= 20 ? 7 : 6}px "Inter", sans-serif`;
-      ctx.fillStyle = isCulled ? '#6B1111' : entry.isMe ? '#FFFFFF' : '#CBD5E1';
-      const nameMaxW = 60;
+      // 2. Rank number (#1, #10, #24)
+      const fontPx = rowH >= 20 ? 7 : 6;
+      ctx.font = `bold ${fontPx}px "Press Start 2P", monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isCulled ? '#7F1D1D' : entry.isMe ? '#00E5FF' : '#94A3B8';
+      ctx.fillText(`#${rank + 1}`, panelX + 16, midY);
+
+      // 3. Player name (truncated with room for score)
+      ctx.font = `bold ${rowH >= 20 ? 11 : 10}px "Inter", sans-serif`;
+      ctx.fillStyle = isCulled ? '#991B1B' : entry.isMe ? '#FFFFFF' : '#CBD5E1';
+      const nameMaxW = 68;
       let displayName = entry.name;
       while (displayName.length > 2 && ctx.measureText(displayName).width > nameMaxW) {
         displayName = displayName.slice(0, -1);
       }
-      ctx.fillText(displayName, panelX + 22, midY);
+      ctx.fillText(displayName, panelX + 42, midY);
 
-      // Score (right-aligned, tabular)
+      // 4. Score (right-aligned, tabular)
       ctx.textAlign = 'right';
-      ctx.font = `bold ${rowH >= 20 ? 7 : 6}px "Press Start 2P", monospace`;
+      ctx.font = `bold ${fontPx}px "Press Start 2P", monospace`;
       const scoreStr = entry.score >= 1000 ? `${(entry.score / 1000).toFixed(1)}K` : String(entry.score);
-      ctx.fillStyle = isCulled ? '#6B1111' : isBelowThreshold ? '#EF4444' : entry.isMe ? '#FFD700' : '#94A3B8';
-      ctx.fillText(scoreStr, panelX + BR_STANDINGS_W - 5, midY);
-
-      // Status dot (far right, replaced by score — use a small colored square on the left instead)
-      const dotColor = isCulled ? '#6B1111' : isBelowThreshold ? '#EF4444' : isDanger ? '#F59E0B' : '#10B981';
-      ctx.fillStyle = dotColor;
-      ctx.fillRect(panelX + BR_STANDINGS_W - 5, midY - 3, 3, 6);
+      ctx.fillStyle = isCulled ? '#7F1D1D' : isBelowThreshold ? '#EF4444' : entry.isMe ? '#FFD700' : '#E2E8F0';
+      ctx.fillText(scoreStr, panelX + BR_STANDINGS_W - 8, midY);
 
       // Separator line
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       ctx.moveTo(panelX + 1, ry + rowH - 0.5);
-      ctx.lineTo(panelX + BR_STANDINGS_W - 1, ry + rowH - 0.5);
+      ctx.lineTo(panelX + BR_STANDINGS_W, ry + rowH - 0.5);
       ctx.stroke();
     });
 
     // Threshold label at bottom if active
     if (battleRoyalCullThreshold > 0) {
-      const threshY = panelH - 18;
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-      ctx.fillRect(panelX, threshY, BR_STANDINGS_W, 18);
-      ctx.font = 'bold 6px "Press Start 2P", monospace';
+      const threshY = panelH - threshH;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+      ctx.fillRect(panelX + 1, threshY, BR_STANDINGS_W - 1, threshH);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctx.strokeRect(panelX + 1, threshY, BR_STANDINGS_W - 1, threshH);
+      ctx.font = 'bold 6.5px "Press Start 2P", monospace';
       ctx.fillStyle = '#EF4444';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`MIN ${battleRoyalCullThreshold >= 1000 ? `${(battleRoyalCullThreshold/1000).toFixed(0)}K` : battleRoyalCullThreshold} TO SURVIVE`, panelX + BR_STANDINGS_W / 2, threshY + 9);
+      ctx.fillText(`MIN ${battleRoyalCullThreshold >= 1000 ? `${(battleRoyalCullThreshold/1000).toFixed(0)}K` : battleRoyalCullThreshold} TO SURVIVE`, panelX + BR_STANDINGS_W / 2, threshY + threshH / 2);
     }
 
     ctx.restore();
   }
+
 
   // Render visual effects
 
