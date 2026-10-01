@@ -54,8 +54,14 @@ const MUSIC_TRACKS = {
 } as const;
 
 const SFX_CLIPS = {
-  menuSelect: '/audio/sfx/MenuSelect.wav',
-  lineClear:  '/audio/sfx/LineClear.wav',
+  menuSelect: '/audio/sfx/sfx-Select.wav',
+  lineClear:  '/audio/sfx/sfx-LineClear.wav',
+  bomb:       '/audio/sfx/sfx-Bomb.mp3',
+  death:      '/audio/sfx/sfx-Death.mp3',
+  freeze:     '/audio/sfx/sfx-Freeze.mp3',
+  multiplier: '/audio/sfx/sfx-Multiplier.mp3',
+  shield:     '/audio/sfx/sfx-Shield.mp3',
+  ultimate:   '/audio/sfx/sfx-Ultimate.mp3',
 } as const;
 
 type MusicTrack = keyof typeof MUSIC_TRACKS;

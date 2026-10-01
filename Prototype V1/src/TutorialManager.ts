@@ -1523,7 +1523,7 @@ export class TutorialManager {
       if (this.certStep === 'STEP_4_ULTIMATE') {
         e.preventDefault();
         if (key === 'r' || key === 'R' || key === 'Shift') {
-          AudioManager.playSfx('lineClear');
+          AudioManager.playSfx('freeze');
           this.dummyBoards.forEach((d, idx) => {
             d.frozenTimer = 5000;
             d.statusBadge = '❄ FROZEN (5.0s)';
@@ -1602,7 +1602,7 @@ export class TutorialManager {
       if (this.certStep === 'STEP_4_ULTIMATE') {
         e.preventDefault();
         if (key === 'r' || key === 'R' || key === 'Shift') {
-          AudioManager.playSfx('lineClear');
+          AudioManager.playSfx('ultimate');
           this.classMeter = 0;
           this.rStatusText = 'UNLEASHED!';
           this.dummyBoards.forEach((d, idx) => {
@@ -1692,7 +1692,7 @@ export class TutorialManager {
       if (this.certStep === 'STEP_4_ULTIMATE') {
         e.preventDefault();
         if (key === 'r' || key === 'R' || key === 'Shift') {
-          AudioManager.playSfx('lineClear');
+          AudioManager.playSfx('ultimate');
           this.classMeter = 0;
           this.gridShiftUsed = false;
           this.eStatusText = 'RESET & READY!';
@@ -1784,7 +1784,7 @@ export class TutorialManager {
       if (this.certStep === 'STEP_4_ULTIMATE') {
         e.preventDefault();
         if (key === 'r' || key === 'R' || key === 'Shift') {
-          AudioManager.playSfx('lineClear');
+          AudioManager.playSfx('ultimate');
           this.classMeter = 0;
           this.rStatusText = 'ALLY SAVED!';
           const ally = this.dummyBoards[0];
@@ -1950,12 +1950,14 @@ export class TutorialManager {
         if (this.activeClass === 'SPEEDSTER') {
           this.showStage2Banner('✓ SPEED BLOCK [V] TRIGGERED! Block drop speed slowed by 50% for 5 seconds!', 'green');
         } else if (this.activeClass === 'TANK') {
+          AudioManager.playSfx('shield');
           if (this.dummyBoards[0]) {
             this.dummyBoards[0].statusBadge = '🛡 ATTACK ABSORBED BY SHIELD BLOCK!';
             this.dummyBoards[0].statusColor = '#00FF66';
           }
           this.showStage2Banner('✓ SHIELD BLOCK [S] TRIGGERED! Absorbed the Dummy’s incoming garbage attack!', 'green');
         } else if (this.activeClass === 'SABOTEUR') {
+          AudioManager.playSfx('freeze');
           if (this.dummyBoards[0]) {
             this.dummyBoards[0].abilityFreezeTimer = 3000;
             this.dummyBoards[0].statusBadge = '❄ ABILITIES LOCKED FOR 3.0s!';

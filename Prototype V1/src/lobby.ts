@@ -734,6 +734,7 @@ function wireGameCallbacks(network: NetworkManager) {
     updateBattleRoyalHud();
   };
   network.onPlayerKnockedOut = (data) => {
+    AudioManager.playSfx('death');
     if (data.playerId !== network?.mySocketId) {
       showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
     }
@@ -757,6 +758,7 @@ function wireGameCallbacks(network: NetworkManager) {
     gameManager.applyTdmReboot(data.playerIndex, data.durationMs, data.score, data.koCount);
     onlineTeamScores = data.teamScores;
     updateTeamScoreHud();
+    AudioManager.playSfx('death');
 
     const victimName = onlinePlayerSpecs[data.playerIndex]?.name || `P${data.playerIndex + 1}`;
     const killerName = data.killerIndex !== null && data.killerIndex !== undefined && onlinePlayerSpecs[data.killerIndex]
@@ -780,6 +782,7 @@ function wireGameCallbacks(network: NetworkManager) {
   network.onTeamAceWipeout = (data) => {
     onlineTeamScores = data.teamScores;
     updateTeamScoreHud();
+    AudioManager.playSfx('ultimate');
     const squadName = data.scoringTeam === 'cyan' ? 'CYAN CIRCUIT' : 'MAGENTA VOLTAGE';
     showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
   };

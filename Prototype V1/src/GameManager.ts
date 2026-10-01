@@ -321,12 +321,14 @@ export class GameManager {
         if (!isSolidSuddenDeath && targetPlayer.shieldActive) {
           targetPlayer.shieldActive = false;
           targetPlayer.shieldDeflectTimer = 900;
+          AudioManager.playSfx('shield');
           this.spawnBoardExplosionParticles(resolvedIdx, 150, 18 * 30, '#00FF88', '#00E5FF', 24);
           this.spawnBoardFloatingText(resolvedIdx, '🛡 ATTACK BLOCKED!', 150, 13 * 30, '#00FF88', 14);
           return;
         }
         if (!isSolidSuddenDeath && targetPlayer.fortifyCharges > 0) {
           targetPlayer.fortifyCharges--;
+          AudioManager.playSfx('shield');
           this.spawnBoardFloatingText(resolvedIdx, `🛡 FORTIFY BLOCKED! (${targetPlayer.fortifyCharges} LEFT)`, 150, 13 * 30, '#00FF88', 13);
           return;
         }
@@ -523,6 +525,7 @@ export class GameManager {
       if (!player.currentPiece) {
         this.handleSpawning(player);
         if (player.isToppedOut) {
+          AudioManager.playSfx('death');
           if (this.isOnline) {
             const killer = player.lastAttackerIndex ?? undefined;
             if ((player as any).botId) {
@@ -1024,6 +1027,7 @@ export class GameManager {
     const ultimateCost = player.playerClass === 'SPEEDSTER' ? 40 : player.playerClass === 'TANK' ? 50 : player.playerClass === 'SABOTEUR' ? 35 : 45;
     if (player.classMeter < ultimateCost) return;
     player.classMeter = 0;
+    AudioManager.playSfx('ultimate');
     if (player.playerClass === 'SPEEDSTER') {
       this.sendOrApplyClassEffect(player, { type: 'QUICKSILVER', durationMs: BULLET_TIME_DURATION_MS });
       this.spawnBoardFloatingText(pIdx, '❄ [R] BULLET TIME UNLEASHED!', 150, 10 * 30, '#00E5FF', 14);
@@ -1215,6 +1219,7 @@ export class GameManager {
     if (opponents.length > 0) {
       const targetEntry = (source.selectedTargetIndex !== null && opponents.find(o => o.idx === source.selectedTargetIndex)) || opponents[0];
       source.freezeTetherVisual = { targetPlayerIndex: targetEntry.idx, timer: 650, maxTimer: 650 };
+      AudioManager.playSfx('freeze');
     }
 
     if (this.isOnline && this.state !== GameState.TUTORIAL) {
@@ -1394,6 +1399,7 @@ export class GameManager {
 
         player.grid.clearBombArea(effRow, effCol);
         player.bombBlastVisual = { row: effRow, col: effCol, timer: 900, maxTimer: 900 };
+        AudioManager.playSfx('bomb');
         this.spawnBoardExplosionParticles(pIdx, (effCol + 0.5) * 30, (effRow + 0.5) * 30, '#FF5555', '#FFD700', 28);
         this.spawnBoardFloatingText(pIdx, '💥 3×3 BLAST!', (effCol + 0.5) * 30, Math.max(60, (effRow - 1) * 30), '#FFD700', 14);
       } else if (special === SpecialBlockType.HEAVY) {
@@ -1405,6 +1411,7 @@ export class GameManager {
         this.spawnBoardFloatingText(pIdx, '⬇ HEAVY CRUSH! +1 ROW', 150, Math.max(60, (crushRow - 1) * 30), '#FFD700', 13);
       } else if (special === SpecialBlockType.MULTIPLIER) {
         // Already activated above before addScoreForLines; spawn visual feedback
+        AudioManager.playSfx('multiplier');
         const multRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, multRow * 30, '#B026FF', '#E879F9', 20);
         this.spawnBoardFloatingText(pIdx, '⚡ +2x POINTS (5s)!', 150, Math.max(60, (multRow - 1) * 30), '#E879F9', 13);
@@ -1418,6 +1425,7 @@ export class GameManager {
         this.spawnBoardFloatingText(pIdx, '⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, Math.max(60, (speedRow - 1) * 30), '#00E5FF', 12);
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
+        AudioManager.playSfx('shield');
         const shieldRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, shieldRow * 30, '#00FF88', '#00E5FF', 20);
         this.spawnBoardFloatingText(pIdx, '🛡 SHIELD AURA RAISED!', 150, Math.max(60, (shieldRow - 1) * 30), '#00FF88', 13);
@@ -1461,6 +1469,7 @@ export class GameManager {
     if (this.state === GameState.PLAYING && !player.currentPiece) {
       this.handleSpawning(player);
       if (player.isToppedOut) {
+        AudioManager.playSfx('death');
         if (this.isOnline) {
           const killer = player.lastAttackerIndex ?? undefined;
           if ((player as any).botId) {

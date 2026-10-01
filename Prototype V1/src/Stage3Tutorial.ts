@@ -731,7 +731,7 @@ export class Stage3Tutorial {
     this.grid.lockTetromino(piece);
     this.currentPiece = null;
 
-    AudioManager.playSfx('lineClear');
+    AudioManager.playSfx(stepMeta.specialType === SpecialBlockType.BOMB ? 'bomb' : 'lineClear');
 
     // ─── STEP 1: BOMB BLOCK (Line Clear -> 3x3 Area Clear + Localized Explosion) ───
     if (stepMeta.specialType === SpecialBlockType.BOMB) {
@@ -789,6 +789,7 @@ export class Stage3Tutorial {
       this.lineFlashRow = 19;
       this.lineFlashTimer = 450;
       this.grid.clearLines();
+      AudioManager.playSfx('multiplier');
 
       this.multiplierBuffTimer = this.MULTIPLIER_BUFF_MAX;
       const multEl = document.getElementById('multiplier-p1');
@@ -855,7 +856,7 @@ export class Stage3Tutorial {
         this.shieldDeflectTimer = 900;
         this.incomingGarbageLines = 0;
         this.shieldAuraActive = false;
-        AudioManager.playSfx('lineClear');
+        AudioManager.playSfx('shield');
         this.spawnExplosionParticles(150, 18 * BLOCK_SIZE, '#00FF88', '#00E5FF', 28);
         this.addFloatingText('🛡 ATTACK BLOCKED! (0 GARBAGE ADDED)', 150, 13 * BLOCK_SIZE, '#00FF88', 13);
         this.enableContinueButton();
@@ -881,7 +882,7 @@ export class Stage3Tutorial {
       this.scheduleTimeout(() => {
         this.dummyFreezeDebuffTimer = this.DUMMY_FREEZE_MAX;
         this.setupDummyOpponentGrid(true);
-        AudioManager.playSfx('lineClear');
+        AudioManager.playSfx('freeze');
         this.enableContinueButton();
       }, 500);
       return;
