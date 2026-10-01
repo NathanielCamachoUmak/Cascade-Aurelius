@@ -1534,12 +1534,11 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   if (player.shieldActive || player.fortifyCharges > 0 || player.shieldDeflectTimer > 0) {
     tCtx.save();
     const isDeflecting = player.shieldDeflectTimer > 0;
-    const pulseAlpha = isDeflecting ? 0.9 : 0.45 + Math.sin(performance.now() * 0.012) * 0.3;
 
-    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : `rgba(0, 255, 136, ${pulseAlpha})`;
-    tCtx.lineWidth = isDeflecting ? 6 : 5;
+    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : 'rgba(0, 255, 136, 0.85)';
+    tCtx.lineWidth = isDeflecting ? 6 : 3;
     tCtx.shadowColor = '#00FF88';
-    tCtx.shadowBlur = isDeflecting ? 26 : 18;
+    tCtx.shadowBlur = isDeflecting ? 26 : 14;
     tCtx.strokeRect(offsetX + 3, offsetY + 3, boardPixelW - 6, boardPixelH - 6);
     tCtx.restore();
   }
