@@ -69,8 +69,8 @@ export class AIBot {
 
   // Delay settings in ms
   private readonly DELAYS = {
-    EASY: { think: 1200, action: 120 },
-    HARD: { think: 250, action: 50 }
+    EASY: { think: 1000, action: 110 },
+    HARD: { think: 200, action: 45 }
   };
 
   // Base heuristic weights (CEM-trained with custom adjustments for wells/bumpiness)
@@ -411,12 +411,12 @@ export class AIBot {
     startY: number,
     startR: number,
     gridMatrix: Cell[][]
-  ): { x: number; y: number; r: number }[] {
+  ): { x: number; y: number; r: number; actions: InputAction[] }[] {
     const visited = new Set<string>();
-    const queue: { x: number; y: number; r: number }[] = [];
-    const lockPositions: Map<string, { x: number; y: number; r: number }> = new Map();
+    const queue: { x: number; y: number; r: number; actions: InputAction[] }[] = [];
+    const lockPositions: Map<string, { x: number; y: number; r: number; actions: InputAction[] }> = new Map();
 
-    const start = { x: startX, y: startY, r: startR };
+    const start = { x: startX, y: startY, r: startR, actions: [] as InputAction[] };
     queue.push(start);
     visited.add(`${start.x},${start.y},${start.r}`);
 
@@ -428,17 +428,22 @@ export class AIBot {
       if (this.checkCollisionOnMatrix(gridMatrix, curMatrix, cur.x, cur.y + 1)) {
         const lockKey = `${cur.x},${cur.y},${cur.r}`;
         if (!lockPositions.has(lockKey)) {
-          lockPositions.set(lockKey, { x: cur.x, y: cur.y, r: cur.r });
+          lockPositions.set(lockKey, {
+            x: cur.x,
+            y: cur.y,
+            r: cur.r,
+            actions: [...cur.actions, InputAction.HARD_DROP]
+          });
         }
       }
 
       // Explore neighbors: Left, Right, Down, Rotate CW, Rotate CCW
       const neighbors = [
-        { x: cur.x - 1, y: cur.y, r: cur.r },
-        { x: cur.x + 1, y: cur.y, r: cur.r },
-        { x: cur.x, y: cur.y + 1, r: cur.r },
-        { x: cur.x, y: cur.y, r: (cur.r + 1) % 4 },
-        { x: cur.x, y: cur.y, r: (cur.r + 3) % 4 },
+        { x: cur.x - 1, y: cur.y, r: cur.r, action: InputAction.LEFT },
+        { x: cur.x + 1, y: cur.y, r: cur.r, action: InputAction.RIGHT },
+        { x: cur.x, y: cur.y + 1, r: cur.r, action: InputAction.SOFT_DROP },
+        { x: cur.x, y: cur.y, r: (cur.r + 1) % 4, action: InputAction.ROTATE_CW },
+        { x: cur.x, y: cur.y, r: (cur.r + 3) % 4, action: InputAction.ROTATE_CCW },
       ];
 
       for (const next of neighbors) {
@@ -448,7 +453,12 @@ export class AIBot {
         const nextMatrix = this.getRotatedMatrix(type, next.r);
         if (!this.checkCollisionOnMatrix(gridMatrix, nextMatrix, next.x, next.y)) {
           visited.add(key);
-          queue.push(next);
+          queue.push({
+            x: next.x,
+            y: next.y,
+            r: next.r,
+            actions: [...cur.actions, next.action]
+          });
         }
       }
     }
@@ -464,7 +474,8 @@ export class AIBot {
     targetX: number,
     targetR: number,
     type: string,
-    gridMatrix: Cell[][]
+    gridMatrix: Cell[][],
+    fallbackActions: InputAction[] = []
   ): InputAction[] {
     // Try the simple path: rotate, then translate, then drop
     const simpleActions = this.generateSimpleActions(startX, startR, targetX, targetR);
@@ -513,7 +524,11 @@ export class AIBot {
       return moveFirstActions;
     }
 
-    // Fallback: use simple path anyway
+    // Use verified BFS collision-free path fallback when simple top-level motions are obstructed
+    if (fallbackActions.length > 0) {
+      return fallbackActions;
+    }
+
     return simpleActions;
   }
 
@@ -609,22 +624,31 @@ export class AIBot {
   private pickDifficultyMove(moves: MoveSequence[]): MoveSequence {
     const strategy = this.getPlacementStrategy();
 
-    // GOAP SUBOPTIMAL: DDA cruising — intentionally pick a weaker move
-    if (strategy === 'SUBOPTIMAL' && moves.length >= 3) {
-      // Pick from moves ranked 2nd through 4th (skip the best)
-      const pool = moves.slice(1, Math.min(4, moves.length));
-      return pool[Math.floor(Math.random() * pool.length)];
-    }
+    // EASY difficulty: deliberate mistakes / blunders to give beginners a fair and fun challenge
+    if (this.difficulty === 'EASY') {
+      if (strategy === 'SUBOPTIMAL' && moves.length >= 3) {
+        // DDA cruising — pick from 2nd through 4th ranked placements
+        const pool = moves.slice(1, Math.min(4, moves.length));
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
 
-    // Original EASY difficulty randomness (applies when no GOAP profile is active)
-    if (strategy === 'OPTIMAL' && this.difficulty === 'EASY' && moves.length >= 4) {
-      if (Math.random() < 0.25) {
-        return moves[Math.floor(Math.random() * 3) + 1];
+      // 30% mistake rate: occasionally picks a 2nd to 4th ranked move instead of the best
+      if (moves.length >= 3 && Math.random() < 0.30) {
+        const pool = moves.slice(1, Math.min(4, moves.length));
+        return pool[Math.floor(Math.random() * pool.length)];
       }
     }
 
-    // OPTIMAL and DOWNSTACK both pick the best move
-    // (DOWNSTACK's "aggressiveness" comes from the modified heuristic weights, not from move selection)
+    // HARD difficulty: Ruthless, zero-blunder optimal execution matching the online competitive bot
+    // Only cruise if leading by an overwhelming margin (>6000 points)
+    if (this.difficulty === 'HARD') {
+      if (strategy === 'SUBOPTIMAL' && this.lastWorldState && this.lastWorldState.scoreDelta > 6000 && moves.length >= 3) {
+        const pool = moves.slice(1, Math.min(3, moves.length));
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+      return moves[0];
+    }
+
     return moves[0];
   }
 
@@ -650,7 +674,8 @@ export class AIBot {
       const actions = this.generateActions(
         piece.x, piece.rotationIndex,
         pos.x, pos.r,
-        piece.type, gridMatrix
+        piece.type, gridMatrix,
+        pos.actions
       );
 
       moves.push({

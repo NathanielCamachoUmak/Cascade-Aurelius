@@ -111,12 +111,18 @@ export class GameManager {
   public init1v1(difficulty: Difficulty, humanClass: PlayerClass = 'TANK', preGameDelayMs: number = 5000) {
     this.isOnline = false;
     this.network = null;
+    this.myPlayerIndex = 0;
     const botClasses: PlayerClass[] = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
     const botClass = botClasses[Math.floor(Math.random() * botClasses.length)];
     const p1 = new Player("P1", false, 'HARD', true, humanClass);
-    const p2 = new Player(getUniqueBotName(["P1"]), true, difficulty, true, botClass);
+    const p2 = new Player(getUniqueBotName(["P1"]), true, difficulty, false, botClass);
     p1.selectedTargetIndex = 1;
     p2.selectedTargetIndex = 0;
+    p1.team = 'cyan';
+    p2.team = 'magenta';
+    if (p2.bot) {
+      p2.bot.personality = 'CHASER';
+    }
     this.players = [p1, p2];
     this.start(preGameDelayMs);
   }

@@ -1519,7 +1519,7 @@ let boardLayout: BoardLayoutEntry[] = [];
 
 function renderPlayer(player: Player, index: number, isDuo: boolean) {
   let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
-  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
+  const isMyPlayer = index === (gameManager.isOnline ? gameManager.myPlayerIndex : 0);
   const playerColor = isDuo ? (isMyPlayer ? PLAYER_COLORS[0] : PLAYER_COLORS[3]) : (PLAYER_COLORS[index] || '#00E5FF');
   
   let tCtx = ctx;
