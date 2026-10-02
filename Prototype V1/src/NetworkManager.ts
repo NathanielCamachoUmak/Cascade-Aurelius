@@ -1,4 +1,5 @@
 import { io, Socket } from "socket.io-client";
+import { showToast } from './Toast';
 
 import type { OnlineModeId } from './OnlineModeSelect';
 
@@ -97,12 +98,16 @@ export interface ClassEffectData {
 
 // In production, set VITE_SERVER_URL in Vercel to your public tunnel URL.
 // Locally it falls back to localhost:3000 automatically.
-const SERVER_URL = (import.meta as ImportMeta & { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL || "http://localhost:3000";
+export const SERVER_URL = (import.meta as ImportMeta & { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL || "http://localhost:3000";
 
 export class NetworkManager {
   private socket: Socket;
   public mySocketId: string = "";
   public currentRoomId: string | null = null;
+  public isConnected: boolean = false;
+  public isServerWaking: boolean = false;
+  private wakeCheckTimer: any = null;
+  private lastWakeToastAt: number = 0;
 
   // --- Lobby callbacks ---
   public onChatMessage: ((data: {sender: string; text: string}) => void) | null = null;
@@ -144,11 +149,48 @@ export class NetworkManager {
   public onTeamAceWipeout?: (data: { victimTeam: string; scoringTeam: string; bonusPoints: number; teamScores: { cyan: number; magenta: number } }) => void;
 
   constructor() {
-    this.socket = io(SERVER_URL, { transports: ['websocket'] });
+    this.socket = io(SERVER_URL, { transports: ['websocket'], reconnectionAttempts: 25, reconnectionDelay: 1500 });
+
+    // Render free-tier cold-start indicator: if not connected within 2.5s, notify the player
+    this.wakeCheckTimer = setTimeout(() => {
+      if (!this.socket.connected && !this.isConnected) {
+        this.isServerWaking = true;
+        this.lastWakeToastAt = Date.now();
+        showToast(
+          '⚡ Connecting to server... Free tier instances take ~30–60s to spin up. Please wait.',
+          'warning'
+        );
+      }
+    }, 2500);
+
+    this.socket.on("connect_error", () => {
+      const now = Date.now();
+      if (!this.isConnected && (now - this.lastWakeToastAt > 15000)) {
+        this.isServerWaking = true;
+        this.lastWakeToastAt = now;
+        showToast(
+          '⚡ Server is waking up (Render free tier takes ~30–60s). Please wait...',
+          'warning'
+        );
+      }
+    });
 
     this.socket.on("connect", () => {
+      if (this.wakeCheckTimer) {
+        clearTimeout(this.wakeCheckTimer);
+        this.wakeCheckTimer = null;
+      }
       this.mySocketId = this.socket.id ?? "";
+      this.isConnected = true;
+      if (this.isServerWaking) {
+        showToast('✓ Server connected! Welcome to the lobby.', 'success');
+        this.isServerWaking = false;
+      }
       this.onConnected?.();
+    });
+
+    this.socket.on("disconnect", () => {
+      this.isConnected = false;
     });
 
     this.socket.on('chatMessage', (data: {sender: string; text: string}) => { this.onChatMessage?.(data); });
@@ -256,10 +298,16 @@ export class NetworkManager {
   // --- Lobby emitters ---
 
   public hostRoom(roomId: string, name: string, modeId: OnlineModeId, classId: string) {
+    if (!this.isConnected) {
+      showToast('⚡ Server is waking up (~30–60s). Your lobby will open as soon as connection is ready...', 'warning');
+    }
     this.socket.emit('host-room', { roomId, name, modeId, classId });
   }
 
   public joinRoom(roomId: string, name: string, modeId: OnlineModeId, classId: string) {
+    if (!this.isConnected) {
+      showToast('⚡ Server is waking up (~30–60s). Joining room as soon as connection is ready...', 'warning');
+    }
     this.socket.emit("join-room", { roomId, name, modeId, classId });
   }
 

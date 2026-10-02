@@ -187,6 +187,22 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       chatMessages.scrollTop = chatMessages.scrollHeight;
     };
 
+    network.onConnected = () => {
+      if (!inRoom) {
+        if (btnHost.disabled) {
+          authStatus.innerText = 'Connected! Contacting lobby room...';
+        } else {
+          authStatus.innerHTML = '<span class="text-neon-green/80 text-xs">● Connected to server</span>';
+        }
+      }
+    };
+
+    network.onJoinError = (message: string) => {
+      authStatus.innerText = message;
+      btnHost.disabled = false;
+      btnJoin.disabled = false;
+    };
+
     options.onNetworkReady(network);
     return network;
   }
@@ -384,9 +400,13 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         options.onClassChange?.(finalClassId);
         const roomId = inputRoom.value.trim() || 'test-room';
         const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
-        ensureNetwork();
-        network?.hostRoom(roomId, nickname, selectedOnlineMode, finalClassId);
-        authStatus.innerText = 'Creating lobby...';
+        const net = ensureNetwork();
+        net.hostRoom(roomId, nickname, selectedOnlineMode, finalClassId);
+        if (!net.isConnected) {
+          authStatus.innerHTML = '<span class="text-neon-yellow animate-pulse text-xs">⚡ Server waking up (~30–60s)... Creating room once connected</span>';
+        } else {
+          authStatus.innerText = 'Creating lobby...';
+        }
         btnHost.disabled = true; btnJoin.disabled = true;
       }
     });
@@ -402,9 +422,13 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
         options.onClassChange?.(finalClassId);
         const roomId = inputRoom.value.trim() || 'test-room';
         const nickname = inputNickname.value.trim() || defaultNickname || `Player-${Math.floor(Math.random() * 1000)}`;
-        ensureNetwork();
-        network?.joinRoom(roomId, nickname, selectedOnlineMode, finalClassId);
-        authStatus.innerText = 'Joining lobby...';
+        const net = ensureNetwork();
+        net.joinRoom(roomId, nickname, selectedOnlineMode, finalClassId);
+        if (!net.isConnected) {
+          authStatus.innerHTML = '<span class="text-neon-yellow animate-pulse text-xs">⚡ Server waking up (~30–60s)... Joining room once connected</span>';
+        } else {
+          authStatus.innerText = 'Joining lobby...';
+        }
         btnHost.disabled = true; btnJoin.disabled = true;
       }
     });
@@ -468,6 +492,13 @@ export function mountLobbyScreen(options: LobbyScreenOptions): LobbyScreenContro
       inputNickname.value = defaultNickname;
     } else {
       defaultNickname = '';
+    }
+
+    const net = ensureNetwork();
+    if (!net.isConnected) {
+      authStatus.innerHTML = '<span class="text-neon-yellow animate-pulse text-xs">⚡ Contacting server (Render free tier waking up ~30s)...</span>';
+    } else {
+      authStatus.innerHTML = '<span class="text-neon-green/80 text-xs">● Connected to server</span>';
     }
   }
 

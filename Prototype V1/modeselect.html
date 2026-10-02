@@ -164,6 +164,85 @@
         box-shadow: 0 0 20px rgba(0,255,255,0.1);
       }
 
+      /* Unified Mode Select Component Styling (Online & Solo Parity) */
+      .bq-mode-select {
+        --bq-bg: #08091d;
+        --bq-panel: rgba(16, 18, 51, 0.88);
+        --bq-line: rgba(169, 176, 255, 0.23);
+        --bq-text: #f4f6ff;
+        --bq-muted: #a4aac5;
+        --bq-cyan: #00e5ff;
+        --bq-yellow: #ffc107;
+        --bq-magenta: #ff007f;
+        --bq-green: #00ff88;
+        color: var(--bq-text);
+        width: min(100%, 1100px);
+        margin: 0 auto;
+        padding: clamp(1rem, 4vw, 3rem);
+        box-sizing: border-box;
+        background:
+          radial-gradient(circle at 18% 0%, rgba(0, 229, 255, 0.11), transparent 32rem),
+          radial-gradient(circle at 86% 100%, rgba(255, 0, 127, 0.12), transparent 28rem),
+          var(--bq-bg);
+        border: 1px solid var(--bq-line);
+        border-radius: 18px;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 18px 55px rgba(0, 0, 0, 0.38);
+      }
+      .bq-mode-select * { box-sizing: border-box; }
+      .bq-mode-select__eyebrow { color: var(--bq-cyan); font-size: .72rem; font-weight: 800; letter-spacing: .18em; margin: 0 0 .65rem; text-transform: uppercase; }
+      .bq-mode-select__title { font-size: clamp(1.7rem, 5vw, 3.25rem); line-height: 1; margin: 0; letter-spacing: -.045em; font-weight: 800; }
+      .bq-mode-select__subtitle { color: var(--bq-muted); font-size: clamp(.95rem, 2vw, 1.08rem); line-height: 1.65; margin: .8rem 0 1.8rem; max-width: 44rem; }
+      .bq-mode-select__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+      .bq-mode-select__card {
+        --mode-color: var(--bq-cyan);
+        appearance: none;
+        min-height: 250px;
+        width: 100%;
+        padding: 1.2rem;
+        text-align: left;
+        color: var(--bq-text);
+        background: linear-gradient(155deg, rgba(35, 39, 84, .84), rgba(12, 13, 36, .92));
+        border: 1px solid var(--bq-line);
+        border-radius: 14px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: .7rem;
+        position: relative;
+        transition: border-color 160ms ease-out, box-shadow 160ms ease-out, transform 160ms ease-out, opacity 160ms ease-out;
+      }
+      .bq-mode-select__card:hover:not(:disabled), .bq-mode-select__card:focus-visible {
+        border-color: var(--mode-color);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--mode-color) 18%, transparent), 0 14px 26px rgba(0,0,0,.26);
+        outline: none;
+        transform: translateY(-3px);
+      }
+      .bq-mode-select__card[data-accent="yellow"] { --mode-color: var(--bq-yellow); }
+      .bq-mode-select__card[data-accent="magenta"] { --mode-color: var(--bq-magenta); }
+      .bq-mode-select__card[data-accent="green"] { --mode-color: var(--bq-green); }
+      .bq-mode-select__format { color: var(--mode-color); font-size: .72rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+      .bq-mode-select__mode-title { font-size: clamp(1.25rem, 2.3vw, 1.55rem); font-weight: 800; line-height: 1.15; margin: 0; }
+      .bq-mode-select__description { color: var(--bq-muted); font-size: .92rem; line-height: 1.55; margin: 0; flex-grow: 1; }
+      .bq-mode-select__rule { color: var(--mode-color); border-top: 1px solid var(--bq-line); font-size: .74rem; font-weight: 700; letter-spacing: .02em; line-height: 1.45; margin-top: auto; padding-top: .8rem; margin-bottom: 0; }
+      .bq-mode-select__actions { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: flex-end; margin-top: 1.25rem; }
+      .bq-mode-select__button { appearance: none; border-radius: 10px; cursor: pointer; font: inherit; font-size: .88rem; font-weight: 850; letter-spacing: .07em; min-height: 46px; padding: 0 1.15rem; text-transform: uppercase; transition: transform 140ms ease-out, filter 140ms ease-out; }
+      .bq-mode-select__button:active { transform: scale(.97); }
+      .bq-mode-select__button:focus-visible { outline: 3px solid var(--bq-cyan); outline-offset: 3px; }
+      .bq-mode-select__button--back { background: transparent; border: 1px solid var(--bq-line); color: var(--bq-text); margin-right: auto; }
+      .bq-mode-select__button--briefing { background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.4); color: var(--bq-cyan); display: inline-flex; align-items: center; gap: 0.4rem; }
+      .bq-mode-select__button--briefing:hover:not(:disabled) { background: rgba(0, 229, 255, 0.16); border-color: var(--bq-cyan); }
+      .bq-mode-select__button:hover:not(:disabled) { filter: brightness(1.1); }
+      @media (max-width: 1080px) { .bq-mode-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 760px) {
+        .bq-mode-select { border-radius: 0; border-left: 0; border-right: 0; min-height: 100dvh; padding: 1.25rem; }
+        .bq-mode-select__grid { grid-template-columns: 1fr; }
+        .bq-mode-select__card { min-height: 190px; }
+        .bq-mode-select__actions { justify-content: stretch; }
+        .bq-mode-select__button { flex: 1 1 100%; }
+        .bq-mode-select__button--back { margin-right: 0; order: 2; }
+      }
+
       /* Scrollbar */
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: #0D0B1A; }
@@ -393,52 +472,56 @@
              empty, existing screen preserves the rest of the menu structure. -->
         <div id="screen-online-mode-select" class="hidden relative z-10 w-full max-w-6xl px-4"></div>
 
-        <!-- ───── Screen: Solo Mode Options ───── -->
-        <div id="screen-solo-options" class="hidden flex-col items-center w-full max-w-4xl px-4 relative z-10">
-          <div class="mb-8 text-center">
-            <h2 class="text-neon-cyan text-xs font-bold tracking-[0.3em] uppercase mb-3 glow-cyan">SOLO MODE</h2>
-            <h1 class="text-3xl md:text-4xl font-bold">Choose Your Challenge</h1>
-            <p class="text-gray-400 text-sm mt-2 uppercase tracking-wider">Play offline or practice</p>
-          </div>
+        <!-- ───── Screen: Solo Mode Options (Matching Online Card Design) ───── -->
+        <div id="screen-solo-options" class="hidden relative z-10 w-full max-w-6xl px-4 flex-col items-center">
+          <section class="bq-mode-select" aria-label="Solo game mode selection">
+            <p class="bq-mode-select__eyebrow">Solo &amp; Offline Practice</p>
+            <h2 class="bq-mode-select__title">Choose your challenge</h2>
+            <p class="bq-mode-select__subtitle">Select a solo mode or practice against adaptive AI opponents. Match rules and formats are shown below.</p>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-12">
-            <!-- Mode Card: Tutorial -->
-            <button id="btn-solo-tutorial" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-cyan hover:shadow-[0_0_30px_rgba(0,255,255,0.15)] flex flex-col h-full">
-              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-cyan transition-colors">TUTORIAL</h3>
-              <p class="text-gray-400 text-xs mb-4 flex-grow">Interactive guided training simulation</p>
-              <div class="inline-block border border-neon-cyan/50 text-neon-cyan text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">NO PRESSURE</div>
-            </button>
+            <div class="bq-mode-select__grid" role="group">
+              <!-- Mode Card: Tutorial -->
+              <button id="btn-solo-tutorial" class="bq-mode-select__card" data-accent="cyan" type="button">
+                <span class="bq-mode-select__format">TRAINING · 1 PLAYER</span>
+                <h3 class="bq-mode-select__mode-title">Tutorial</h3>
+                <p class="bq-mode-select__description">Interactive guided training covering fundamentals, hero class certifications, and special item blocks.</p>
+                <p class="bq-mode-select__rule">Master core mechanics with zero pressure.</p>
+              </button>
 
-            <!-- Mode Card: Solo -->
-            <button id="btn-solo-game" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-green hover:shadow-[0_0_30px_rgba(0,255,0,0.15)] flex flex-col h-full">
-              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-green transition-colors">SOLO</h3>
-              <p class="text-gray-400 text-xs mb-4 flex-grow">Endless block dropping for high scores</p>
-              <div class="inline-block border border-neon-green/50 text-neon-green text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">1 PLAYER</div>
-            </button>
+              <!-- Mode Card: Solo -->
+              <button id="btn-solo-game" class="bq-mode-select__card" data-accent="green" type="button">
+                <span class="bq-mode-select__format">ENDLESS · 1 PLAYER</span>
+                <h3 class="bq-mode-select__mode-title">Solo Marathon</h3>
+                <p class="bq-mode-select__description">Endless block dropping for high scores. Clear lines, sustain combos, and chase new milestones.</p>
+                <p class="bq-mode-select__rule">Survive as drop speed increases.</p>
+              </button>
 
-            <!-- Mode Card: Easy -->
-            <button id="btn-easy-bot" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-yellow hover:shadow-[0_0_30px_rgba(255,215,0,0.15)] flex flex-col h-full">
-              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-yellow transition-colors">EASY BOT</h3>
-              <p class="text-gray-400 text-xs mb-4 flex-grow">Relaxed pace head-to-head block battles</p>
-              <div class="inline-block border border-neon-yellow/50 text-neon-yellow text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">VS AI</div>
-            </button>
+              <!-- Mode Card: Easy -->
+              <button id="btn-easy-bot" class="bq-mode-select__card" data-accent="yellow" type="button">
+                <span class="bq-mode-select__format">VS AI · 1V1 DUEL</span>
+                <h3 class="bq-mode-select__mode-title">Easy Bot</h3>
+                <p class="bq-mode-select__description">Relaxed-pace head-to-head match against a casual automated opponent. Ideal for warmups.</p>
+                <p class="bq-mode-select__rule">First board to top out is eliminated.</p>
+              </button>
 
-            <!-- Mode Card: Hard -->
-            <button id="btn-hard-bot" class="group bg-card-bg/60 backdrop-blur-md border-2 border-card-border rounded-xl transition-all duration-300 p-5 text-left cursor-pointer card-glow hover:border-neon-pink hover:shadow-[0_0_30px_rgba(255,20,147,0.15)] flex flex-col h-full">
-              <h3 class="text-xl font-bold mb-2 group-hover:text-neon-pink transition-colors">HARD BOT</h3>
-              <p class="text-gray-400 text-xs mb-4 flex-grow">Intense head-to-head block battles</p>
-              <div class="inline-block border border-neon-pink/50 text-neon-pink text-[9px] px-3 py-1 rounded-full tracking-widest font-semibold w-max">VS AI</div>
-            </button>
-          </div>
+              <!-- Mode Card: Hard -->
+              <button id="btn-hard-bot" class="bq-mode-select__card" data-accent="magenta" type="button">
+                <span class="bq-mode-select__format">VS AI · 1V1 DUEL</span>
+                <h3 class="bq-mode-select__mode-title">Hard Bot</h3>
+                <p class="bq-mode-select__description">Intense head-to-head competitive match against our CEM-trained Expectimax AI engine.</p>
+                <p class="bq-mode-select__rule">First board to top out is eliminated.</p>
+              </button>
+            </div>
 
-          <div class="flex flex-col items-center gap-4">
-            <button id="btn-solo-how-to-play" class="flex items-center gap-2 px-5 py-2 text-gray-400 hover:text-white text-[11px] font-bold tracking-[0.2em] uppercase border border-card-border hover:border-neon-cyan/50 rounded-full transition-all duration-200 cursor-pointer">
-              <span class="text-neon-cyan">?</span> How To Play
-            </button>
-            <button id="btn-back" class="px-8 py-3 bg-card-bg/80 backdrop-blur-sm border-2 border-card-border text-white font-bold tracking-widest rounded-lg transition-all duration-300 hover:border-gray-400 hover:scale-105 cursor-pointer">
-              &lt; BACK
-            </button>
-          </div>
+            <div class="bq-mode-select__actions">
+              <button id="btn-back" class="bq-mode-select__button bq-mode-select__button--back" type="button">
+                &lt; Back
+              </button>
+              <button id="btn-solo-how-to-play" class="bq-mode-select__button bq-mode-select__button--briefing" type="button">
+                <span>ℹ️</span> <span>How To Play</span>
+              </button>
+            </div>
+          </section>
         </div>
 
         <!-- ───── Screen: Tutorial Menu ───── -->

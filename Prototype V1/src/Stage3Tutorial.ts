@@ -1231,18 +1231,32 @@ export class Stage3Tutorial {
       }
     }
 
-    // 2. Step 4 Visual Speed Buff Lines on Grid
+    // 2. Step 4 Visual Speed Buff Lines on Grid - Smooth continuous rain droplets
     if (this.speedBuffTimer > 0) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(0, 229, 255, 0.28)';
-      ctx.lineWidth = 2;
-      const offset = (performance.now() * 0.45) % 60;
+      const boardH = ROWS * BLOCK_SIZE;
+      const boardW = COLS * BLOCK_SIZE;
+      ctx.beginPath();
+      ctx.rect(0, 0, boardW, boardH);
+      ctx.clip();
+
+      const now = performance.now();
+      const speed = 0.38;
+      const trailLen = 42;
+
       for (let i = 0; i < 8; i++) {
-        const lx = 20 + i * 36;
-        const ly = ((i * 85 + offset) % (ROWS * BLOCK_SIZE));
+        const lx = 18 + i * 35;
+        const ly = ((now * speed + i * 83) % (boardH + trailLen)) - trailLen;
+
+        const grad = ctx.createLinearGradient(lx, ly, lx, ly + trailLen);
+        grad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+        grad.addColorStop(1, 'rgba(0, 229, 255, 0.65)');
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(lx, ly);
-        ctx.lineTo(lx, ly + 38);
+        ctx.lineTo(lx, ly + trailLen);
         ctx.stroke();
       }
       ctx.restore();

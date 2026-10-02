@@ -9,6 +9,7 @@ import { mountAuth } from './Auth'
 import { isTutorialCompleted, getCertifiedClasses } from './TutorialManager'
 import { attachHighScoreHoverPopup } from './HighScores'
 import { openModeBriefing } from './ModeBriefingModal'
+import { SERVER_URL } from './NetworkManager'
 
 const uiLayer = document.getElementById('ui-layer')!;
 const screenMain = document.getElementById('screen-main')!;
@@ -303,6 +304,11 @@ mountOnlineModeSelect({
 });
 
 btnPlayOnline.addEventListener('click', () => {
+  // Pre-warm the backend server while browsing mode selection
+  try {
+    fetch(SERVER_URL, { mode: 'no-cors' }).catch(() => {});
+  } catch (_) {}
+
   pendingMode = 'ONLINE';
   screenMain.classList.remove('flex');
   screenMain.classList.add('hidden');

@@ -2,7 +2,7 @@ import './style.css'
 import { GameManager, GameState } from './GameManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
-import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
+import { NetworkManager, SERVER_URL, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
@@ -961,6 +961,9 @@ btnPlayOnline.addEventListener('click', () => {
     alert("Please select a class first!");
     return;
   }
+  try {
+    fetch(SERVER_URL, { mode: 'no-cors' }).catch(() => {});
+  } catch (_) {}
   pendingMode = 'ONLINE';
   showOnlineModeSelect();
 });
@@ -1574,18 +1577,31 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   tCtx.lineWidth = gridBorderWidth;
   tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
-  // Speed Block [V] Visual Buff Lines on Grid (5s duration)
+  // Speed Block [V] Visual Buff Lines on Grid (5s duration) - Smooth continuous rain droplets
   if (player.speedBlockSlowTimer > 0) {
     tCtx.save();
-    tCtx.strokeStyle = 'rgba(0, 229, 255, 0.28)';
-    tCtx.lineWidth = 2;
-    const offset = (performance.now() * 0.25) % 60;
+    tCtx.beginPath();
+    tCtx.rect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+    tCtx.clip();
+
+    const boardH = ROWS * blockSize;
+    const now = performance.now();
+    const speed = 0.35; // smooth px/ms
+    const trailLen = 42;
+
     for (let i = 0; i < 8; i++) {
-      const lx = offsetX + 18 + i * (blockSize * 1.2);
-      const ly = offsetY + ((i * 85 + offset) % (ROWS * blockSize));
+      const lx = offsetX + 14 + i * (blockSize * 1.18);
+      const ly = offsetY + ((now * speed + i * 83) % (boardH + trailLen)) - trailLen;
+
+      const grad = tCtx.createLinearGradient(lx, ly, lx, ly + trailLen);
+      grad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+      grad.addColorStop(1, 'rgba(0, 229, 255, 0.65)');
+
+      tCtx.strokeStyle = grad;
+      tCtx.lineWidth = 2;
       tCtx.beginPath();
       tCtx.moveTo(lx, ly);
-      tCtx.lineTo(lx, Math.min(offsetY + ROWS * blockSize, ly + 36));
+      tCtx.lineTo(lx, ly + trailLen);
       tCtx.stroke();
     }
     tCtx.restore();
