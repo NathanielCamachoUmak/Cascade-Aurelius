@@ -2,17 +2,17 @@
  * A repository of names for AI Bots.
  */
 export const BOT_NAMES: string[] = [
-  "Gorr", "HAL 9000", "Skynet", "GLaDOS", "Deep Blue",
-  "Corin", "Belial", "Blocks Verstrappen", "Neru", "Miku", "Teto",
-  "Data", "Bender", "RafRaf", "Rome", "Djikstra", "ArawAraw",
-  "Jarvis", "Ultron", "Cortana", "Samantha", "TARS",
-  "EVE", "Bishop", "Ash", "Shockwave", "David",
-  "Sonny", "Shitler", "Daboi", "Megatron", "Starscream",
-  "Soundwave", "Alexa", "Aela", "Elisha", "Ken",
-  "Tricia", "MattPat", "Gab", "EDP445", "T-Hex",
-  "Red", "Rico", "BoB", "Lars", "Bigdong",
-  "Jelly", "Migol", "Kcelvs", "Simoun", "Patrick",
-  "SpoggleDod", "SpungGog", "Phoneas", "Frob"
+  "Gorr [Bot]", "HAL 9000 [Bot]", "Skynet [Bot]", "GLaDOS [Bot]", "Deep Blue [Bot]",
+  "Corin [Bot]", "Belial [Bot]", "Blocks Verstrappen [Bot]", "Neru [Bot]", "Miku [Bot]", "Teto [Bot]",
+  "Data [Bot]", "Bender [Bot]", "RafRaf [Bot]", "Rome [Bot]", "Djikstra [Bot]", "ArawAraw [Bot]",
+  "Jarvis [Bot]", "Ultron [Bot]", "Cortana [Bot]", "Samantha [Bot]", "TARS [Bot]",
+  "EVE [Bot]", "Bishop [Bot]", "Ash [Bot]", "Shockwave [Bot]", "David [Bot]",
+  "Sonny [Bot]", "Shitler [Bot]", "Daboi [Bot]", "Megatron [Bot]", "Starscream [Bot]",
+  "Soundwave [Bot]", "Alexa [Bot]", "Aela [Bot]", "Elisha [Bot]", "Ken [Bot]",
+  "Tricia [Bot]", "MattPat [Bot]", "Gab [Bot]", "EDP445 [Bot]", "T-Hex [Bot]",
+  "Red [Bot]", "Rico [Bot]", "BoB [Bot]", "Lars [Bot]", "Bigdong [Bot]",
+  "Jelly [Bot]", "Migol [Bot]", "Kcelvs [Bot]", "Simoun [Bot]", "Patrick [Bot]",
+  "SpoggleDod [Bot]", "SpungGog [Bot]", "Phoneas [Bot]", "Frob"
   // Add more names here as needed
 ];
 
