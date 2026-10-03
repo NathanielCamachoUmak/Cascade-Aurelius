@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { 
   BATTLE_ROYALE_RULES, 
-  getBattleRoyalPhase, 
+  getBattleRoyalRound, 
   selectBattleRoyalCullTargets, 
   rankBattleRoyalPlayers, 
   closestToTarget, 
@@ -266,9 +266,9 @@ const LINE_SCORES = [0, 100, 300, 500, 800];
 const TSPIN_SCORES = { 0: 400, 1: 800, 2: 1200, 3: 1600 };
 
 function activeScoreMultiplier(room) {
-  if (room.mode.id !== 'battle-royale' || !room.battleRoyalStartedAt) return 1;
-  const phase = getBattleRoyalPhase(Date.now() - room.battleRoyalStartedAt);
-  let mult = phase.scoreMultiplier || 1;
+  if (room.mode.id !== 'battle-royale' || room.currentRoundIndex === undefined) return 1;
+  const round = getBattleRoyalRound(room.currentRoundIndex);
+  let mult = round.scoreMultiplier || 1;
   if (room.activeDynamicRule?.scoreMultiplier) mult *= room.activeDynamicRule.scoreMultiplier;
   return mult;
 }
@@ -447,16 +447,19 @@ function handleTdmKnockout(roomId, socketId, killerIndex) {
   return true;
 }
 
-function emitBattleRoyalPhase(roomId, phase, extra = {}) {
+function emitBattleRoyalRound(roomId, round) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale') return;
-  room.battleRoyalPhase = phase.id;
+  room.battleRoyalPhase = round.id;
   io.to(roomId).emit('battle-royale-phase', {
-    phase: phase.id,
-    label: phase.label,
-    atMs: phase.atMs,
+    phase: round.id,
+    label: round.label,
     remainingPlayers: activePlayerCount(room),
-    ...extra,
+    cullThreshold: round.targetSurvivors,
+    scoreMultiplier: round.scoreMultiplier,
+    atMs: 0,
+    nextAtMs: round.durationMs,
+    solidGarbage: Boolean(round.solidGarbage),
   });
   emitRoomState(roomId);
 }
@@ -470,10 +473,9 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   clearTimers(room);
   resetAfterMatch(room);
   const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
-  io.to(roomId).emit('post-game-start', {
-    winnerId: winnerEntry?.[0] || '',
-    winnerName: winner?.name || 'No survivor',
-    winnerTeam: null,
+  io.to(roomId).emit('game-over', {
+    winnerId: winnerEntry ? (winnerEntry[1].isBot ? winnerEntry[1].ownerId : winnerEntry[0]) : null,
+    winnerTeam: winner ? winner.team : null,
     teamScores: { cyan: 0, magenta: 0 },
     reason,
     modeId: room.mode.id,
@@ -488,51 +490,102 @@ function checkBattleRoyalGameOver(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
   const alive = Array.from(room.players.values()).filter(player => player.state === 'playing');
-  if (alive.length <= 1) finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
+  
+  const round = getBattleRoyalRound(room.currentRoundIndex || 0);
+  if (alive.length <= round.targetSurvivors) {
+    if ((room.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alive.length <= 1) {
+      finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
+    } else {
+      endBattleRoyalRound(roomId);
+    }
+  }
 }
 
-function startBattleRoyalSchedule(roomId) {
+function startBattleRoyalRound(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
-  room.battleRoyalStartedAt = Date.now();
-  room.activeDynamicRule = null;
-  room.dynamicRuleIndex = 0;
-  emitBattleRoyalPhase(roomId, getBattleRoyalPhase(0));
-
-  const startingPlayers = activePlayerCount(room);
-  const timers = [];
-
-  for (const phase of BATTLE_ROYALE_RULES.phaseBreaks) {
-    if (phase.atMs === 0) continue;
-    timers.push(setTimeout(() => {
-      emitBattleRoyalPhase(roomId, phase, {
-        gravityScale: phase.gravityScale,
-        scoreMultiplier: phase.scoreMultiplier,
-        garbageRate: phase.garbageRate,
-        itemBlockRate: phase.itemBlockRate,
-        idlePenaltyMs: phase.idlePenaltyMs,
-        solidGarbage: Boolean(phase.solidGarbage),
-      });
-    }, phase.atMs));
+  
+  if (room.currentRoundIndex === undefined) {
+    room.currentRoundIndex = 0;
   }
-
-  room.idleSweepTimer = setInterval(() => {
-    const current = rooms.get(roomId);
-    if (!current || current.phase !== 'in-game' || !current.battleRoyalStartedAt) return;
-    const phase = getBattleRoyalPhase(Date.now() - current.battleRoyalStartedAt);
-    if (!phase.idlePenaltyMs) return;
-    const now = Date.now();
-    for (const [id, player] of current.players) {
-      if (player.state !== 'playing') continue;
-      const last = player.lastClearAt || current.battleRoyalStartedAt;
-      if (now - last >= phase.idlePenaltyMs) {
-        player.lastClearAt = now;
-        io.to(id).emit('receive-garbage', { count: 1, fromIndex: -1, reason: 'idle-penalty' });
+  
+  const round = getBattleRoyalRound(room.currentRoundIndex);
+  room.battleRoyalStartedAt = Date.now();
+  
+  emitBattleRoyalRound(roomId, round);
+  
+  // Send start garbage
+  if (round.startGarbage > 0) {
+    for (const [id, player] of room.players) {
+      if (player.state === 'playing') {
+        const socketId = player.isBot ? player.ownerId : id;
+        io.to(socketId).emit('receive-garbage', { count: round.startGarbage, fromIndex: -1, targetIndex: player.index });
       }
     }
-  }, 5 * 1000);
+  }
 
-  room.battleRoyalCullTimers = timers;
+  // Setup round end timer
+  if (round.durationMs > 0) {
+    if (room.matchTimer) clearTimeout(room.matchTimer);
+    room.matchTimer = setTimeout(() => {
+      endBattleRoyalRound(roomId);
+    }, round.durationMs);
+  }
+}
+
+function endBattleRoyalRound(roomId) {
+  const room = rooms.get(roomId);
+  if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
+  
+  const round = getBattleRoyalRound(room.currentRoundIndex || 0);
+  
+  // Cull players if needed
+  let alivePlayers = Array.from(room.players.values()).filter(p => p.state === 'playing');
+  if (alivePlayers.length > round.targetSurvivors) {
+    const sorted = rankBattleRoyalPlayers(alivePlayers);
+    const toCull = sorted.slice(round.targetSurvivors); // The ones after targetSurvivors are lowest
+    for (const player of toCull) {
+      player.state = 'spectating';
+      const socketId = player.isBot ? player.ownerId : Array.from(room.players.entries()).find(([, p]) => p === player)[0];
+      io.to(socketId).emit('player-eliminated-prompt', {
+        message: 'You did not qualify for the next round! Choose to spectate or return to lobby.',
+        canSpectate: true,
+      });
+      io.to(roomId).emit('player-topped-out', { playerIndex: player.index, killerIndex: -1 });
+    }
+  }
+  
+  // Check if it's the final round or 1 survivor
+  alivePlayers = Array.from(room.players.values()).filter(p => p.state === 'playing');
+  if ((room.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alivePlayers.length <= 1) {
+    finishBattleRoyalMatch(roomId, 'last-survivor', alivePlayers[0] || null);
+    return;
+  }
+  
+  // Proceed to next round with intermission
+  room.currentRoundIndex++;
+  room.battleRoyalPhase = 'intermission';
+  io.to(roomId).emit('battle-royale-phase', {
+    phase: 'intermission',
+    label: 'Intermission - Prepare for next round',
+    remainingPlayers: activePlayerCount(room),
+    cullThreshold: 0,
+    atMs: 0,
+    nextAtMs: BATTLE_ROYALE_RULES.intermissionMs,
+  });
+  
+  // Clear boards for remaining players
+  for (const [id, player] of room.players) {
+    if (player.state === 'playing') {
+      const socketId = player.isBot ? player.ownerId : id;
+      io.to(socketId).emit('round-start'); // Tells client to clear board
+    }
+  }
+  
+  if (room.matchTimer) clearTimeout(room.matchTimer);
+  room.matchTimer = setTimeout(() => {
+    startBattleRoyalRound(roomId);
+  }, BATTLE_ROYALE_RULES.intermissionMs);
 }
 
 function startTeamMatchTimer(roomId) {
@@ -592,10 +645,8 @@ function startMatch(roomId) {
 
   room.pregameTimer = setTimeout(() => {
     if (room.mode.id === 'battle-royale') {
-      room.matchEndsAt = Date.now() + BATTLE_ROYALE_RULES.durationMs;
-      io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: BATTLE_ROYALE_RULES.durationMs });
-      room.matchTimer = setTimeout(() => finishBattleRoyalMatch(roomId, 'time'), BATTLE_ROYALE_RULES.durationMs);
-      startBattleRoyalSchedule(roomId);
+      room.currentRoundIndex = 0;
+      startBattleRoyalRound(roomId);
       emitRoomState(roomId);
     } else {
       startTeamMatchTimer(roomId);
@@ -607,6 +658,28 @@ function beginRoomCountdown(roomId, initiatedBy = null) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'lobby' || room.players.size < 1) return false;
   if (initiatedBy && room.hostId !== initiatedBy) return false;
+
+  if (room.mode.id === 'battle-royale') {
+    while (room.players.size < room.mode.capacity) {
+      const botId = 'bot-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      const classes = ['SPEEDSTER', 'TANK', 'SABOTEUR', 'SUPPORT'];
+      const randomClass = classes[Math.floor(Math.random() * classes.length)];
+      room.players.set(botId, {
+        name: 'AI Bot ' + room.players.size,
+        ready: true,
+        index: -1,
+        state: 'lobby',
+        team: null,
+        score: 0,
+        lines: 0,
+        kills: 0,
+        eliminatedAt: null,
+        isBot: true,
+        ownerId: room.hostId,
+        classId: randomClass,
+      });
+    }
+  }
   room.phase = 'countdown';
   io.to(roomId).emit('countdown-start', 5);
   emitRoomState(roomId);

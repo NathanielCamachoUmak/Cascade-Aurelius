@@ -825,12 +825,14 @@ function wireGameCallbacks(network: NetworkManager) {
   network.onBattleRoyalPhase = (data) => {
     battleRoyalPhaseLabel = data.label;
     battleRoyalRemainingPlayers = data.remainingPlayers ?? battleRoyalRemainingPlayers;
-    if (!battleRoyalStartedAt) {
-      battleRoyalStartedAt = Date.now();
-    }
-    // data.atMs: the ms-offset of THIS phase; next phase is atMs + phase duration (server sends nextAtMs)
+    battleRoyalStartedAt = Date.now();
     battleRoyalPhaseEndsAt = data.nextAtMs ? (battleRoyalStartedAt + data.nextAtMs) : null;
     battleRoyalCullThreshold = data.cullThreshold ?? 0;
+    
+    if (data.scoreMultiplier) {
+      gameManager.players.forEach(p => p.scoreManager.globalMultiplier = data.scoreMultiplier!);
+    }
+    
     updateBattleRoyalHud();
   };
   network.onBattleRoyalCull = (data) => {
@@ -920,6 +922,7 @@ function wireGameCallbacks(network: NetworkManager) {
     showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
   };
 
+  network.onRoundStart = () => { gameManager.startNewRound(); };
   network.onMatchTimerStart = (data) => {
     teamMatchEndsAt = data.endsAt;
     if (teamTimerInterval) clearInterval(teamTimerInterval);
@@ -2712,8 +2715,9 @@ function render() {
     }
     setText('level-p1', `${p1.scoreManager.totalLinesCleared}`); setText('level-p1-br', `${p1.scoreManager.totalLinesCleared}`);
     setText('combo-p1', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : ''); setText('combo-p1-br', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '');
-    const multTextP1 = p1.scoreManager.scoreMultiplier > 1
-      ? `MULT x${p1.scoreManager.scoreMultiplier}${p1.scoreManager.multiplierTimer > 0 ? ` (${(p1.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+    const effectiveMultP1 = p1.scoreManager.scoreMultiplier * p1.scoreManager.globalMultiplier;
+    const multTextP1 = effectiveMultP1 > 1
+      ? `MULT x${effectiveMultP1}${p1.scoreManager.multiplierTimer > 0 ? ` (${(p1.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
       : '';
     setText('multiplier-p1', multTextP1); setText('multiplier-p1-br', multTextP1);
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
@@ -2777,8 +2781,9 @@ function render() {
     scoreElementP2.innerText = `${Math.round(p2.scoreManager.score)}`;
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
-    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1
-      ? `MULT x${p2.scoreManager.scoreMultiplier}${p2.scoreManager.multiplierTimer > 0 ? ` (${(p2.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+    const effectiveMultP2 = p2.scoreManager.scoreMultiplier * p2.scoreManager.globalMultiplier;
+    multiplierElementP2.innerText = effectiveMultP2 > 1
+      ? `MULT x${effectiveMultP2}${p2.scoreManager.multiplierTimer > 0 ? ` (${(p2.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
       : '';
     
     const holdC2 = safeGet('hold-canvas-p2', 'canvas') as HTMLCanvasElement;

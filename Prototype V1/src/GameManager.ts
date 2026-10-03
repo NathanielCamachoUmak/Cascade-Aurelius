@@ -788,6 +788,18 @@ export class GameManager {
     this.handlePlayerToppedOutTargeting(player);
   }
 
+  public startNewRound() {
+    for (const player of this.players) {
+      if (!player.isToppedOut) {
+        player.grid.clear();
+        player.currentPiece = null;
+      }
+    }
+    if (this.myPlayerIndex >= 0) {
+      this.spawnFloatingScoreUiPopup('NEW ROUND!');
+    }
+  }
+
   public applyTdmRespawn(playerIndex: number) {
     const player = this.players[playerIndex];
     if (!player) return;
