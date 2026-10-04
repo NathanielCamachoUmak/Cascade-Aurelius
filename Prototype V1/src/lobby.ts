@@ -538,8 +538,8 @@ function ensureBattleRoyalHud() {
       </div>
       <!-- Phase Countdown -->
       <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[110px]">
-        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">NEXT PHASE</span>
-        <span id="br-phase-timer" class="text-white font-pixel text-[13px] mt-0.5 tabular-nums">—</span>
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">ROUND TIMER</span>
+        <span id="br-phase-timer" class="text-white font-pixel text-[13px] mt-0.5 tabular-nums">3:00</span>
       </div>
       <!-- Survivor Count -->
       <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[100px]">
@@ -548,7 +548,7 @@ function ensureBattleRoyalHud() {
       </div>
       <!-- Cull Threshold -->
       <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 flex-1">
-        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">CULL THRESHOLD</span>
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">ELIMINATED AT END</span>
         <span id="br-threshold" class="text-red-400 font-pixel text-[10px] mt-0.5 tabular-nums">—</span>
       </div>
       <!-- My K.O. Count -->
@@ -608,6 +608,66 @@ function updateBattleRoyalHud() {
 }
 
 // ── Phase 2: Cull Elimination Banner ─────────────────────────────────────────
+
+  // ============================================================
+  // Intermission overlay (shown between rounds)
+  // ============================================================
+  let brIntermissionEl: HTMLElement | null = null;
+  let brIntermissionTimer: number | null = null;
+
+  function ensureIntermissionOverlay(): HTMLElement {
+    if (brIntermissionEl) return brIntermissionEl;
+    const el = document.createElement('div');
+    el.id = 'br-intermission-overlay';
+    el.className = 'hidden fixed inset-0 z-50 flex flex-col items-center justify-center pointer-events-none';
+    el.innerHTML = `
+      <div style="background:rgba(0,0,0,0.97);border:2px solid rgba(255,193,7,0.8);border-radius:16px;padding:40px 48px;text-align:center;max-width:480px;width:calc(100vw - 32px);">
+        <div style="color:#FFD700;font-family:monospace;font-size:18px;letter-spacing:3px;margin-bottom:8px;">ROUND COMPLETE</div>
+        <div style="color:#9CA3AF;font-family:monospace;font-size:11px;margin-bottom:16px;" id="br-inter-subline">Preparing next round...</div>
+        <div style="color:white;font-family:monospace;font-size:48px;margin-bottom:4px;" id="br-inter-countdown">5</div>
+        <div style="color:#6B7280;font-family:monospace;font-size:9px;letter-spacing:2px;">NEXT ROUND BEGINS IN</div>
+        <div style="margin-top:16px;width:100%;background:#1F2937;border-radius:999px;height:4px;overflow:hidden;">
+          <div id="br-inter-bar" style="height:100%;background:#FFD700;width:100%;transition:none;"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    brIntermissionEl = el;
+    return el;
+  }
+
+  function showBrIntermissionOverlay(remaining: number, durationMs: number) {
+    const el = ensureIntermissionOverlay();
+    el.classList.remove('hidden');
+    const subline = el.querySelector('#br-inter-subline');
+    if (subline) subline.textContent = remaining + ' players advance to the next round';
+
+    const countdownEl = el.querySelector('#br-inter-countdown') as HTMLElement | null;
+    const barEl = el.querySelector('#br-inter-bar') as HTMLElement | null;
+    const totalSec = Math.ceil(durationMs / 1000);
+    let secLeft = totalSec;
+
+    if (brIntermissionTimer !== null) clearInterval(brIntermissionTimer);
+    if (countdownEl) countdownEl.textContent = String(secLeft);
+
+    brIntermissionTimer = window.setInterval(() => {
+      secLeft--;
+      if (countdownEl) countdownEl.textContent = String(Math.max(0, secLeft));
+      if (barEl) barEl.style.width = Math.max(0, (secLeft / totalSec) * 100).toFixed(1) + '%';
+      if (secLeft <= 0) {
+        if (brIntermissionTimer !== null) clearInterval(brIntermissionTimer);
+        brIntermissionTimer = null;
+      }
+    }, 1000);
+  }
+
+  function hideBrIntermissionOverlay() {
+    if (brIntermissionEl) brIntermissionEl.classList.add('hidden');
+    if (brIntermissionTimer !== null) {
+      clearInterval(brIntermissionTimer);
+      brIntermissionTimer = null;
+    }
+  }
+
 function ensureCullBanner(): HTMLElement {
   if (brCullBannerEl) return brCullBannerEl;
   const el = document.createElement('div');
@@ -826,13 +886,21 @@ function wireGameCallbacks(network: NetworkManager) {
     battleRoyalPhaseLabel = data.label;
     battleRoyalRemainingPlayers = data.remainingPlayers ?? battleRoyalRemainingPlayers;
     battleRoyalStartedAt = Date.now();
-    battleRoyalPhaseEndsAt = data.nextAtMs ? (battleRoyalStartedAt + data.nextAtMs) : null;
+    // nextAtMs is the duration of this round in ms; endsAt = now + duration
+    battleRoyalPhaseEndsAt = data.nextAtMs ? (Date.now() + data.nextAtMs) : null;
     battleRoyalCullThreshold = data.cullThreshold ?? 0;
-    
+
     if (data.scoreMultiplier) {
       gameManager.players.forEach(p => p.scoreManager.globalMultiplier = data.scoreMultiplier!);
     }
-    
+
+    // Show intermission overlay if this is an intermission phase
+    if (data.phase === 'intermission') {
+      showBrIntermissionOverlay(data.remainingPlayers ?? battleRoyalRemainingPlayers, data.nextAtMs ?? 5000);
+    } else {
+      hideBrIntermissionOverlay();
+    }
+
     updateBattleRoyalHud();
   };
   network.onBattleRoyalCull = (data) => {
