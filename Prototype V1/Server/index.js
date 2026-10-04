@@ -476,7 +476,7 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   clearTimers(room);
   resetAfterMatch(room);
   const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
-  io.to(roomId).emit('game-over', {
+  io.to(roomId).emit('post-game-start', {
     winnerId: winnerEntry ? (winnerEntry[1].isBot ? winnerEntry[1].ownerId : winnerEntry[0]) : null,
     winnerTeam: winner ? winner.team : null,
     teamScores: { cyan: 0, magenta: 0 },

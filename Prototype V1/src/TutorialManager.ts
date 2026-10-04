@@ -136,10 +136,20 @@ async function hydrateTutorialsFromCloud(user: any) {
       }
     }
 
-    const merged = { ...readCompletedTutorialsMap(), ...metaMap, ...profileMap };
+    const currentLocal = readCompletedTutorialsMap();
+    const merged = { ...currentLocal, ...metaMap, ...profileMap };
+    
+    // Only write to storage if something changed
+    const hasChanges = JSON.stringify(currentLocal) !== JSON.stringify(merged);
+    
     localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(merged));
     window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
-    void syncCompletedTutorialsToCloud(merged);
+    
+    // Only push back to cloud if our local merged state is different than what cloud had
+    const cloudHasChanges = JSON.stringify(metaMap) !== JSON.stringify(merged);
+    if (cloudHasChanges) {
+      void syncCompletedTutorialsToCloud(merged);
+    }
   } catch {
     // ignore offline errors
   }
@@ -150,8 +160,10 @@ supabase.auth.getSession().then(({ data: { session } }) => {
 });
 
 // Hydrate local tutorial completion map from Supabase on login
-supabase.auth.onAuthStateChange((_event, session) => {
-  if (session?.user) void hydrateTutorialsFromCloud(session.user);
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+    if (session?.user) void hydrateTutorialsFromCloud(session.user);
+  }
 });
 
 export function isTutorialCompleted(tutorialId: string): boolean {
