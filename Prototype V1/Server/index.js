@@ -516,6 +516,14 @@ function startBattleRoyalRound(roomId) {
   const round = getBattleRoyalRound(room.currentRoundIndex);
   room.battleRoyalStartedAt = Date.now();
   
+  // Clear boards for all active players before new round
+  for (const [id, player] of room.players) {
+    if (player.state === 'playing') {
+      const socketId = player.isBot ? player.ownerId : id;
+      io.to(socketId).emit('round-start');
+    }
+  }
+
   emitBattleRoyalRound(roomId, round);
   
   // Send start garbage

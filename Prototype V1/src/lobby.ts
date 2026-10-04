@@ -517,6 +517,7 @@ let battleRoyalPhaseLabel = '';
 let battleRoyalStartedAt: number | null = null;
 let battleRoyalHud: HTMLElement | null = null;
 let battleRoyalPhaseEndsAt: number | null = null;  // when the NEXT phase break fires
+let brHudUpdateInterval: number | null = null;
 let battleRoyalCullThreshold = 0;                   // minimum score to survive current phase
 // Phase 2: Cull banner
 let brCullBannerEl: HTMLElement | null = null;
@@ -581,7 +582,7 @@ function updateBattleRoyalHud() {
 
   if (phaseEl) phaseEl.textContent = battleRoyalPhaseLabel || 'Opening Battle';
   if (remainEl) remainEl.textContent = String(battleRoyalRemainingPlayers);
-  if (threshEl) threshEl.textContent = battleRoyalCullThreshold > 0 ? `MIN ${battleRoyalCullThreshold.toLocaleString()} PTS` : 'NO CULL YET';
+  if (threshEl) threshEl.textContent = battleRoyalCullThreshold > 0 ? `${battleRoyalCullThreshold} BOTTOM PLAYERS` : 'NO CULL YET';
 
   // Phase countdown timer
   if (timerEl) {
@@ -1099,6 +1100,8 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
     battleRoyalPhaseLabel = 'Opening battle';
     battleRoyalRemainingPlayers = playerCount;
     updateBattleRoyalHud();
+    if (brHudUpdateInterval) window.clearInterval(brHudUpdateInterval);
+    brHudUpdateInterval = window.setInterval(updateBattleRoyalHud, 250);
   } else if (battleRoyalHud) {
     battleRoyalHud.classList.add('hidden');
   }

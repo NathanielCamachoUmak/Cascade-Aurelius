@@ -146,8 +146,9 @@ async function hydrateTutorialsFromCloud(user: any) {
     window.dispatchEvent(new CustomEvent('tutorialProgressUpdated'));
     
     // Only push back to cloud if our local merged state is different than what cloud had
-    const cloudHasChanges = JSON.stringify(metaMap) !== JSON.stringify(merged);
-    if (cloudHasChanges) {
+    const metaKeys = Object.keys(metaMap).sort().join(',');
+    const mergedKeys = Object.keys(merged).sort().join(',');
+    if (metaKeys !== mergedKeys) {
       void syncCompletedTutorialsToCloud(merged);
     }
   } catch {
