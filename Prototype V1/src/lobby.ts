@@ -507,6 +507,29 @@ let battleRoyalRemainingPlayers = 0;
 let battleRoyalPhaseLabel = '';
 let battleRoyalStartedAt: number | null = null;
 let battleRoyalHud: HTMLElement | null = null;
+let battleRoyalStage = 0;
+let battleRoyalTotalStages = 4;
+let battleRoyalStageEndsAt: number | null = null;
+let battleRoyalStageDurationMs = 90_000;
+let battleRoyalIntermissionEndsAt: number | null = null;
+let battleRoyalIntermissionInfo = '';
+let battleRoyalOverlay: HTMLElement | null = null;
+
+function ensureBattleRoyalOverlay() {
+  if (battleRoyalOverlay) return battleRoyalOverlay;
+  const el = document.createElement('div');
+  el.id = 'battle-royale-intermission';
+  el.className = 'hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 text-white font-pixel text-center pointer-events-none';
+  el.innerHTML = '<div id="br-int-title" class="text-neon-yellow text-2xl tracking-widest"></div><div id="br-int-info" class="mt-3 text-xs tracking-widest text-gray-300"></div><div id="br-int-count" class="mt-6 text-6xl text-neon-cyan"></div>';
+  document.body.appendChild(el);
+  battleRoyalOverlay = el;
+  return el;
+}
+
+function fmtClock(ms: number) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+}
 
 function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
@@ -527,9 +550,19 @@ function updateBattleRoyalHud() {
   const kills = hud.querySelector('#br-kills');
   if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers} LEFT`;
   if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
-  if (progress) progress.style.width = `${Math.min(100, Math.max(0, ((Date.now() - (battleRoyalStartedAt || Date.now())) / (5 * 60 * 1000)) * 100))}%`;
+  const stageLeft = battleRoyalStageEndsAt ? battleRoyalStageEndsAt - Date.now() : battleRoyalStageDurationMs;
+  if (progress) progress.style.width = `${gameManager.intermission ? 100 : Math.min(100, Math.max(0, (1 - stageLeft / battleRoyalStageDurationMs) * 100))}%`;
+  const overlay = ensureBattleRoyalOverlay();
+  const showOverlay = activeOnlineMode === 'battle-royale' && gameManager.intermission && !!battleRoyalIntermissionEndsAt;
+  overlay.classList.toggle('hidden', !showOverlay);
+  if (showOverlay) {
+    const t = overlay.querySelector('#br-int-title'); const i = overlay.querySelector('#br-int-info'); const c = overlay.querySelector('#br-int-count');
+    if (t) t.textContent = 'INTERMISSION';
+    if (i) i.textContent = battleRoyalIntermissionInfo;
+    if (c) c.textContent = String(Math.max(0, Math.ceil((battleRoyalIntermissionEndsAt! - Date.now()) / 1000)));
+  }
   const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
-  if (kills) kills.textContent = `${localKills} ELIMINATIONS · TARGET 1,000,000`;
+  if (kills) kills.textContent = `${localKills} ELIMINATIONS · STAGE ${battleRoyalStage || 1}/${battleRoyalTotalStages} · ${gameManager.intermission ? 'BREAK' : fmtClock(stageLeft)}`;
   hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
 }
 
@@ -555,6 +588,26 @@ const lobby = mountLobbyScreen({
   },
   onNetworkReady: (network) => wireGameCallbacks(network),
 });
+
+gameManager.onBattleRoyalStageChange = ({ type, data }) => {
+  if (type === 'stage') {
+    battleRoyalStage = data.stage ?? battleRoyalStage;
+    battleRoyalTotalStages = data.totalStages ?? battleRoyalTotalStages;
+    battleRoyalStageDurationMs = data.durationMs ?? battleRoyalStageDurationMs;
+    battleRoyalStageEndsAt = data.endsAt ?? null;
+    battleRoyalIntermissionEndsAt = null;
+    battleRoyalPhaseLabel = `${data.label} · ${data.garbageLines ?? 0} garbage lines`;
+    battleRoyalRemainingPlayers = data.remainingPlayers;
+    gameManager.players[gameManager.myPlayerIndex]?.inputHandler.unfreeze();
+  } else if (type === 'intermission') {
+    battleRoyalStageEndsAt = null;
+    battleRoyalIntermissionEndsAt = data.endsAt;
+    battleRoyalIntermissionInfo = `Stage ${data.fromStage} complete · ${data.remainingPlayers} left · next: ${data.nextLabel} (${data.nextGarbageLines} garbage lines)`;
+    battleRoyalRemainingPlayers = data.remainingPlayers;
+    gameManager.players[gameManager.myPlayerIndex]?.inputHandler.freeze();
+  }
+  updateBattleRoyalHud();
+};
 
 function wireGameCallbacks(network: NetworkManager) {
   network.onPreGameCountdown = (seconds: number) => {
@@ -639,6 +692,9 @@ function wireGameCallbacks(network: NetworkManager) {
     battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
     battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
     battleRoyalStartedAt = null;
+    battleRoyalStage = 0;
+    battleRoyalStageEndsAt = null;
+    battleRoyalIntermissionEndsAt = null;
     updateBattleRoyalHud();
     selectedOnlineMode = data.modeId;
     lobby.selectedMode = data.modeId;

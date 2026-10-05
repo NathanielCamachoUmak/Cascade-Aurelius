@@ -1,19 +1,16 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { 
-  BATTLE_ROYALE_RULES, 
-  getBattleRoyalPhase, 
-  selectBattleRoyalCullTargets, 
-  rankBattleRoyalPlayers, 
-  closestToTarget, 
-  hasReachedTarget, 
-  getDensityBracket, 
-  isCullingFrozen, 
-  isKoFloorReached, 
-  applyKoPenalty, 
-  finalScoreWithDecay, 
-  DYNAMIC_RULES 
+import {
+  BATTLE_ROYALE_RULES,
+  getStage,
+  buildGarbageHoles,
+  planStageCull,
+  rankBattleRoyalPlayers,
+  getDensityBracket,
+  isKoFloorReached,
+  applyKoPenalty,
+  finalScoreWithDecay,
 } from './battleRoyal.js';
 
 const app = express();
@@ -103,6 +100,8 @@ function getOrCreateRoom(roomId, requestedModeId) {
       battleRoyalCullTimers: [],
       battleRoyalSuddenDeathTimer: null,
       battleRoyalSuddenDeathCursor: 0,
+      battleRoyalStageIndex: 0,
+      battleRoyalIntermission: false,
     });
   }
   return rooms.get(roomId);
@@ -125,6 +124,8 @@ function clearTimers(room) {
   room.battleRoyalCullTimers = [];
   room.battleRoyalSuddenDeathTimer = null;
   room.battleRoyalSuddenDeathCursor = 0;
+  room.battleRoyalStageIndex = 0;
+  room.battleRoyalIntermission = false;
   room.dynamicRuleTimer = null;
   room.idleSweepTimer = null;
   room.activeDynamicRule = null;
@@ -169,6 +170,8 @@ function getRoomState(roomId) {
     battleRoyal: room.mode.id === 'battle-royale' ? {
       startedAt: room.battleRoyalStartedAt,
       phase: room.battleRoyalPhase,
+      stage: room.battleRoyalStartedAt ? getStage(room.battleRoyalStageIndex).number : 0,
+      intermission: !!room.battleRoyalIntermission,
       targetScore: BATTLE_ROYALE_RULES.targetScore,
       remainingPlayers: activePlayerCount(room),
       totalLobbyPlayers: room.players.size,
@@ -261,7 +264,7 @@ const TSPIN_SCORES = { 0: 400, 1: 800, 2: 1200, 3: 1600 };
 
 function activeScoreMultiplier(room) {
   if (room.mode.id !== 'battle-royale' || !room.battleRoyalStartedAt) return 1;
-  const phase = getBattleRoyalPhase(Date.now() - room.battleRoyalStartedAt);
+  const phase = getStage(room.battleRoyalStageIndex);
   let mult = phase.scoreMultiplier || 1;
   if (room.activeDynamicRule?.scoreMultiplier) mult *= room.activeDynamicRule.scoreMultiplier;
   return mult;
@@ -269,7 +272,7 @@ function activeScoreMultiplier(room) {
 
 function activeGarbageRate(room) {
   if (room.mode.id !== 'battle-royale' || !room.battleRoyalStartedAt) return 1;
-  const phase = getBattleRoyalPhase(Date.now() - room.battleRoyalStartedAt);
+  const phase = getStage(room.battleRoyalStageIndex);
   let rate = phase.garbageRate || 1;
   if (room.activeDynamicRule?.garbageRate) rate *= room.activeDynamicRule.garbageRate;
   const bracket = getDensityBracket(activePlayerCount(room));
@@ -340,7 +343,6 @@ function emitBattleRoyalPhase(roomId, phase, extra = {}) {
   io.to(roomId).emit('battle-royale-phase', {
     phase: phase.id,
     label: phase.label,
-    atMs: phase.atMs,
     remainingPlayers: activePlayerCount(room),
     ...extra,
   });
@@ -351,11 +353,21 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
   const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing');
-  const winner = winnerOverride || closestToTarget(survivors);
-  const rankings = rankBattleRoyalPlayers(Array.from(room.players.values()));
+  const winner = winnerOverride || rankBattleRoyalPlayers(survivors)[0] || null;
+  const rankings = rankBattleRoyalPlayers(Array.from(room.players.values())).map((player, i) => ({
+    rank: i + 1,
+    id: Array.from(room.players.entries()).find(([, p]) => p === player)?.[0] || '',
+    name: player.name,
+    score: player.score || 0,
+    finalScore: finalScoreWithDecay(player.score || 0, player.koCount || 0),
+    lines: player.lines || 0,
+    kills: player.kills || 0,
+    state: player.state,
+    eliminated: player.state !== 'playing',
+  }));
+  const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
   clearTimers(room);
   resetAfterMatch(room);
-  const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
   io.to(roomId).emit('post-game-start', {
     winnerId: winnerEntry?.[0] || '',
     winnerName: winner?.name || 'No survivor',
@@ -377,48 +389,87 @@ function checkBattleRoyalGameOver(roomId) {
   if (alive.length <= 1) finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
 }
 
+// --- Staged battle royal: 4 stages x 90s, 5s intermission between them -------
+function beginBattleRoyalStage(roomId, index) {
+  const room = rooms.get(roomId);
+  if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
+  const stage = getStage(index);
+  const now = Date.now();
+  room.battleRoyalStageIndex = index;
+  room.battleRoyalIntermission = false;
+  room.matchEndsAt = now + stage.durationMs;
+  for (const player of room.players.values()) if (player.state === 'playing') player.lastClearAt = now;
+
+  emitBattleRoyalPhase(roomId, stage, {
+    stage: stage.number,
+    totalStages: BATTLE_ROYALE_RULES.stages.length,
+    durationMs: stage.durationMs,
+    endsAt: room.matchEndsAt,
+    garbageLines: stage.garbageLines,
+    garbageHoles: buildGarbageHoles(stage.garbageLines),
+    suddenDeath: stage.suddenDeath,
+  });
+  io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: stage.durationMs });
+  room.matchTimer = setTimeout(() => endBattleRoyalStage(roomId, index), stage.durationMs);
+}
+
+function endBattleRoyalStage(roomId, index) {
+  const room = rooms.get(roomId);
+  if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
+  const stages = BATTLE_ROYALE_RULES.stages;
+  if (index >= stages.length - 1) { finishBattleRoyalMatch(roomId, 'time'); return; }
+
+  const now = Date.now();
+  const alive = Array.from(room.players.entries())
+    .filter(([, p]) => p.state === 'playing')
+    .map(([id, p]) => ({ id, player: p, score: p.score || 0, lines: p.lines || 0, kills: p.kills || 0 }));
+  const cut = planStageCull(alive, index + 1);
+
+  room.battleRoyalIntermission = true;
+  room.matchEndsAt = null;
+  for (const c of cut) {
+    c.player.state = 'spectating';
+    c.player.eliminatedAt = now;
+    io.to(c.id).emit('player-eliminated-prompt', {
+      message: `Culled after Stage ${stages[index].number} (lowest score). Choose to spectate or return to lobby.`,
+      canSpectate: true,
+      canReturnToLobby: true,
+    });
+    io.to(roomId).emit('player-state-update', {
+      playerId: c.id, playerIndex: c.player.index, state: 'spectating',
+      remainingPlayers: alive.length - cut.length,
+    });
+  }
+  const remaining = alive.length - cut.length;
+  if (cut.length) {
+    io.to(roomId).emit('battle-royale-cull', {
+      reason: 'score-cull',
+      eliminated: cut.map(c => ({ id: c.id, name: c.player.name, score: c.score, lines: c.lines, kills: c.kills })),
+      remainingPlayers: remaining,
+    });
+  }
+  const next = stages[index + 1];
+  io.to(roomId).emit('battle-royale-intermission', {
+    fromStage: stages[index].number,
+    nextStage: next.number,
+    nextLabel: next.label,
+    nextGarbageLines: next.garbageLines,
+    durationMs: BATTLE_ROYALE_RULES.intermissionMs,
+    endsAt: now + BATTLE_ROYALE_RULES.intermissionMs,
+    remainingPlayers: remaining,
+  });
+  emitRoomState(roomId);
+  if (remaining <= 1) { checkBattleRoyalGameOver(roomId); return; }
+  room.matchTimer = setTimeout(() => beginBattleRoyalStage(roomId, index + 1), BATTLE_ROYALE_RULES.intermissionMs);
+}
+
 function startBattleRoyalSchedule(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
   room.battleRoyalStartedAt = Date.now();
   room.activeDynamicRule = null;
   room.dynamicRuleIndex = 0;
-  emitBattleRoyalPhase(roomId, getBattleRoyalPhase(0));
-
-  const startingPlayers = activePlayerCount(room);
-  const timers = [];
-
-  for (const phase of BATTLE_ROYALE_RULES.phaseBreaks) {
-    if (phase.atMs === 0) continue;
-    timers.push(setTimeout(() => {
-      emitBattleRoyalPhase(roomId, phase, {
-        gravityScale: phase.gravityScale,
-        scoreMultiplier: phase.scoreMultiplier,
-        garbageRate: phase.garbageRate,
-        itemBlockRate: phase.itemBlockRate,
-        idlePenaltyMs: phase.idlePenaltyMs,
-        solidGarbage: Boolean(phase.solidGarbage),
-      });
-    }, phase.atMs));
-  }
-
-  room.idleSweepTimer = setInterval(() => {
-    const current = rooms.get(roomId);
-    if (!current || current.phase !== 'in-game' || !current.battleRoyalStartedAt) return;
-    const phase = getBattleRoyalPhase(Date.now() - current.battleRoyalStartedAt);
-    if (!phase.idlePenaltyMs) return;
-    const now = Date.now();
-    for (const [id, player] of current.players) {
-      if (player.state !== 'playing') continue;
-      const last = player.lastClearAt || current.battleRoyalStartedAt;
-      if (now - last >= phase.idlePenaltyMs) {
-        player.lastClearAt = now;
-        io.to(id).emit('receive-garbage', { count: 1, fromIndex: -1, reason: 'idle-penalty' });
-      }
-    }
-  }, 5 * 1000);
-
-  room.battleRoyalCullTimers = timers;
+  beginBattleRoyalStage(roomId, 0);
 }
 
 function startMatch(roomId) {
@@ -458,11 +509,7 @@ function startMatch(roomId) {
 
   room.pregameTimer = setTimeout(() => {
     if (room.mode.id === 'battle-royale') {
-      room.matchEndsAt = Date.now() + BATTLE_ROYALE_RULES.durationMs;
-      io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: BATTLE_ROYALE_RULES.durationMs });
-      room.matchTimer = setTimeout(() => finishBattleRoyalMatch(roomId, 'time'), BATTLE_ROYALE_RULES.durationMs);
       startBattleRoyalSchedule(roomId);
-      emitRoomState(roomId);
     }
   }, 5000);
 }
@@ -602,7 +649,7 @@ io.on('connection', socket => {
   socket.on('score-event', payload => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    if (!room || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game' || room.battleRoyalIntermission) return;
 
     const { botId, type, lines, combo, multiplier } = payload || {};
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
@@ -628,14 +675,14 @@ io.on('connection', socket => {
   const handlePlayerToppedOut = ({ killerIndex, botId } = {}) => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
-    if (!room || room.phase !== 'in-game') return;
+    if (!room || room.phase !== 'in-game' || room.battleRoyalIntermission) return;
     const player = botId ? room.players.get(botId) : room.players.get(socket.id);
     if (!player || player.state !== 'playing') return;
 
     const currentAlive = activePlayerCount(room);
 
     // If active players <= 4, apply K.O. mechanism instead of elimination!
-    if (room.mode.id === 'battle-royale' && isKoFloorReached(currentAlive)) {
+    if (room.mode.id === 'battle-royale' && getStage(room.battleRoyalStageIndex).koRecovery && isKoFloorReached(currentAlive)) {
       if (handleKnockout(roomId, botId || socket.id)) return;
     }
 
@@ -692,7 +739,7 @@ io.on('connection', socket => {
     const roomId = socket.data.roomId;
     const room = roomId && rooms.get(roomId);
     const sender = room?.players.get(socket.id);
-    if (!room || !sender || room.phase !== 'in-game') return;
+    if (!room || !sender || room.phase !== 'in-game' || room.battleRoyalIntermission) return;
 
     const requested = Math.max(0, Math.min(20, Math.floor(Number(count) || 0)));
     if (requested === 0) return;

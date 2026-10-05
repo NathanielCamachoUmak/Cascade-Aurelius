@@ -247,6 +247,23 @@ export class Grid {
     }
   }
 
+  /**
+   * Battle Royale stage reset: wipes the board IN PLACE (bots keep their grid
+   * reference) and fills the bottom rows with garbage, one hole per row.
+   */
+  public resetWithGarbage(holes: number[] = []): void {
+    for (let r = 0; r < this.height; r++) {
+      for (let c = 0; c < this.width; c++) this.matrix[r][c] = { type: null };
+    }
+    const rows = Math.min(holes.length, this.height);
+    for (let i = 0; i < rows; i++) {
+      const r = this.height - rows + i;
+      for (let c = 0; c < this.width; c++) {
+        if (c !== holes[i]) this.matrix[r][c] = { type: 'GARBAGE' };
+      }
+    }
+  }
+
   // Event-Driven Garbage Logic
   public addGarbageLines(
     count: number,
