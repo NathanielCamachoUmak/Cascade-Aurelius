@@ -493,16 +493,9 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
 function checkBattleRoyalGameOver(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
-  // Don't trigger mid-intermission - round timer handles transitions
-  if (room.battleRoyalPhase === 'intermission') return;
   const alive = Array.from(room.players.values()).filter(player => player.state === 'playing');
-  const round = getBattleRoyalRound(room.currentRoundIndex || 0);
-  if (alive.length <= round.targetSurvivors) {
-    if ((room.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alive.length <= 1) {
-      finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
-    } else {
-      endBattleRoyalRound(roomId);
-    }
+  if (alive.length <= 1) {
+    finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
   }
 }
 
@@ -659,11 +652,17 @@ function startMatch(roomId) {
   emitRoomState(roomId);
 
   if (room.mode.id === 'battle-royale') {
-    room.currentRoundIndex = 0;
-    setTimeout(() => {
-      startBattleRoyalRound(roomId);
+    room.pregameTimer = setTimeout(() => {
+      room.matchEndsAt = Date.now() + 90 * 1000;
+      io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: 90 * 1000 });
+      room.matchTimer = setTimeout(() => finishBattleRoyalMatch(roomId, 'time'), 90 * 1000);
+      for (const [id, player] of room.players) {
+        if (player.state === 'playing') {
+          io.to(player.isBot ? player.ownerId : id).emit('round-start');
+        }
+      }
       emitRoomState(roomId);
-    }, 500);
+    }, 5000);
   } else {
     room.pregameTimer = setTimeout(() => {
       startTeamMatchTimer(roomId);
