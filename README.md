@@ -2,7 +2,7 @@
 
 > **A Competitive Multiplayer Puzzle Game Featuring Proximity-Based Sabotage and Roguelike Item Progression.**
 
-![Cascade Banner](https://github.com/NathanielCamachoUmak/Cascade-Aurelius/blob/main/Prototype%20V1/Blockquartet%20blurry.png)
+![Cascade Banner](https://github.com/NathanielCamachoUmak/Cascade-Aurelius/blob/main/Prototype%20V1/public/Cascade.png)
 
 *Cascade* is a web-based, 4-player competitive falling-block puzzle game. Originally developed as a Computer Science research thesis, the engine bridges the gap between classic grid-based mastery and modern, high-variance social gaming through asymmetric player classes, deterministic state synchronization, and heavily optimized algorithmic design.
 
