@@ -15,6 +15,7 @@
   * ⚡ **Speedster:** High APM, faster gravity, multiplied ultimate charge.
   * 🛡️ **Tank:** Passive mitigation against incoming garbage lines.
   * 🐍 **Saboteur:** Disables and freezes opponent grids with targeted debuffs.
+  * 💚 **Support:** Rescues targeted allies and converts incoming garbage into beneficial special items.
 * **Proximity-Based Sabotage:** Utilize a $O(1)$ Circular Linked List targeting system to aim Event-Driven Garbage lines at specific opponents.
 * **Roguelike Item Progression (Loot Blocks):** Governed by a Weighted Random Selection algorithm, special blocks (Bombs, Multipliers, Heavy Weights) spawn to introduce controlled, fair variance. Multiplier stacking introduces deep strategic play in later rounds.
 * **Autonomous AI Opponents:** Includes a built-in Utility-Based Heuristic AI (Dellacherie model) that simulates millions of board states per second for tutorial matches and auto-filling lobbies.
