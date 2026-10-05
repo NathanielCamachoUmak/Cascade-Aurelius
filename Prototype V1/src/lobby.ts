@@ -885,6 +885,7 @@ function wireGameCallbacks(network: NetworkManager) {
       battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
       battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening Battle' : '';
       battleRoyalStartedAt = null;
+      battleRoyalPhaseEndsAt = null;
       battleRoyalCullThreshold = 0;
     }
     updateBattleRoyalHud();
@@ -896,6 +897,7 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onBattleRoyalPhase = (data) => {
+    console.log('[DEBUG] onBattleRoyalPhase received:', data);
     battleRoyalPhaseLabel = data.label;
     battleRoyalRemainingPlayers = data.remainingPlayers ?? battleRoyalRemainingPlayers;
     battleRoyalStartedAt = Date.now();
