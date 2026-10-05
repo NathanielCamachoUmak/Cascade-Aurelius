@@ -249,6 +249,16 @@
             <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Username</label>
             <input id="auth-username-input" type="text" placeholder="Player123" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
           </div>
+          <div id="auth-consent-group" class="hidden flex-col gap-2 mt-2">
+            <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" id="auth-consent-telemetry" class="mt-0.5 rounded border-gray-600 text-neon-cyan focus:ring-neon-cyan bg-deep-purple/80" />
+              <span>I consent to the collection of my gameplay telemetry for academic research (UMREC).</span>
+            </label>
+            <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" id="auth-consent-age" class="mt-0.5 rounded border-gray-600 text-neon-cyan focus:ring-neon-cyan bg-deep-purple/80" />
+              <span>I am 18 years of age or older.</span>
+            </label>
+          </div>
           <div class="flex flex-col gap-1">
             <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Email</label>
             <input id="auth-email-input" type="email" required placeholder="player@example.com" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
@@ -829,6 +839,24 @@
     </div>
   </div>
 
+
+    <!-- UMREC Consent Banner -->
+    <div id="cookie-banner" class="fixed bottom-0 left-0 right-0 bg-deep-purple border-t border-card-border p-4 z-[9999] flex flex-col sm:flex-row justify-between items-center gap-4">
+      <p class="text-xs text-gray-300">
+        We use local storage strictly for session authentication and offline telemetry caching as part of our academic research (UMREC approved). 
+        <a href="/privacy.html" class="text-neon-cyan underline">Privacy Policy</a> &bull; <a href="/tos.html" class="text-neon-cyan underline">Terms of Service</a>
+      </p>
+      <button id="btn-cookie-accept" class="px-4 py-2 bg-card-bg border border-neon-cyan text-neon-cyan rounded hover:bg-neon-cyan hover:text-black transition-colors text-xs font-bold tracking-widest cursor-pointer">ACKNOWLEDGE</button>
+    </div>
+    <script>
+      if(localStorage.getItem('umrec_consent_ack')) {
+        document.getElementById('cookie-banner').style.display = 'none';
+      }
+      document.getElementById('btn-cookie-accept')?.addEventListener('click', () => {
+        localStorage.setItem('umrec_consent_ack', 'true');
+        document.getElementById('cookie-banner').style.display = 'none';
+      });
+    </script>
 </body>
 </html>
 

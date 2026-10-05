@@ -208,6 +208,7 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
 
     PLAYER_CLASSES.forEach((playerClass, index) => {
       const card = document.createElement('div');
+      card.tabIndex = 0; // Accessibility: Make focusable
       const color = ['#00FFFF', '#FFD700', '#FF1493', '#00FF00'][index % 4];
       const passiveText = playerClass.passiveDescription.replace(/^Passive:\s*/i, '');
       const certified = isClassCertified(playerClass.id);
@@ -279,6 +280,13 @@ export function showClassSelectModal(options: ClassSelectModalOptions) {
       card.addEventListener('click', () => {
         tempSelectedClassId = playerClass.id;
         updateCardSelectionStyles();
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          tempSelectedClassId = playerClass.id;
+          updateCardSelectionStyles();
+        }
       });
 
       cardElements.push({ card, playerClass, color });

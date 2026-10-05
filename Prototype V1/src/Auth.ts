@@ -20,6 +20,9 @@ export async function mountAuth() {
   const submitBtn = document.getElementById('btn-auth-submit') as HTMLButtonElement;
   
   const usernameGroup = document.getElementById('auth-username-group')!;
+  const consentGroup = document.getElementById('auth-consent-group');
+  const consentTelemetry = document.getElementById('auth-consent-telemetry') as HTMLInputElement;
+  const consentAge = document.getElementById('auth-consent-age') as HTMLInputElement;
   const usernameInput = document.getElementById('auth-username-input') as HTMLInputElement;
   const emailInput = document.getElementById('auth-email-input') as HTMLInputElement;
   const passwordInput = document.getElementById('auth-password-input') as HTMLInputElement;
@@ -67,12 +70,14 @@ export async function mountAuth() {
       submitBtn.textContent = 'CREATE ACCOUNT';
       toggleBtn.textContent = 'Already have an account? Sign In';
       usernameGroup.classList.remove('hidden');
+      if(consentGroup) consentGroup.classList.remove('hidden');
       usernameInput.required = true;
     } else {
       title.textContent = 'Sign In';
       submitBtn.textContent = 'SIGN IN';
       toggleBtn.textContent = 'Need an account? Register';
       usernameGroup.classList.add('hidden');
+      if(consentGroup) consentGroup.classList.add('hidden');
       usernameInput.required = false;
     }
   });
@@ -91,8 +96,16 @@ export async function mountAuth() {
     const password = passwordInput.value;
     const username = usernameInput.value;
 
+    
     try {
       if (isRegistering) {
+        if (consentTelemetry && !consentTelemetry.checked) {
+          throw new Error('You must consent to telemetry collection for academic research.');
+        }
+        if (consentAge && !consentAge.checked) {
+          throw new Error('You must be 18 years or older to participate.');
+        }
+
         const { error, data } = await supabase.auth.signUp({
           email,
           password,

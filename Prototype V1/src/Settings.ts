@@ -169,6 +169,14 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
           </div>
           <p>Show a simple tutorial pointer before starting the game.</p>
         </div>
+        
+        <div class="bq-settings-row" style="border-color: rgba(239, 68, 68, 0.3); margin-top: 1rem;">
+          <div class="bq-settings-row-head">
+            <span style="color: #ef4444;">Danger Zone</span>
+          </div>
+          <p style="margin-bottom: 0.75rem;">Permanently delete your account, high scores, and gameplay telemetry from our academic database.</p>
+          <button id="btn-delete-account" type="button" style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #ef4444; padding: 0.5rem 1rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: all 0.2s;">DELETE MY ACCOUNT & DATA</button>
+        </div>
       </div>
     </div>
   `;
@@ -239,6 +247,29 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
   window.addEventListener('keydown', event => {
     if (event.key === 'Escape') overlay.classList.remove('open');
   });
+
+  const btnDelete = overlay.querySelector('#btn-delete-account');
+  if (btnDelete) {
+    btnDelete.addEventListener('click', async () => {
+      if (confirm('Are you absolutely sure you want to delete your account and all telemetry data? This action cannot be undone.')) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            // Delete profile data (RLS allows if auth.uid() = id)
+            await supabase.from('profiles').delete().eq('id', session.user.id);
+            // Sign out
+            await supabase.auth.signOut();
+            alert('Account and data deleted successfully.');
+            window.location.reload();
+          } else {
+            alert('You are not logged in.');
+          }
+        } catch (e: any) {
+          alert('Error deleting account: ' + e.message);
+        }
+      }
+    });
+  }
 
   refresh();
   return { state: settingsState };
