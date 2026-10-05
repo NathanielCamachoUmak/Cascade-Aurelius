@@ -1,10 +1,10 @@
-# 🟩 Cascade
+# [🟩 Cascade](https://www.cascade-game.online/index.html)
 
 > **A Competitive Multiplayer Puzzle Game Featuring Proximity-Based Sabotage and Roguelike Item Progression.**
 
-![Cascade Banner](https://github.com/NathanielCamachoUmak/Cascade-Aurelius/blob/main/Prototype%20V1/Blockquartet%20blurry.png)
+![Cascade Banner](https://github.com/NathanielCamachoUmak/Cascade-Aurelius/blob/main/Prototype%20V1/public/Cascade.png)
 
-*Cascade* is a web-based, 4-player competitive falling-block puzzle game. Originally developed as a Computer Science research thesis, the engine bridges the gap between classic grid-based mastery and modern, high-variance social gaming through asymmetric player classes, deterministic state synchronization, and heavily optimized algorithmic design.
+*[Cascade](https://www.cascade-game.online/index.html)* is a web-based, 4-player competitive falling-block puzzle game. Originally developed as a Computer Science research thesis, the engine bridges the gap between classic grid-based mastery and modern, high-variance social gaming through asymmetric player classes, deterministic state synchronization, and heavily optimized algorithmic design.
 
 ---
 
@@ -39,7 +39,7 @@
 
 ## 🧠 System Architecture
 
-*Cascade* rejects heavy physics engines in favor of strict, lightweight algorithmic gatekeeping:
+*[Cascade](https://www.cascade-game.online/index.html)* rejects heavy physics engines in favor of strict, lightweight algorithmic gatekeeping:
 * **Expanded Finite State Machine (FSM):** Prevents overlapping ability glitches and manages complex multiplayer cooldowns.
 * **Super Rotation System (SRS):** Mathematically accurate wall-kicks and matrix transformations.
 * **Input Buffer:** Queues rapid keystrokes to ensure zero dropped inputs during network fluctuations or high cognitive load.
