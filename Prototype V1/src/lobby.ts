@@ -95,6 +95,7 @@ const btnPlayOnline = safeGet('btn-play-online')!;
 const navLobby = safeGet('nav-lobby')!;
 const screenPostGame = safeGet('screen-post-game')!;
 const postGameWinner = safeGet('post-game-winner')!;
+const postGameTime = safeGet('post-game-time')!;
 const postGameVotes = safeGet('post-game-votes')!;
 const btnPostRematch = safeGet('btn-post-rematch')!;
 const btnPostLeave = safeGet('btn-post-leave')!;
@@ -831,6 +832,11 @@ function wireGameCallbacks(network: NetworkManager) {
     } else {
       const isDraw = data.winnerName.startsWith('Draw');
       postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
+
+    const timeStr = formatGameTime(gameManager.gameTime);
+    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    postGameTime.classList.remove('hidden');
+
       postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
     }
     postGameVotes.innerText = `0 voted for rematch`;
@@ -2973,6 +2979,14 @@ function render() {
   }
 }
 
+
+function formatGameTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 function handleOfflineGameOver() {
   gameManager.state = GameState.POST_GAME;
   if (offlineCountdownInterval !== null) {
@@ -3014,6 +3028,11 @@ function handleOfflineGameOver() {
   } else {
     postGameVotes.innerHTML = `<span class="text-gray-400">PERSONAL BEST: <strong class="text-white">${bestScore.toLocaleString()}</strong></span>`;
   }
+
+  
+    const timeStr = formatGameTime(gameManager.gameTime);
+    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    postGameTime.classList.remove('hidden');
 
   setPostGameButtonLabels('PLAY AGAIN', 'MODE SELECT');
   btnPostRematch.classList.remove('hidden');
