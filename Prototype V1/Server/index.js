@@ -657,15 +657,15 @@ function startMatch(roomId) {
   if (room.mode.isTeamMode) io.to(roomId).emit('team-score-update', { teamScores: calculateTeamScores(room) });
   emitRoomState(roomId);
 
-  room.pregameTimer = setTimeout(() => {
-    if (room.mode.id === 'battle-royale') {
-      room.currentRoundIndex = 0;
-      startBattleRoyalRound(roomId);
-      emitRoomState(roomId);
-    } else {
+  if (room.mode.id === 'battle-royale') {
+    room.currentRoundIndex = 0;
+    startBattleRoyalRound(roomId);
+    emitRoomState(roomId);
+  } else {
+    room.pregameTimer = setTimeout(() => {
       startTeamMatchTimer(roomId);
-    }
-  }, 5000);
+    }, 5000);
+  }
 }
 
 function beginRoomCountdown(roomId, initiatedBy = null) {
