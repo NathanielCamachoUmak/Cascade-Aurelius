@@ -659,8 +659,10 @@ function startMatch(roomId) {
 
   if (room.mode.id === 'battle-royale') {
     room.currentRoundIndex = 0;
-    startBattleRoyalRound(roomId);
-    emitRoomState(roomId);
+    setTimeout(() => {
+      startBattleRoyalRound(roomId);
+      emitRoomState(roomId);
+    }, 500);
   } else {
     room.pregameTimer = setTimeout(() => {
       startTeamMatchTimer(roomId);

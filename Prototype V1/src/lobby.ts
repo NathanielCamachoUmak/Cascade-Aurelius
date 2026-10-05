@@ -881,11 +881,12 @@ function wireGameCallbacks(network: NetworkManager) {
 
   network.onGameStart = (data: GameStartData) => {
     activeOnlineMode = data.modeId;
-    battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
-    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening Battle' : '';
-    battleRoyalStartedAt = null;
-    battleRoyalPhaseEndsAt = null;
-    battleRoyalCullThreshold = 0;
+    if (battleRoyalPhaseEndsAt === null) {
+      battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
+      battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening Battle' : '';
+      battleRoyalStartedAt = null;
+      battleRoyalCullThreshold = 0;
+    }
     updateBattleRoyalHud();
     selectedOnlineMode = data.modeId;
     lobby.selectedMode = data.modeId;
@@ -1108,8 +1109,10 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   }
   if (mode?.id === 'battle-royale') {
     ensureBattleRoyalHud();
-    battleRoyalPhaseLabel = 'Opening battle';
-    battleRoyalRemainingPlayers = playerCount;
+    if (battleRoyalPhaseEndsAt === null) {
+      battleRoyalPhaseLabel = 'Opening battle';
+      battleRoyalRemainingPlayers = playerCount;
+    }
     updateBattleRoyalHud();
     if (brHudUpdateInterval) window.clearInterval(brHudUpdateInterval);
     brHudUpdateInterval = window.setInterval(updateBattleRoyalHud, 250);
