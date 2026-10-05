@@ -582,6 +582,13 @@ function updateBattleRoyalHud() {
   const killsEl = hud.querySelector('#br-kills');
   const progressEl = hud.querySelector('#br-progress') as HTMLElement | null;
 
+  // BULLETPROOF FALLBACK: If the game has been running for 5+ seconds but we STILL don't have a timer, manually infer it.
+  if (battleRoyalPhaseEndsAt === null && battleRoyalStartedAt && Date.now() - battleRoyalStartedAt > 5000) {
+    battleRoyalPhaseEndsAt = battleRoyalStartedAt + 90000;
+    battleRoyalPhaseLabel = 'Round 1 - Top 20 Qualify';
+    battleRoyalCullThreshold = 10;
+  }
+
   if (phaseEl) phaseEl.textContent = battleRoyalPhaseLabel || 'Opening Battle';
   if (remainEl) remainEl.textContent = String(battleRoyalRemainingPlayers);
   if (threshEl) threshEl.textContent = battleRoyalCullThreshold > 0 ? `${battleRoyalCullThreshold} BOTTOM PLAYERS` : 'NO CULL YET';
