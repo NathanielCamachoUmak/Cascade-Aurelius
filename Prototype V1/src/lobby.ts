@@ -1,3 +1,4 @@
+import { initMobileControls } from './MobileControls'
 import './style.css'
 import { GameManager, GameState } from './GameManager'
 import { Player } from './Player'
@@ -824,7 +825,7 @@ function wireGameCallbacks(network: NetworkManager) {
     lobby.hide();
     screenPostGame.classList.remove('hidden');
     screenPostGame.classList.add('flex');
-    gameHud.classList.add('hidden');
+    gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
     
     if (data.winnerTeam) {
       postGameWinner.innerText = `${data.winnerName} WINS`;
@@ -1092,7 +1093,7 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   uiLayer.classList.add('hidden');
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
-  gameHud.classList.remove('hidden');
+  gameHud.classList.remove('hidden'); document.body.classList.add('game-active');
   gameHud.classList.add('flex');
   spectatorBanner.classList.add('hidden');
   if (mode?.isTeamMode) {
@@ -1149,7 +1150,7 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
   uiLayer.classList.add('hidden');
-  gameHud.classList.remove('hidden');
+  gameHud.classList.remove('hidden'); document.body.classList.add('game-active');
   gameHud.classList.add('flex');
   teamMatchStrip.classList.add('hidden');
   
@@ -2996,7 +2997,7 @@ function handleOfflineGameOver() {
   AudioManager.playMusic('menu');
   updateNavHighlight('nav-modes');
   preGameOverlay.classList.add('hidden');
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
   lobby.hide();
   uiLayer.classList.remove('hidden');
@@ -3051,7 +3052,7 @@ window.addEventListener('keydown', (e: any) => {
 function returnToLobbyAuth() {
   AudioManager.playMusic('menu');
   gameManager.state = GameState.MAIN_MENU;
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
 
   // Disconnect from server and reset lobby component to auth panel
@@ -3078,7 +3079,7 @@ function returnToLobbyAuth() {
 function returnToMenu() {
   AudioManager.playMusic('menu');
   gameManager.state = GameState.MAIN_MENU;
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
 
   // Disconnect from server and reset lobby component
