@@ -118,7 +118,7 @@ export class NetworkManager {
   public onCountdownStart: ((seconds: number) => void) | null = null;
   public onCountdownCancel: (() => void) | null = null;
   public onPreGameCountdown: ((seconds: number) => void) | null = null;
-  public onPlayerStateUpdate: ((data: { playerId: string; playerIndex?: number; state: string }) => void) | null = null;
+  public onPlayerStateUpdate: ((data: { playerId: string; playerIndex?: number; state: string; remainingPlayers?: number; }) => void) | null = null;
   public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => void) | null = null;
   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
@@ -220,7 +220,7 @@ export class NetworkManager {
       this.onPreGameCountdown?.(seconds);
     });
 
-    this.socket.on("player-state-update", (data: { playerId: string; playerIndex?: number; state: string }) => {
+    this.socket.on("player-state-update", (data: { playerId: string; playerIndex?: number; state: string; remainingPlayers?: number; }) => {
       this.onPlayerStateUpdate?.(data);
     });
 

@@ -816,6 +816,10 @@ function wireGameCallbacks(network: NetworkManager) {
     if (data.playerId === network?.mySocketId && data.state === 'spectating') {
       spectatorBanner.classList.remove('hidden');
     }
+    if (data.remainingPlayers !== undefined) {
+      battleRoyalRemainingPlayers = data.remainingPlayers;
+      if (activeOnlineMode === 'battle-royale') updateBattleRoyalHud();
+    }
   };
 
   network.onPostGameStart = (data) => {
