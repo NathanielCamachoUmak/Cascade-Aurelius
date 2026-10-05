@@ -1582,7 +1582,11 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
   };
 
   const otherIndices: number[] = [];
-  for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
+  for (let i = 0; i < playerCount; i++) {
+    if (i !== myIndex && !(gameManager.players[i] as any).isCulled) {
+      otherIndices.push(i);
+    }
+  }
 
   const otherBlockSize = BLOCK_SIZE * OTHER_BOARD_SCALE_BR;   // ~7.8px blocks
   const otherWidth  = COLS * otherBlockSize;

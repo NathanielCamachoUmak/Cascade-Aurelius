@@ -548,11 +548,16 @@ function endBattleRoyalRound(roomId) {
   if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
   
   const round = getBattleRoyalRound(room.currentRoundIndex || 0);
+  room.battleRoyalPhase = 'intermission';
   
+  if (room.matchTimer) clearTimeout(room.matchTimer);
+
+  // 1. Cull players immediately (Visually removes their grids)
   const allMatchPlayers = Array.from(room.players.values()).filter(p => !p.brPermanentlyEliminated);
   if (allMatchPlayers.length > round.targetSurvivors) {
     const sorted = rankBattleRoyalPlayers(allMatchPlayers);
     const toCull = sorted.slice(round.targetSurvivors);
+    const eliminatedIds = [];
     for (const player of toCull) {
       player.brPermanentlyEliminated = true;
       player.state = 'eliminated';
@@ -560,6 +565,7 @@ function endBattleRoyalRound(roomId) {
       const entry = Array.from(room.players.entries()).find(([, p]) => p === player);
       if (entry) {
         const socketId = player.isBot ? player.ownerId : entry[0];
+        eliminatedIds.push(entry[0]); // Add map key
         io.to(socketId).emit('player-eliminated-prompt', {
           message: 'You have been eliminated from the Battle Royale! You may spectate the rest of the match.',
           canSpectate: true,
@@ -568,7 +574,9 @@ function endBattleRoyalRound(roomId) {
         io.to(roomId).emit('player-topped-out', { playerIndex: player.index, killerIndex: -1 });
       }
     }
+    io.to(roomId).emit('battle-royale-cull', { eliminatedIds });
     
+    // Set survivors ready to play (un-spectate them, but grids not cleared yet)
     const survivors = sorted.slice(0, round.targetSurvivors);
     for (const player of survivors) {
       if (player.state === 'spectating' || player.state === 'eliminated') {
@@ -589,7 +597,6 @@ function endBattleRoyalRound(roomId) {
   }
   
   room.currentRoundIndex++;
-  room.battleRoyalPhase = 'intermission';
   const nextRound = getBattleRoyalRound(room.currentRoundIndex);
   io.to(roomId).emit('battle-royale-phase', {
     phase: 'intermission',
@@ -597,14 +604,24 @@ function endBattleRoyalRound(roomId) {
     remainingPlayers: alivePlayers.length,
     cullThreshold: 0,
     atMs: 0,
-    nextAtMs: BATTLE_ROYALE_RULES.intermissionMs,
+    nextAtMs: 6000,
     scoreMultiplier: nextRound.scoreMultiplier,
   });
   
-  if (room.matchTimer) clearTimeout(room.matchTimer);
-  room.matchTimer = setTimeout(() => {
-    startBattleRoyalRound(roomId);
-  }, BATTLE_ROYALE_RULES.intermissionMs);
+  // 2. Clear all boards after 3 seconds
+  setTimeout(() => {
+    for (const [id, player] of room.players) {
+      if (player.state === 'playing') {
+        const socketId = player.isBot ? player.ownerId : id;
+        io.to(socketId).emit('round-start'); // client handles p.reset()
+      }
+    }
+    
+    // 3. Start Round 2 after another 3 seconds (6 seconds total)
+    room.matchTimer = setTimeout(() => {
+      startBattleRoyalRound(roomId);
+    }, 3000);
+  }, 3000);
 }
 
 function startTeamMatchTimer(roomId) {
