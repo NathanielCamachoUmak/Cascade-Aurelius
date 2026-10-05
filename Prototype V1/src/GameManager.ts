@@ -75,6 +75,10 @@ export class GameManager {
   public onlineWinnerName: string = "";
   public gameTime: number = 0;
   public battleRoyalMode = false;
+  /** True during the 5s gap between Battle Royale stages (sim + clock frozen). */
+  public intermission = false;
+  /** Lobby HUD hook for stage / intermission / cull changes. */
+  public onBattleRoyalStageChange: ((info: { type: 'stage' | 'intermission' | 'cull'; data: any }) => void) | null = null;
   public isTeamMode = false;
   public battleRoyalPhase = '';
   public battleRoyalRemaining = 0;
@@ -160,6 +164,7 @@ export class GameManager {
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
     this.battleRoyalMode = false;
+    this.intermission = false;
     this.isTeamMode = modeOptions?.isTeamMode ?? false;
     this.battleRoyalPhase = '';
     this.battleRoyalRemaining = playerCount;
@@ -365,11 +370,22 @@ export class GameManager {
       this.battleRoyalMode = true;
       this.battleRoyalPhase = data.label;
       this.battleRoyalRemaining = data.remainingPlayers;
+      if (data.stage) this.startBattleRoyalStage(data.garbageHoles ?? []);
+      this.onBattleRoyalStageChange?.({ type: 'stage', data });
+      this.renderFn();
+    };
+    net.onBattleRoyalIntermission = data => {
+      this.battleRoyalMode = true;
+      this.intermission = true;
+      this.battleRoyalRemaining = data.remainingPlayers;
+      this.players[this.myPlayerIndex]?.inputHandler.clear();
+      this.onBattleRoyalStageChange?.({ type: 'intermission', data });
       this.renderFn();
     };
     net.onBattleRoyalCull = data => {
       this.battleRoyalMode = true;
       this.battleRoyalRemaining = data.remainingPlayers;
+      this.onBattleRoyalStageChange?.({ type: 'cull', data });
       this.renderFn();
     };
     net.onBattleRoyalSuddenDeath = data => {
@@ -494,6 +510,7 @@ export class GameManager {
       return;
     }
     if (this.state !== GameState.PLAYING && this.state !== GameState.TUTORIAL) return;
+    if (this.intermission) return; // Battle Royale stage break: freeze sim and clock
 
     this.gameTime += dt;
 
@@ -746,6 +763,30 @@ export class GameManager {
           kills: p.kills,
         });
       }
+    }
+  }
+
+
+  /**
+   * K.O. recovery (Battle Royale, at/below the player floor): instead of
+   * being eliminated, the board keeps only user-placed blocks, garbage is
+   * destroyed, survivors collapse down, and play resumes.
+   */
+  /** Resets every surviving board for a new Battle Royale stage and seeds its starting garbage. */
+  public startBattleRoyalStage(garbageHoles: number[]) {
+    this.intermission = false;
+    for (const player of this.players) {
+      if (player.isToppedOut) continue; // eliminated players stay out
+      player.grid.resetWithGarbage(garbageHoles);
+      player.currentPiece = null;
+      player.hasHeld = false;
+      player.dropTimer = 0;
+      player.isGrounded = false;
+      player.lockTimer = 0;
+      player.lockMoveResets = 0;
+      player.scoreManager.combo = 0;
+      player.inputHandler.clear();
+      player.bot?.replan();
     }
   }
 

@@ -128,7 +128,8 @@ export class NetworkManager {
   public onRoundStart: (() => void) | null = null;
   public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
   public onClassEffect: ((data: ClassEffectData) => void) | null = null;
-  public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number; nextAtMs?: number; cullThreshold?: number; scoreMultiplier?: number }) => void) | null = null;
+  public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number; stage?: number; totalStages?: number; durationMs?: number; endsAt?: number; garbageLines?: number; garbageHoles?: number[]; suddenDeath?: boolean }) => void) | null = null;
+  public onBattleRoyalIntermission: ((data: { fromStage: number; nextStage: number; nextLabel: string; nextGarbageLines: number; durationMs: number; endsAt: number; remainingPlayers: number }) => void) | null = null;
   public onBattleRoyalCull: ((data: { reason: string; eliminated: Array<{ id: string; name: string; score: number; lines: number; kills: number }>; remainingPlayers: number }) => void) | null = null;
   public onBattleRoyalSuddenDeath: ((data: { targetId: string; targetIndex: number; remainingPlayers: number }) => void) | null = null;
   public onKoRecover: ((data: { koCount: number; score: number; clearGarbageOnly: boolean }) => void) | null = null;
@@ -249,6 +250,7 @@ export class NetworkManager {
     });
     this.socket.on('room-host-changed', (data: any) => this.onRoomHostChanged?.(data));
     this.socket.on('battle-royale-phase', (data: any) => this.onBattleRoyalPhase?.(data));
+    this.socket.on('battle-royale-intermission', (data: any) => this.onBattleRoyalIntermission?.(data));
     this.socket.on('battle-royale-cull', (data: any) => this.onBattleRoyalCull?.(data));
     this.socket.on('battle-royale-sudden-death', (data: any) => this.onBattleRoyalSuddenDeath?.(data));
     this.socket.on('ko-recover', (data: any) => this.onKoRecover?.(data));
