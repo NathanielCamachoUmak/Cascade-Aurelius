@@ -798,7 +798,8 @@ const lobby = mountLobbyScreen({
 function wireGameCallbacks(network: NetworkManager) {
   network.onPreGameCountdown = (seconds: number) => {
     preGameOverlay.classList.remove('hidden');
-    gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
+    const p = gameManager.players[gameManager.myPlayerIndex ?? -1];
+    if (p && p.inputHandler) p.inputHandler.freeze();
     let s = seconds;
     preGameText.innerText = s.toString();
     const interval = setInterval(() => {
@@ -807,7 +808,8 @@ function wireGameCallbacks(network: NetworkManager) {
         preGameText.innerText = s.toString();
       } else if (s === 0) {
         preGameText.innerText = "GO!";
-        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
+        const pGo = gameManager.players[gameManager.myPlayerIndex ?? -1];
+        if (pGo && pGo.inputHandler) pGo.inputHandler.unfreeze();
       } else {
         clearInterval(interval);
         preGameOverlay.classList.add('hidden');
@@ -1583,8 +1585,11 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
 
   const otherIndices: number[] = [];
   for (let i = 0; i < playerCount; i++) {
-    if (i !== myIndex && !(gameManager.players[i] as any).isCulled) {
-      otherIndices.push(i);
+    if (i !== myIndex) {
+      const p = gameManager.players[i];
+      if (!p || !(p as any).isCulled) {
+        otherIndices.push(i);
+      }
     }
   }
 
