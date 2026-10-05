@@ -1,8 +1,9 @@
+import { initMobileControls } from './MobileControls'
 import './style.css'
 import { GameManager, GameState } from './GameManager'
 import { Player } from './Player'
 import { Tetromino } from './Tetromino'
-import { NetworkManager, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
+import { NetworkManager, SERVER_URL, type RoomState, type GameStartData, type RoomMode } from './NetworkManager'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
 import { mountOnlineModeSelect, ONLINE_GAME_MODES, type OnlineModeId } from './OnlineModeSelect'
 import { mountLobbyScreen, type LobbyScreenController } from './LobbyScreen'
@@ -15,6 +16,7 @@ import { mountAuth } from './Auth'
 import { showClassSelectModal } from './ClassSelectModal'
 import { TutorialManager } from './TutorialManager'
 import { recordModeScore } from './HighScores'
+import { SPECIAL_BLOCK_ICONS, SPECIAL_BLOCK_COLORS, SpecialBlockType } from './ItemManager'
 
 // HELPER FOR MISSING ELEMENTS IN LOBBY
 function safeGet(id: string, tag: string = 'div'): any {
@@ -94,6 +96,7 @@ const btnPlayOnline = safeGet('btn-play-online')!;
 const navLobby = safeGet('nav-lobby')!;
 const screenPostGame = safeGet('screen-post-game')!;
 const postGameWinner = safeGet('post-game-winner')!;
+const postGameTime = safeGet('post-game-time')!;
 const postGameVotes = safeGet('post-game-votes')!;
 const btnPostRematch = safeGet('btn-post-rematch')!;
 const btnPostLeave = safeGet('btn-post-leave')!;
@@ -271,7 +274,10 @@ function renderClassCards() {
     const passDesc = info.passiveDescription.replace(/^Passive:\s*/i, '');
 
     card.innerHTML = `
-      <span class="${accentColorClass} text-[0.72rem] font-black uppercase tracking-[0.16em] mb-2">${roleText}</span>
+      <div class="flex items-center justify-between w-full mb-2">
+        <span class="${accentColorClass} text-[0.72rem] font-black uppercase tracking-[0.16em]">${roleText}</span>
+        <img src="${info.iconUrl}" alt="${info.name}" class="w-10 h-10 object-contain p-1 rounded-lg bg-white/5 border border-white/10" />
+      </div>
       <h3 class="text-[clamp(1.4rem,2.5vw,1.75rem)] font-extrabold leading-tight mb-2 text-white">${info.name}</h3>
       <p class="text-gray-400 text-[0.92rem] leading-relaxed mb-4">${info.tagline}</p>
       
@@ -311,14 +317,14 @@ const TUTORIAL_CLASS_ACCENTS: Record<string, { text: string; border: string }> =
   Support: { text: 'text-neon-green', border: 'border-neon-green/40' },
 };
 
-const SPECIAL_BLOCK_INFO: { letter: string; name: string; description: string }[] = [
-  { letter: 'B', name: 'Bomb', description: 'When its line clears, blasts a 3×3 area surrounding the block, clearing nearby blocks too.' },
-  { letter: 'W', name: 'Heavy', description: 'When its line clears, automatically clears and crushes the single row directly beneath it.' },
-  { letter: 'X', name: 'Multiplier', description: 'When its line clears, doubles your point gains (2x) for 5 seconds.' },
-  { letter: 'V', name: 'Speed', description: 'When its line clears, slows your own piece drop speed by 50% for 5 seconds — giving you extra control.' },
-  { letter: 'S', name: 'Shield', description: 'When its line clears, raises a defensive aura that completely blocks the next incoming garbage attack.' },
-  { letter: 'F', name: 'Freeze', description: "When its line clears, launches a frost tether that locks out opponents' active Q/E/R class abilities for 3 seconds." },
-  { letter: 'G', name: 'Garbage Eater', description: 'When its line clears, devours garbage lines on your board and converts the threat into +800 bonus points.' },
+const SPECIAL_BLOCK_INFO: { letter: string; name: string; iconUrl: string; description: string }[] = [
+  { letter: 'B', name: 'Bomb', iconUrl: SPECIAL_BLOCK_ICONS.BOMB, description: 'When its line clears, blasts a 3×3 area surrounding the block, clearing nearby blocks too.' },
+  { letter: 'W', name: 'Heavy', iconUrl: SPECIAL_BLOCK_ICONS.HEAVY, description: 'When its line clears, automatically clears and crushes the single row directly beneath it.' },
+  { letter: 'X', name: 'Multiplier', iconUrl: SPECIAL_BLOCK_ICONS.MULTIPLIER, description: 'When its line clears, doubles your point gains (2x) for 5 seconds.' },
+  { letter: 'V', name: 'Speed', iconUrl: SPECIAL_BLOCK_ICONS.SPEED, description: 'When its line clears, slows your own piece drop speed by 50% for 5 seconds — giving you extra control.' },
+  { letter: 'S', name: 'Shield', iconUrl: SPECIAL_BLOCK_ICONS.SHIELD, description: 'When its line clears, raises a defensive aura that completely blocks the next incoming garbage attack.' },
+  { letter: 'F', name: 'Freeze', iconUrl: SPECIAL_BLOCK_ICONS.FREEZE, description: "When its line clears, launches a frost tether that locks out opponents' active Q/E/R class abilities for 3 seconds." },
+  { letter: 'G', name: 'Garbage Eater', iconUrl: SPECIAL_BLOCK_ICONS.GARBAGE_EATER, description: 'When its line clears, devours garbage lines on your board and converts the threat into +800 bonus points.' },
 ];
 
 function renderTutorialClasses() {
@@ -328,8 +334,13 @@ function renderTutorialClasses() {
     const card = document.createElement('div');
     card.className = `bg-deep-purple/40 border ${accent.border} rounded-lg p-4`;
     card.innerHTML = `
-      <h4 class="${accent.text} font-extrabold text-sm mb-1">${info.name}</h4>
-      <p class="text-gray-500 text-xs mb-3">${info.tagline}</p>
+      <div class="flex items-center gap-3 mb-2">
+        <img src="${info.iconUrl}" alt="${info.name}" class="w-8 h-8 object-contain p-1 rounded bg-white/5 border border-white/10 shrink-0" />
+        <div>
+          <h4 class="${accent.text} font-extrabold text-sm leading-tight">${info.name}</h4>
+          <p class="text-gray-500 text-[10px]">${info.tagline}</p>
+        </div>
+      </div>
       <ul class="space-y-1.5 text-xs text-gray-300">
         <li><span class="text-gray-400 font-bold">Passive —</span> ${info.passiveDescription.replace(/^Passive:\s*/i, '')}</li>
         <li><span class="${accent.text} font-bold">[Q] ${info.abilityQName} —</span> ${info.abilityQDescription.replace(/^Q [·\-] .*?cooldown:?\s*/i, '')}</li>
@@ -347,7 +358,7 @@ function renderTutorialBlocks() {
     const row = document.createElement('div');
     row.className = 'flex items-start gap-3 bg-deep-purple/40 border border-card-border rounded-lg p-3';
     row.innerHTML = `
-      <span class="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-black border-2 border-neon-cyan text-neon-cyan font-pixel text-sm">${block.letter}</span>
+      <img src="${block.iconUrl}" alt="${block.name}" class="shrink-0 w-9 h-9 object-contain rounded bg-black/40 border border-white/20 p-0.5 shadow-md" />
       <div>
         <h4 class="text-white font-bold text-xs mb-0.5">${block.name}</h4>
         <p class="text-gray-500 text-xs leading-relaxed">${block.description}</p>
@@ -507,36 +518,52 @@ let battleRoyalRemainingPlayers = 0;
 let battleRoyalPhaseLabel = '';
 let battleRoyalStartedAt: number | null = null;
 let battleRoyalHud: HTMLElement | null = null;
-let battleRoyalStage = 0;
-let battleRoyalTotalStages = 4;
-let battleRoyalStageEndsAt: number | null = null;
-let battleRoyalStageDurationMs = 90_000;
-let battleRoyalIntermissionEndsAt: number | null = null;
-let battleRoyalIntermissionInfo = '';
-let battleRoyalOverlay: HTMLElement | null = null;
-
-function ensureBattleRoyalOverlay() {
-  if (battleRoyalOverlay) return battleRoyalOverlay;
-  const el = document.createElement('div');
-  el.id = 'battle-royale-intermission';
-  el.className = 'hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 text-white font-pixel text-center pointer-events-none';
-  el.innerHTML = '<div id="br-int-title" class="text-neon-yellow text-2xl tracking-widest"></div><div id="br-int-info" class="mt-3 text-xs tracking-widest text-gray-300"></div><div id="br-int-count" class="mt-6 text-6xl text-neon-cyan"></div>';
-  document.body.appendChild(el);
-  battleRoyalOverlay = el;
-  return el;
-}
-
-function fmtClock(ms: number) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-}
+let battleRoyalPhaseEndsAt: number | null = null;  // when the NEXT phase break fires
+let brHudUpdateInterval: number | null = null;
+let battleRoyalCullThreshold = 0;                   // minimum score to survive current phase
+// Phase 2: Cull banner
+let brCullBannerEl: HTMLElement | null = null;
+let brCullBannerTimerId: number | null = null;
+// Tracks the standings panel width so canvas.width expands correctly
+const BR_STANDINGS_W = 168;
 
 function ensureBattleRoyalHud() {
   if (battleRoyalHud) return battleRoyalHud;
   const hud = document.createElement('section');
   hud.id = 'battle-royale-hud';
-  hud.className = 'hidden fixed top-28 left-1/2 -translate-x-1/2 z-40 min-w-[280px] max-w-[calc(100vw-1.5rem)] bg-black/85 border border-neon-yellow/60 px-4 py-3 text-white shadow-[0_0_24px_rgba(255,193,7,.18)] backdrop-blur';
-  hud.innerHTML = '<div class="flex items-center justify-between gap-4"><strong class="text-neon-yellow text-xs font-pixel tracking-widest">BATTLE ROYALE</strong><span id="br-remaining" class="font-pixel text-sm">0 LEFT</span></div><div id="br-phase" class="mt-1 text-[10px] uppercase tracking-widest text-gray-300">Opening battle</div><div class="mt-2 h-1 bg-gray-800"><div id="br-progress" class="h-full bg-neon-yellow transition-all" style="width:0%"></div></div><div id="br-kills" class="mt-2 text-[10px] uppercase tracking-widest text-neon-cyan">0 ELIMINATIONS · TARGET 1,000,000</div>';
+  hud.className = 'hidden fixed top-16 left-1/2 -translate-x-1/2 z-40 min-w-[520px] max-w-[calc(100vw-1.5rem)] bg-black/90 border border-neon-yellow/60 backdrop-blur rounded-lg shadow-[0_0_28px_rgba(255,193,7,0.22)]';
+  hud.innerHTML = `
+    <div class="flex items-stretch gap-0">
+      <!-- Phase Name + Label -->
+      <div class="flex flex-col justify-center px-4 py-2 border-r border-neon-yellow/25 min-w-[160px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">PHASE</span>
+        <span id="br-phase" class="text-neon-yellow font-pixel text-[10px] mt-0.5 leading-tight">Opening Battle</span>
+      </div>
+      <!-- Phase Countdown -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[110px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">ROUND TIMER</span>
+        <span id="br-phase-timer" class="text-white font-pixel text-[13px] mt-0.5 tabular-nums">3:00</span>
+      </div>
+      <!-- Survivor Count -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 min-w-[100px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">SURVIVING</span>
+        <span id="br-remaining" class="text-neon-cyan font-pixel text-[13px] mt-0.5 tabular-nums">—</span>
+      </div>
+      <!-- Cull Threshold -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 border-r border-neon-yellow/25 flex-1">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">ELIMINATED AT END</span>
+        <span id="br-threshold" class="text-red-400 font-pixel text-[10px] mt-0.5 tabular-nums">—</span>
+      </div>
+      <!-- My K.O. Count -->
+      <div class="flex flex-col justify-center items-center px-4 py-2 min-w-[80px]">
+        <span class="text-[9px] font-pixel tracking-widest text-gray-400 uppercase">K.O.</span>
+        <span id="br-kills" class="text-neon-green font-pixel text-[13px] mt-0.5 tabular-nums">0</span>
+      </div>
+    </div>
+    <!-- Phase Progress Bar -->
+    <div class="h-[3px] bg-gray-800 rounded-b-lg overflow-hidden">
+      <div id="br-progress" class="h-full bg-gradient-to-r from-neon-yellow to-amber-500 transition-none" style="width:0%"></div>
+    </div>`;
   document.body.appendChild(hud);
   battleRoyalHud = hud;
   return hud;
@@ -544,38 +571,214 @@ function ensureBattleRoyalHud() {
 
 function updateBattleRoyalHud() {
   const hud = ensureBattleRoyalHud();
-  const remaining = hud.querySelector('#br-remaining');
-  const phase = hud.querySelector('#br-phase');
-  const progress = hud.querySelector('#br-progress') as HTMLElement | null;
-  const kills = hud.querySelector('#br-kills');
-  if (remaining) remaining.textContent = `${battleRoyalRemainingPlayers} LEFT`;
-  if (phase) phase.textContent = battleRoyalPhaseLabel || 'Opening battle';
-  const stageLeft = battleRoyalStageEndsAt ? battleRoyalStageEndsAt - Date.now() : battleRoyalStageDurationMs;
-  if (progress) progress.style.width = `${gameManager.intermission ? 100 : Math.min(100, Math.max(0, (1 - stageLeft / battleRoyalStageDurationMs) * 100))}%`;
-  const overlay = ensureBattleRoyalOverlay();
-  const showOverlay = activeOnlineMode === 'battle-royale' && gameManager.intermission && !!battleRoyalIntermissionEndsAt;
-  overlay.classList.toggle('hidden', !showOverlay);
-  if (showOverlay) {
-    const t = overlay.querySelector('#br-int-title'); const i = overlay.querySelector('#br-int-info'); const c = overlay.querySelector('#br-int-count');
-    if (t) t.textContent = 'INTERMISSION';
-    if (i) i.textContent = battleRoyalIntermissionInfo;
-    if (c) c.textContent = String(Math.max(0, Math.ceil((battleRoyalIntermissionEndsAt! - Date.now()) / 1000)));
+  const isActive = activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING;
+  hud.classList.toggle('hidden', !isActive);
+  if (!isActive) return;
+
+  const phaseEl = hud.querySelector('#br-phase');
+  const timerEl = hud.querySelector('#br-phase-timer') as HTMLElement | null;
+  const remainEl = hud.querySelector('#br-remaining');
+  const threshEl = hud.querySelector('#br-threshold');
+  const killsEl = hud.querySelector('#br-kills');
+  const progressEl = hud.querySelector('#br-progress') as HTMLElement | null;
+
+
+
+  if (phaseEl) phaseEl.textContent = battleRoyalPhaseLabel || 'Opening Battle';
+  if (remainEl) remainEl.textContent = String(battleRoyalRemainingPlayers);
+  if (threshEl) threshEl.textContent = battleRoyalCullThreshold > 0 ? `${battleRoyalCullThreshold} BOTTOM PLAYERS` : 'NO CULL YET';
+
+  // Phase countdown timer
+  if (timerEl) {
+    const endsAt = teamMatchEndsAt;
+    if (endsAt && endsAt > Date.now()) {
+      const secLeft = Math.ceil((endsAt - Date.now()) / 1000);
+      const m = Math.floor(secLeft / 60);
+      const s = secLeft % 60;
+      timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      timerEl.classList.toggle('text-red-400', secLeft <= 10);
+      timerEl.classList.toggle('text-white', secLeft > 10);
+    } else {
+      timerEl.textContent = !endsAt ? '—' : 'FINAL';
+    }
   }
+
+  // Match progress bar (0→100% over 4 minutes)
+  if (progressEl && battleRoyalStartedAt) {
+    const elapsed = Date.now() - battleRoyalStartedAt;
+    progressEl.style.width = `${Math.min(100, (elapsed / (4 * 60 * 1000)) * 100).toFixed(1)}%`;
+  }
+
   const localKills = gameManager.players[gameManager.myPlayerIndex]?.kills || gameManager.battleRoyalKills;
-  if (kills) kills.textContent = `${localKills} ELIMINATIONS · STAGE ${battleRoyalStage || 1}/${battleRoyalTotalStages} · ${gameManager.intermission ? 'BREAK' : fmtClock(stageLeft)}`;
-  hud.classList.toggle('hidden', activeOnlineMode !== 'battle-royale' || gameManager.state !== GameState.PLAYING);
+  if (killsEl) killsEl.textContent = String(localKills ?? 0);
+}
+
+// ── Phase 2: Cull Elimination Banner ─────────────────────────────────────────
+
+  // ============================================================
+  // Intermission overlay (shown between rounds)
+  // ============================================================
+  let brIntermissionEl: HTMLElement | null = null;
+  let brIntermissionTimer: number | null = null;
+
+  function ensureIntermissionOverlay(): HTMLElement {
+    if (brIntermissionEl) return brIntermissionEl;
+    const el = document.createElement('div');
+    el.id = 'br-intermission-overlay';
+    el.className = 'hidden fixed inset-0 z-50 flex flex-col items-center justify-center pointer-events-none';
+    el.innerHTML = `
+      <div style="background:rgba(0,0,0,0.97);border:2px solid rgba(255,193,7,0.8);border-radius:16px;padding:40px 48px;text-align:center;max-width:480px;width:calc(100vw - 32px);">
+        <div style="color:#FFD700;font-family:monospace;font-size:18px;letter-spacing:3px;margin-bottom:8px;">ROUND COMPLETE</div>
+        <div style="color:#9CA3AF;font-family:monospace;font-size:11px;margin-bottom:16px;" id="br-inter-subline">Preparing next round...</div>
+        <div style="color:white;font-family:monospace;font-size:48px;margin-bottom:4px;" id="br-inter-countdown">5</div>
+        <div style="color:#6B7280;font-family:monospace;font-size:9px;letter-spacing:2px;">NEXT ROUND BEGINS IN</div>
+        <div style="margin-top:16px;width:100%;background:#1F2937;border-radius:999px;height:4px;overflow:hidden;">
+          <div id="br-inter-bar" style="height:100%;background:#FFD700;width:100%;transition:none;"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    brIntermissionEl = el;
+    return el;
+  }
+
+  function showBrIntermissionOverlay(remaining: number, durationMs: number) {
+    const el = ensureIntermissionOverlay();
+    el.classList.remove('hidden');
+    const subline = el.querySelector('#br-inter-subline');
+    if (subline) subline.textContent = remaining + ' players advance to the next round';
+
+    const countdownEl = el.querySelector('#br-inter-countdown') as HTMLElement | null;
+    const barEl = el.querySelector('#br-inter-bar') as HTMLElement | null;
+    const totalSec = Math.ceil(durationMs / 1000);
+    let secLeft = totalSec;
+
+    if (brIntermissionTimer !== null) clearInterval(brIntermissionTimer);
+    if (countdownEl) countdownEl.textContent = String(secLeft);
+
+    brIntermissionTimer = window.setInterval(() => {
+      secLeft--;
+      if (countdownEl) countdownEl.textContent = String(Math.max(0, secLeft));
+      if (barEl) barEl.style.width = Math.max(0, (secLeft / totalSec) * 100).toFixed(1) + '%';
+      if (secLeft <= 0) {
+        if (brIntermissionTimer !== null) clearInterval(brIntermissionTimer);
+        brIntermissionTimer = null;
+      }
+    }, 1000);
+  }
+
+  function hideBrIntermissionOverlay() {
+    if (brIntermissionEl) brIntermissionEl.classList.add('hidden');
+    if (brIntermissionTimer !== null) {
+      clearInterval(brIntermissionTimer);
+      brIntermissionTimer = null;
+    }
+  }
+
+function ensureCullBanner(): HTMLElement {
+  if (brCullBannerEl) return brCullBannerEl;
+  const el = document.createElement('div');
+  el.id = 'br-cull-banner';
+  el.className = 'hidden fixed inset-x-0 top-1/3 z-50 flex flex-col items-center pointer-events-none';
+  el.innerHTML = `
+    <div class="bg-black/95 border-2 border-red-500 rounded-xl px-8 py-5 shadow-[0_0_48px_rgba(239,68,68,0.5)] max-w-[520px] w-full mx-4">
+      <div class="text-red-500 font-pixel text-sm tracking-widest text-center mb-1" id="br-cull-headline">PHASE CULL</div>
+      <div class="text-white font-pixel text-xs text-center mb-3" id="br-cull-subline">— PLAYERS ELIMINATED —</div>
+      <div id="br-cull-list" class="flex flex-col gap-1 max-h-40 overflow-hidden"></div>
+      <div class="mt-3 text-center text-gray-400 font-pixel text-[9px]" id="br-cull-remaining"></div>
+    </div>`;
+  document.body.appendChild(el);
+  brCullBannerEl = el;
+  return el;
+}
+
+function showBrCullBanner(eliminated: Array<{ name: string; score: number }>, remainingPlayers: number, reason: string) {
+  const el = ensureCullBanner();
+  const headline = el.querySelector('#br-cull-headline')!;
+  const subline  = el.querySelector('#br-cull-subline')!;
+  const list     = el.querySelector('#br-cull-list')!;
+  const rem      = el.querySelector('#br-cull-remaining')!;
+
+  const reasonLabel = reason === 'score-cull' ? 'SCORE CULL' : reason === 'line-cull' ? 'LINE CULL' : 'PHASE CULL';
+  headline.textContent = `⚡ ${reasonLabel} — ${eliminated.length} ELIMINATED`;
+  subline.textContent  = `— BELOW SURVIVAL THRESHOLD —`;
+
+  list.innerHTML = eliminated.slice(0, 8).map(p =>
+    `<div class="flex justify-between items-center bg-red-950/60 border border-red-800/50 rounded px-3 py-1">
+       <span class="text-red-300 font-pixel text-[9px] truncate max-w-[200px]">${p.name}</span>
+       <span class="text-gray-400 font-pixel text-[9px] tabular-nums ml-2">${Math.round(p.score).toLocaleString()} PTS</span>
+     </div>`
+  ).join('');
+
+  if (eliminated.length > 8) {
+    list.innerHTML += `<div class="text-center text-gray-500 font-pixel text-[8px] mt-1">+${eliminated.length - 8} more eliminated</div>`;
+  }
+
+  rem.textContent = `${remainingPlayers} SURVIVORS REMAINING`;
+
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+
+  // Auto-hide after 4s
+  if (brCullBannerTimerId !== null) clearTimeout(brCullBannerTimerId);
+  brCullBannerTimerId = window.setTimeout(() => {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+    brCullBannerTimerId = null;
+  }, 4000);
+
+  AudioManager.playSfx('death');
 }
 
 function formatTeamTimer() {
-  if (!teamMatchEndsAt) return '3:00';
+  if (!teamMatchEndsAt) return '4:00';
   const seconds = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
 function updateTeamScoreHud() {
-  teamScoreCyan.innerText = `${Math.round(onlineTeamScores.cyan)}`;
-  teamScoreMagenta.innerText = `${Math.round(onlineTeamScores.magenta)}`;
-  teamMatchTimer.innerText = formatTeamTimer();
+  const cyanScore = Math.round(onlineTeamScores.cyan || 0);
+  const magentaScore = Math.round(onlineTeamScores.magenta || 0);
+  if (teamScoreCyan) teamScoreCyan.innerText = cyanScore.toLocaleString();
+  if (teamScoreMagenta) teamScoreMagenta.innerText = magentaScore.toLocaleString();
+
+  const total = cyanScore + magentaScore;
+  const cyanPct = total > 0 ? Math.min(90, Math.max(10, Math.round((cyanScore / total) * 100))) : 50;
+  const magentaPct = 100 - cyanPct;
+
+  const barCyan = document.getElementById('team-bar-cyan');
+  const barMagenta = document.getElementById('team-bar-magenta');
+  if (barCyan) barCyan.style.width = `${cyanPct}%`;
+  if (barMagenta) barMagenta.style.width = `${magentaPct}%`;
+
+  const leadPill = document.getElementById('team-lead-pill');
+  if (leadPill) {
+    const diff = cyanScore - magentaScore;
+    if (diff > 0) {
+      leadPill.innerText = `CYAN +${diff.toLocaleString()}`;
+      leadPill.className = 'text-[8px] font-pixel text-cyan-400 uppercase tracking-widest';
+    } else if (diff < 0) {
+      leadPill.innerText = `MAGENTA +${(-diff).toLocaleString()}`;
+      leadPill.className = 'text-[8px] font-pixel text-neon-pink uppercase tracking-widest';
+    } else {
+      leadPill.innerText = 'TIED MATCH';
+      leadPill.className = 'text-[8px] font-pixel text-gray-400 uppercase tracking-widest';
+    }
+  }
+
+  if (teamMatchTimer) {
+    const timerStr = formatTeamTimer();
+    teamMatchTimer.innerText = timerStr;
+    if (teamMatchEndsAt) {
+      const secRemaining = Math.max(0, Math.ceil((teamMatchEndsAt - Date.now()) / 1000));
+      if (secRemaining <= 30 && secRemaining > 0) {
+        teamMatchTimer.classList.add('text-red-500', 'border-red-500', 'animate-pulse');
+        teamMatchTimer.classList.remove('text-neon-yellow');
+      } else {
+        teamMatchTimer.classList.remove('text-red-500', 'border-red-500', 'animate-pulse');
+        teamMatchTimer.classList.add('text-neon-yellow');
+      }
+    }
+  }
 }
 
 const lobby = mountLobbyScreen({
@@ -587,32 +790,16 @@ const lobby = mountLobbyScreen({
     screenPostGame,
   },
   onNetworkReady: (network) => wireGameCallbacks(network),
+  onClassChange: (classId) => {
+    selectedClass = classId as PlayerClass;
+  },
 });
-
-gameManager.onBattleRoyalStageChange = ({ type, data }) => {
-  if (type === 'stage') {
-    battleRoyalStage = data.stage ?? battleRoyalStage;
-    battleRoyalTotalStages = data.totalStages ?? battleRoyalTotalStages;
-    battleRoyalStageDurationMs = data.durationMs ?? battleRoyalStageDurationMs;
-    battleRoyalStageEndsAt = data.endsAt ?? null;
-    battleRoyalIntermissionEndsAt = null;
-    battleRoyalPhaseLabel = `${data.label} · ${data.garbageLines ?? 0} garbage lines`;
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    gameManager.players[gameManager.myPlayerIndex]?.inputHandler.unfreeze();
-  } else if (type === 'intermission') {
-    battleRoyalStageEndsAt = null;
-    battleRoyalIntermissionEndsAt = data.endsAt;
-    battleRoyalIntermissionInfo = `Stage ${data.fromStage} complete · ${data.remainingPlayers} left · next: ${data.nextLabel} (${data.nextGarbageLines} garbage lines)`;
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    gameManager.players[gameManager.myPlayerIndex]?.inputHandler.freeze();
-  }
-  updateBattleRoyalHud();
-};
 
 function wireGameCallbacks(network: NetworkManager) {
   network.onPreGameCountdown = (seconds: number) => {
     preGameOverlay.classList.remove('hidden');
-    gameManager.players[gameManager.myPlayerIndex].inputHandler.freeze();
+    const p = gameManager.players[gameManager.myPlayerIndex ?? -1];
+    if (p && p.inputHandler) p.inputHandler.freeze();
     let s = seconds;
     preGameText.innerText = s.toString();
     const interval = setInterval(() => {
@@ -621,7 +808,8 @@ function wireGameCallbacks(network: NetworkManager) {
         preGameText.innerText = s.toString();
       } else if (s === 0) {
         preGameText.innerText = "GO!";
-        gameManager.players[gameManager.myPlayerIndex].inputHandler.unfreeze();
+        const pGo = gameManager.players[gameManager.myPlayerIndex ?? -1];
+        if (pGo && pGo.inputHandler) pGo.inputHandler.unfreeze();
       } else {
         clearInterval(interval);
         preGameOverlay.classList.add('hidden');
@@ -630,8 +818,16 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onPlayerStateUpdate = (data) => {
-    if (data.playerId === network?.mySocketId && data.state === 'spectating') {
-      spectatorBanner.classList.remove('hidden');
+    if (data.playerId === network?.mySocketId) {
+      if (data.state === 'spectating' || data.state === 'eliminated') {
+        spectatorBanner.classList.remove('hidden');
+      } else if (data.state === 'playing') {
+        spectatorBanner.classList.add('hidden');
+      }
+    }
+    if (data.remainingPlayers !== undefined) {
+      battleRoyalRemainingPlayers = data.remainingPlayers;
+      if (activeOnlineMode === 'battle-royale') updateBattleRoyalHud();
     }
   };
 
@@ -642,7 +838,7 @@ function wireGameCallbacks(network: NetworkManager) {
     lobby.hide();
     screenPostGame.classList.remove('hidden');
     screenPostGame.classList.add('flex');
-    gameHud.classList.add('hidden');
+    gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
     
     if (data.winnerTeam) {
       postGameWinner.innerText = `${data.winnerName} WINS`;
@@ -650,6 +846,11 @@ function wireGameCallbacks(network: NetworkManager) {
     } else {
       const isDraw = data.winnerName.startsWith('Draw');
       postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
+
+    const timeStr = formatGameTime(gameManager.gameTime);
+    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    postGameTime.classList.remove('hidden');
+
       postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
     }
     postGameVotes.innerText = `0 voted for rematch`;
@@ -689,12 +890,13 @@ function wireGameCallbacks(network: NetworkManager) {
 
   network.onGameStart = (data: GameStartData) => {
     activeOnlineMode = data.modeId;
-    battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
-    battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening battle' : '';
-    battleRoyalStartedAt = null;
-    battleRoyalStage = 0;
-    battleRoyalStageEndsAt = null;
-    battleRoyalIntermissionEndsAt = null;
+    if (battleRoyalPhaseEndsAt === null) {
+      battleRoyalRemainingPlayers = data.modeId === 'battle-royale' ? data.players.length : 0;
+      battleRoyalPhaseLabel = data.modeId === 'battle-royale' ? 'Opening Battle' : '';
+      battleRoyalStartedAt = null;
+      battleRoyalPhaseEndsAt = null;
+      battleRoyalCullThreshold = 0;
+    }
     updateBattleRoyalHud();
     selectedOnlineMode = data.modeId;
     lobby.selectedMode = data.modeId;
@@ -704,9 +906,25 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onBattleRoyalPhase = (data) => {
+    console.log('[DEBUG] onBattleRoyalPhase received:', data);
     battleRoyalPhaseLabel = data.label;
-    battleRoyalRemainingPlayers = data.remainingPlayers;
-    if (!battleRoyalStartedAt) battleRoyalStartedAt = Date.now();
+    battleRoyalRemainingPlayers = data.remainingPlayers ?? battleRoyalRemainingPlayers;
+    battleRoyalStartedAt = Date.now();
+    // nextAtMs is the duration of this round in ms; endsAt = now + duration
+    battleRoyalPhaseEndsAt = data.nextAtMs ? (Date.now() + data.nextAtMs) : null;
+    battleRoyalCullThreshold = data.cullThreshold ?? 0;
+
+    if (data.scoreMultiplier) {
+      gameManager.players.forEach(p => p.scoreManager.globalMultiplier = data.scoreMultiplier!);
+    }
+
+    // Show intermission overlay if this is an intermission phase
+    if (data.phase === 'intermission') {
+      showBrIntermissionOverlay(data.remainingPlayers ?? battleRoyalRemainingPlayers, data.nextAtMs ?? 5000);
+    } else {
+      hideBrIntermissionOverlay();
+    }
+
     updateBattleRoyalHud();
   };
   network.onBattleRoyalCull = (data) => {
@@ -717,10 +935,15 @@ function wireGameCallbacks(network: NetworkManager) {
         ? 'Culling lowest line count · tie-break score, kills'
         : 'Culling lowest kills · tie-break lines, score';
     updateBattleRoyalHud();
+    // Show the dramatic cull elimination banner
+    if (data.eliminated && data.eliminated.length > 0) {
+      showBrCullBanner(data.eliminated, data.remainingPlayers, data.reason);
+    }
   };
   network.onBattleRoyalSuddenDeath = (data) => {
     battleRoyalRemainingPlayers = data.remainingPlayers;
-    battleRoyalPhaseLabel = 'Sudden death · solid garbage incoming';
+    battleRoyalPhaseLabel = '⚡ SUDDEN DEATH · Solid Garbage Incoming';
+    battleRoyalPhaseEndsAt = null; // Final phase — no next break
     updateBattleRoyalHud();
   };
   const showGlobalRibbon = (message: string) => {
@@ -738,6 +961,7 @@ function wireGameCallbacks(network: NetworkManager) {
     updateBattleRoyalHud();
   };
   network.onPlayerKnockedOut = (data) => {
+    AudioManager.playSfx('death');
     if (data.playerId !== network?.mySocketId) {
       showGlobalRibbon(`${data.playerIndex >= 0 ? `P${data.playerIndex + 1}` : 'A player'} took a K.O. (x${data.koCount})`);
     }
@@ -757,6 +981,40 @@ function wireGameCallbacks(network: NetworkManager) {
     updateTeamScoreHud();
   };
 
+  network.onTdmPlayerRebooting = (data) => {
+    gameManager.applyTdmReboot(data.playerIndex, data.durationMs, data.score, data.koCount);
+    onlineTeamScores = data.teamScores;
+    updateTeamScoreHud();
+    AudioManager.playSfx('death');
+
+    const victimName = onlinePlayerSpecs[data.playerIndex]?.name || `P${data.playerIndex + 1}`;
+    const killerName = data.killerIndex !== null && data.killerIndex !== undefined && onlinePlayerSpecs[data.killerIndex]
+      ? onlinePlayerSpecs[data.killerIndex].name
+      : null;
+
+    if (killerName) {
+      showGlobalRibbon(`${killerName.toUpperCase()} K.O.'D ${victimName.toUpperCase()}! (+2,500 BOUNTY)`);
+    } else {
+      showGlobalRibbon(`${victimName.toUpperCase()} TOPPED OUT! (-20% PTS)`);
+    }
+  };
+
+  network.onTdmPlayerRespawned = (data) => {
+    gameManager.applyTdmRespawn(data.playerIndex);
+    if (data.playerIndex === gameManager.myPlayerIndex) {
+      showGlobalRibbon('SYSTEM REBOOT COMPLETE · RE-ENTERING MATCH');
+    }
+  };
+
+  network.onTeamAceWipeout = (data) => {
+    onlineTeamScores = data.teamScores;
+    updateTeamScoreHud();
+    AudioManager.playSfx('ultimate');
+    const squadName = data.scoringTeam === 'cyan' ? 'CYAN CIRCUIT' : 'MAGENTA VOLTAGE';
+    showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
+  };
+
+  network.onRoundStart = () => { gameManager.startNewRound(); };
   network.onMatchTimerStart = (data) => {
     teamMatchEndsAt = data.endsAt;
     if (teamTimerInterval) clearInterval(teamTimerInterval);
@@ -798,6 +1056,9 @@ btnPlayOnline.addEventListener('click', () => {
     alert("Please select a class first!");
     return;
   }
+  try {
+    fetch(SERVER_URL, { mode: 'no-cors' }).catch(() => {});
+  } catch (_) {}
   pendingMode = 'ONLINE';
   showOnlineModeSelect();
 });
@@ -831,7 +1092,16 @@ let onlinePlayerSpecs: any[] = [];
 
 function startOnlineGame(playerCount: number, myIndex: number, players?: any[], mode?: RoomMode) {
   if (players) {
-    onlinePlayerSpecs = players;
+    const lobbyPlayers = lobby.players;
+    onlinePlayerSpecs = players.map(spec => {
+      if (spec.classId) return spec;
+      const match = lobbyPlayers.find(lp => lp.id === spec.id);
+      return match?.classId ? { ...spec, classId: match.classId } : spec;
+    });
+    const myClassId = onlinePlayerSpecs[myIndex]?.classId as PlayerClass | undefined;
+    if (myClassId) {
+      selectedClass = myClassId;
+    }
   }
   // Hide lobby, show game
   AudioManager.playMusic('game');
@@ -839,7 +1109,7 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   uiLayer.classList.add('hidden');
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
-  gameHud.classList.remove('hidden');
+  gameHud.classList.remove('hidden'); document.body.classList.add('game-active');
   gameHud.classList.add('flex');
   spectatorBanner.classList.add('hidden');
   if (mode?.isTeamMode) {
@@ -850,9 +1120,13 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   }
   if (mode?.id === 'battle-royale') {
     ensureBattleRoyalHud();
-    battleRoyalPhaseLabel = 'Opening battle';
-    battleRoyalRemainingPlayers = playerCount;
+    if (battleRoyalPhaseEndsAt === null) {
+      battleRoyalPhaseLabel = 'Opening battle';
+      battleRoyalRemainingPlayers = playerCount;
+    }
     updateBattleRoyalHud();
+    if (brHudUpdateInterval) window.clearInterval(brHudUpdateInterval);
+    brHudUpdateInterval = window.setInterval(updateBattleRoyalHud, 250);
   } else if (battleRoyalHud) {
     battleRoyalHud.classList.add('hidden');
   }
@@ -862,8 +1136,9 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   // mosaic grid beside it, so canvas.width/height must span every board's
   // actual bounding box rather than assuming one straight line of boards.
   const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
-  canvas.width = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize));
-  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize));
+  const standingsExtra = mode?.id === 'battle-royale' ? BR_STANDINGS_W : 0;
+  canvas.width  = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize)) + 24 + standingsExtra;
+  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize + (l.cardHeight ? l.cardHeight + 16 : 0)));
 
   // Our own board is always pinned at (0,0) when emphasized, so make sure the
   // container starts scrolled there instead of wherever it was left before.
@@ -893,7 +1168,7 @@ function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {
   screenPostGame.classList.remove('flex');
   screenPostGame.classList.add('hidden');
   uiLayer.classList.add('hidden');
-  gameHud.classList.remove('hidden');
+  gameHud.classList.remove('hidden'); document.body.classList.add('game-active');
   gameHud.classList.add('flex');
   teamMatchStrip.classList.add('hidden');
   
@@ -951,6 +1226,15 @@ const BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
   BLOCK_SPRITES[shape] = img;
 });
 
+const SPECIAL_BLOCK_SPRITES: Record<string, HTMLImageElement> = {};
+Object.entries(SPECIAL_BLOCK_ICONS).forEach(([type, url]) => {
+  if (url) {
+    const img = new Image();
+    img.src = url;
+    SPECIAL_BLOCK_SPRITES[type] = img;
+  }
+});
+
 function drawBlock(
   targetCtx: CanvasRenderingContext2D,
   x: number, 
@@ -985,6 +1269,21 @@ function drawBlock(
     targetCtx.fillRect(finalX + 2, finalY + 2, blockSize - 4, blockSize - 4);
     return;
   }
+
+  // Draw custom special item block sprite if available
+  if (isSpecial && SPECIAL_BLOCK_SPRITES[isSpecial] && SPECIAL_BLOCK_SPRITES[isSpecial].complete && SPECIAL_BLOCK_SPRITES[isSpecial].naturalWidth > 0) {
+    targetCtx.drawImage(SPECIAL_BLOCK_SPRITES[isSpecial], finalX, finalY, blockSize, blockSize);
+    const glowColor = SPECIAL_BLOCK_COLORS[isSpecial as SpecialBlockType] || '#FFD700';
+    targetCtx.save();
+    targetCtx.shadowColor = glowColor;
+    targetCtx.shadowBlur = 8;
+    targetCtx.strokeStyle = glowColor;
+    targetCtx.lineWidth = 1.5;
+    targetCtx.strokeRect(finalX + 0.5, finalY + 0.5, blockSize - 1, blockSize - 1);
+    targetCtx.restore();
+    return;
+  }
+
 
   if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
     targetCtx.drawImage(BLOCK_SPRITES[shapeType], finalX, finalY, blockSize, blockSize);
@@ -1038,23 +1337,35 @@ function renderQueueOnMiniCanvas(canvasEl: HTMLCanvasElement, shapes: string[], 
           const fx = offsetX + c * MINI_BLOCK_SIZE;
           const fy = offsetY + r * MINI_BLOCK_SIZE;
           const specialType = (i === 0 && nextPiece) ? nextPiece.specialBlocks.get(`${r},${c}`) : undefined;
-          if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
-            tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-            tCtx.strokeStyle = color;
+          if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
+            tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+            const glowColor = SPECIAL_BLOCK_COLORS[specialType as SpecialBlockType] || '#FFD700';
+            tCtx.save();
+            tCtx.shadowColor = glowColor;
+            tCtx.shadowBlur = 4;
+            tCtx.strokeStyle = glowColor;
             tCtx.lineWidth = 1;
-            tCtx.strokeRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+            tCtx.strokeRect(fx + 0.5, fy + 0.5, MINI_BLOCK_SIZE - 1, MINI_BLOCK_SIZE - 1);
+            tCtx.restore();
           } else {
-            tCtx.fillStyle = color;
-            tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
-          }
-          if (specialType) {
-            tCtx.fillStyle = '#000000B3';
-            tCtx.fillRect(fx + 2, fy + 2, MINI_BLOCK_SIZE - 4, MINI_BLOCK_SIZE - 4);
-            tCtx.fillStyle = '#FFFFFF';
-            tCtx.font = 'bold 11px "Press Start 2P"';
-            tCtx.textAlign = 'center';
-            tCtx.textBaseline = 'middle';
-            tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2 + 1);
+            if (shapeType && BLOCK_SPRITES[shapeType] && BLOCK_SPRITES[shapeType].complete && BLOCK_SPRITES[shapeType].naturalWidth > 0) {
+              tCtx.drawImage(BLOCK_SPRITES[shapeType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+              tCtx.strokeStyle = color;
+              tCtx.lineWidth = 1;
+              tCtx.strokeRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+            } else {
+              tCtx.fillStyle = color;
+              tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+            }
+            if (specialType) {
+              tCtx.fillStyle = '#000000B3';
+              tCtx.fillRect(fx + 2, fy + 2, MINI_BLOCK_SIZE - 4, MINI_BLOCK_SIZE - 4);
+              tCtx.fillStyle = '#FFFFFF';
+              tCtx.font = 'bold 11px "Press Start 2P"';
+              tCtx.textAlign = 'center';
+              tCtx.textBaseline = 'middle';
+              tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2 + 1);
+            }
           }
         }
       }
@@ -1083,22 +1394,34 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
         const specialKey = `${r},${c}`;
         const specialType = piece.specialBlocks.get(specialKey);
 
-        tCtx.fillStyle = '#000000';
-        tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
-        tCtx.strokeStyle = color;
-        tCtx.lineWidth = 2;
-        tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
-
-        if (specialType) {
-          // Draw the special block letter indicator
-          tCtx.fillStyle = color;
-          tCtx.font = 'bold 12px "Press Start 2P"';
-          tCtx.textAlign = 'center';
-          tCtx.textBaseline = 'middle';
-          tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+        if (specialType && SPECIAL_BLOCK_SPRITES[specialType] && SPECIAL_BLOCK_SPRITES[specialType].complete && SPECIAL_BLOCK_SPRITES[specialType].naturalWidth > 0) {
+          tCtx.drawImage(SPECIAL_BLOCK_SPRITES[specialType], fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+          const glowColor = SPECIAL_BLOCK_COLORS[specialType as SpecialBlockType] || '#FFD700';
+          tCtx.save();
+          tCtx.shadowColor = glowColor;
+          tCtx.shadowBlur = 4;
+          tCtx.strokeStyle = glowColor;
+          tCtx.lineWidth = 1;
+          tCtx.strokeRect(fx + 0.5, fy + 0.5, MINI_BLOCK_SIZE - 1, MINI_BLOCK_SIZE - 1);
+          tCtx.restore();
         } else {
-          tCtx.fillStyle = color;
-          tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+          tCtx.fillStyle = '#000000';
+          tCtx.fillRect(fx, fy, MINI_BLOCK_SIZE, MINI_BLOCK_SIZE);
+          tCtx.strokeStyle = color;
+          tCtx.lineWidth = 2;
+          tCtx.strokeRect(fx+1, fy+1, MINI_BLOCK_SIZE-2, MINI_BLOCK_SIZE-2);
+
+          if (specialType) {
+            // Draw the special block letter indicator
+            tCtx.fillStyle = color;
+            tCtx.font = 'bold 12px "Press Start 2P"';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText(getSpecialBlockLetter(specialType), fx + MINI_BLOCK_SIZE / 2, fy + MINI_BLOCK_SIZE / 2);
+          } else {
+            tCtx.fillStyle = color;
+            tCtx.fillRect(fx+4, fy+4, MINI_BLOCK_SIZE-8, MINI_BLOCK_SIZE-8);
+          }
         }
       }
     }
@@ -1108,60 +1431,193 @@ function renderPieceOnMiniCanvas(canvasEl: HTMLCanvasElement, piece: Tetromino |
 // Assign colors per player index for multiplayer
 const PLAYER_COLORS = ['#00E5FF', '#40C4FF', '#80DEEA', '#FF007F', '#FF4081', '#FF80AB'];
 
+// Cache class icons for on-canvas HUD badges
+const classIconCache: Record<string, HTMLImageElement> = {};
+PLAYER_CLASSES.forEach((cls) => {
+  if (cls.iconUrl) {
+    const img = new Image();
+    img.src = cls.iconUrl;
+    classIconCache[cls.id] = img;
+  }
+});
+
+function drawRoundedCard(
+  tCtx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number = 6
+) {
+  tCtx.beginPath();
+  if (typeof (tCtx as any).roundRect === 'function') {
+    (tCtx as any).roundRect(x, y, w, h, radius);
+  } else {
+    tCtx.moveTo(x + radius, y);
+    tCtx.lineTo(x + w - radius, y);
+    tCtx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    tCtx.lineTo(x + w, y + h - radius);
+    tCtx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    tCtx.lineTo(x + radius, y + h);
+    tCtx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    tCtx.lineTo(x, y + radius);
+    tCtx.quadraticCurveTo(x, y, x + radius, y);
+    tCtx.closePath();
+  }
+}
+
 // In 3v3 Deathmatch and Battle Royale, your own board renders large and fixed
 // at top-left, and everyone else is tiled into a compact mosaic grid beside
 // you (Tetris 99 style) instead of one long horizontal strip.
 const OWN_BOARD_SCALE = 1.3;
 const OTHER_BOARD_SCALE_TEAM = 0.6;  // 3v3: only 5 opponents, keep them legible
-const OTHER_BOARD_SCALE_BR = 0.22;   // Battle Royale: up to 29 opponents, go small
+const OTHER_BOARD_SCALE_BR = 0.26;   // Battle Royale: up to 29 opponents in compact mosaic
+
 const MOSAIC_GAP = 6;
 
-interface BoardLayoutEntry { blockSize: number; offsetX: number; offsetY: number; }
+interface BoardLayoutEntry {
+  blockSize: number;
+  offsetX: number;
+  offsetY: number;
+  headerHeight?: number;
+  cardHeight?: number;
+}
 
 function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
-  const emphasizeOwnBoard = modeId === 'team-deathmatch' || modeId === 'battle-royale';
   const layout: BoardLayoutEntry[] = new Array(playerCount);
 
+  if (modeId === 'team-deathmatch' && myIndex >= 0) {
+    // 3v3 Squad Pod Layout
+    // Friendly Pod (Left): [YOU] [ALLY 1] [ALLY 2]
+    // VS Divider
+    // Enemy Pod (Right): [ENEMY 1] [ENEMY 2] [ENEMY 3]
+    const headerHeight = 36;
+    const cardHeight = 54;
+    const myTeam = onlinePlayerTeams[myIndex] || (gameManager.players[myIndex]?.team) || (myIndex < 3 ? 'cyan' : 'magenta');
+
+    const allyIndices: number[] = [];
+    const enemyIndices: number[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      if (i === myIndex) continue;
+      const pTeam = onlinePlayerTeams[i] || (gameManager.players[i]?.team) || (i < 3 ? 'cyan' : 'magenta');
+      if (pTeam === myTeam) allyIndices.push(i);
+      else enemyIndices.push(i);
+    }
+
+    let cursorX = 16;
+    // 1. Local Player ("YOU") - Prominent board
+    const ownBlockSize = 25; // 250px x 500px
+    layout[myIndex] = {
+      blockSize: ownBlockSize,
+      offsetX: cursorX,
+      offsetY: headerHeight + 8,
+      headerHeight,
+      cardHeight,
+    };
+    cursorX += COLS * ownBlockSize + 18;
+
+    // 2. Allies (Teammates)
+    const allyBlockSize = 20; // 200px x 400px
+    for (const allyIdx of allyIndices) {
+      layout[allyIdx] = {
+        blockSize: allyBlockSize,
+        offsetX: cursorX,
+        offsetY: headerHeight + 8,
+        headerHeight,
+        cardHeight,
+      };
+      cursorX += COLS * allyBlockSize + 16;
+    }
+
+    // 3. Gap / Divider between Friendly and Enemy squads
+    cursorX += 28;
+
+    // 4. Enemies (Opponents)
+    const enemyBlockSize = 20; // 200px x 400px
+    for (const enemyIdx of enemyIndices) {
+      layout[enemyIdx] = {
+        blockSize: enemyBlockSize,
+        offsetX: cursorX,
+        offsetY: headerHeight + 8,
+        headerHeight,
+        cardHeight,
+      };
+      cursorX += COLS * enemyBlockSize + 16;
+    }
+
+    return layout;
+  }
+
+  const emphasizeOwnBoard = modeId === 'battle-royale';
   if (!emphasizeOwnBoard || myIndex < 0) {
     // Classic side-by-side layout for 1v1 / FFA / local play
-    let cursorX = 0;
+    let cursorX = 14;
+    const headerHeight = 36;
+    const cardHeight = 54;
     for (let i = 0; i < playerCount; i++) {
-      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: 0 };
+      layout[i] = { blockSize: BLOCK_SIZE, offsetX: cursorX, offsetY: headerHeight + 6, headerHeight, cardHeight };
       cursorX += COLS * BLOCK_SIZE + PADDING;
     }
     return layout;
   }
 
-  const ownBlockSize = BLOCK_SIZE * OWN_BOARD_SCALE;
+  // ─── Battle Royale: Tetris-99-style compact mosaic layout ───
+  // Canvas structure:
+  //   [PHASE STRIP · 32px]
+  //   [Your Board (large) | Mosaic Grid of up-to-29 rivals (right)]
+  //   [Your Scorecard]
+  //
+  const brPhaseStripH = 32;    // on-canvas phase strip height above boards
+  const ownHeaderH = 36;
+  const ownCardH   = 54;
+  const ownBlockSize = BLOCK_SIZE;   // 30px — own board at 1× (not scaled up, canvas needs to stay tight)
   const ownWidth = COLS * ownBlockSize;
   const ownHeight = ROWS * ownBlockSize;
-  layout[myIndex] = { blockSize: ownBlockSize, offsetX: 0, offsetY: 0 };
+  const ownOffsetY = brPhaseStripH + ownHeaderH + 4;
+
+  layout[myIndex] = {
+    blockSize: ownBlockSize,
+    offsetX: 8,
+    offsetY: ownOffsetY,
+    headerHeight: ownHeaderH,
+    cardHeight: ownCardH,
+  };
 
   const otherIndices: number[] = [];
-  for (let i = 0; i < playerCount; i++) if (i !== myIndex) otherIndices.push(i);
+  for (let i = 0; i < playerCount; i++) {
+    if (i !== myIndex) {
+      const p = gameManager.players[i];
+      if (!p || !(p as any).isCulled) {
+        otherIndices.push(i);
+      }
+    }
+  }
 
-  const otherScale = modeId === 'battle-royale' ? OTHER_BOARD_SCALE_BR : OTHER_BOARD_SCALE_TEAM;
-  const otherBlockSize = BLOCK_SIZE * otherScale;
-  const otherWidth = COLS * otherBlockSize;
+  const otherBlockSize = BLOCK_SIZE * OTHER_BOARD_SCALE_BR;   // ~7.8px blocks
+  const otherWidth  = COLS * otherBlockSize;
   const otherHeight = ROWS * otherBlockSize;
-
-  // Tile opponents into a grid matching our board's height, wrapping into a
-  // new column once a column fills up rather than stretching sideways forever.
-  const rowsPerColumn = Math.max(1, Math.floor((ownHeight + MOSAIC_GAP) / (otherHeight + MOSAIC_GAP)));
-  const mosaicStartX = ownWidth + PADDING;
+  const mosaicHeaderH = 14;   // slim header for BR badge (rank + status pill)
+  const mosaicGap = 5;
+  const mosaicStartX = 8 + ownWidth + 18;
+  const mosaicTopY   = brPhaseStripH + mosaicHeaderH + 4;
+  const mosaicSlotH  = mosaicHeaderH + otherHeight + mosaicGap;
+  const rowsPerColumn = Math.max(1, Math.floor((ownOffsetY + ownHeight - mosaicTopY) / mosaicSlotH));
 
   otherIndices.forEach((playerIdx, i) => {
     const col = Math.floor(i / rowsPerColumn);
     const row = i % rowsPerColumn;
     layout[playerIdx] = {
       blockSize: otherBlockSize,
-      offsetX: mosaicStartX + col * (otherWidth + MOSAIC_GAP),
-      offsetY: row * (otherHeight + MOSAIC_GAP),
+      offsetX: mosaicStartX + col * (otherWidth + mosaicGap),
+      offsetY: mosaicTopY + row * mosaicSlotH,
+      headerHeight: mosaicHeaderH,
+      cardHeight: 0,   // no scorecard for mosaic — space too tight
     };
   });
 
   return layout;
 }
+
 
 // Recomputed once per render() call; renderPlayer() and the effects layer
 // both read from this instead of assuming a uniform board size.
@@ -1169,7 +1625,7 @@ let boardLayout: BoardLayoutEntry[] = [];
 
 function renderPlayer(player: Player, index: number, isDuo: boolean) {
   let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
-  const isMyPlayer = !gameManager.isOnline || index === gameManager.myPlayerIndex;
+  const isMyPlayer = index === (gameManager.isOnline ? gameManager.myPlayerIndex : 0);
   const playerColor = isDuo ? (isMyPlayer ? PLAYER_COLORS[0] : PLAYER_COLORS[3]) : (PLAYER_COLORS[index] || '#00E5FF');
   
   let tCtx = ctx;
@@ -1183,32 +1639,75 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
 
-  // Draw Grid background (optional faint lines)
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      tCtx.lineWidth = 1;
-      tCtx.strokeRect(offsetX + c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+  // Draw Grid background (optional faint lines) — only for full-size boards (blockSize >= 20)
+  if (blockSize >= 20) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        tCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        tCtx.lineWidth = 1;
+        tCtx.strokeRect(offsetX + c * blockSize, offsetY + r * blockSize, blockSize, blockSize);
+      }
     }
   }
 
   // Draw Player Grid Border
-  tCtx.strokeStyle = playerColor;
-  tCtx.lineWidth = 2;
+  const isBROnline = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
+  const myPlayerObj = gameManager.players[gameManager.myPlayerIndex ?? 0];
+  const isCurrentTarget = Boolean(myPlayerObj && myPlayerObj.selectedTargetIndex === index && !player.isToppedOut);
+
+  let gridBorderColor = playerColor;
+  let gridBorderWidth = 2;
+  if (isBROnline) {
+    if (isCurrentTarget) {
+      gridBorderColor = '#FF007F';
+      gridBorderWidth = 2.5;
+    } else if (isMyPlayer) {
+      gridBorderColor = '#00E5FF';
+      gridBorderWidth = 2;
+    } else if (player.isToppedOut) {
+      gridBorderColor = 'rgba(239, 68, 68, 0.4)';
+      gridBorderWidth = 1;
+    } else if (gameManager.getMaxColumnHeight(player) >= 15) {
+      gridBorderColor = '#F59E0B';
+      gridBorderWidth = 2;
+    } else {
+      gridBorderColor = 'rgba(0, 229, 255, 0.45)';
+      gridBorderWidth = 1.5;
+    }
+  } else if (isCurrentTarget) {
+    gridBorderColor = '#FF007F';
+    gridBorderWidth = 2.5;
+  }
+
+  tCtx.strokeStyle = gridBorderColor;
+  tCtx.lineWidth = gridBorderWidth;
   tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
 
-  // Speed Block [V] Visual Buff Lines on Grid (5s duration)
+  // Speed Block [V] Visual Buff Lines on Grid (5s duration) - Smooth continuous rain droplets
   if (player.speedBlockSlowTimer > 0) {
     tCtx.save();
-    tCtx.strokeStyle = 'rgba(0, 229, 255, 0.28)';
-    tCtx.lineWidth = 2;
-    const offset = (performance.now() * 0.25) % 60;
+    tCtx.beginPath();
+    tCtx.rect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+    tCtx.clip();
+
+    const boardH = ROWS * blockSize;
+    const now = performance.now();
+    const speed = 0.35; // smooth px/ms
+    const trailLen = 42;
+
     for (let i = 0; i < 8; i++) {
-      const lx = offsetX + 18 + i * (blockSize * 1.2);
-      const ly = offsetY + ((i * 85 + offset) % (ROWS * blockSize));
+      const lx = offsetX + 14 + i * (blockSize * 1.18);
+      const ly = offsetY + ((now * speed + i * 83) % (boardH + trailLen)) - trailLen;
+
+      const grad = tCtx.createLinearGradient(lx, ly, lx, ly + trailLen);
+      grad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+      grad.addColorStop(1, 'rgba(0, 229, 255, 0.65)');
+
+      tCtx.strokeStyle = grad;
+      tCtx.lineWidth = 2;
       tCtx.beginPath();
       tCtx.moveTo(lx, ly);
-      tCtx.lineTo(lx, Math.min(offsetY + ROWS * blockSize, ly + 36));
+      tCtx.lineTo(lx, ly + trailLen);
       tCtx.stroke();
     }
     tCtx.restore();
@@ -1342,12 +1841,11 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   if (player.shieldActive || player.fortifyCharges > 0 || player.shieldDeflectTimer > 0) {
     tCtx.save();
     const isDeflecting = player.shieldDeflectTimer > 0;
-    const pulseAlpha = isDeflecting ? 0.9 : 0.45 + Math.sin(performance.now() * 0.012) * 0.3;
 
-    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : `rgba(0, 255, 136, ${pulseAlpha})`;
-    tCtx.lineWidth = isDeflecting ? 6 : 5;
+    tCtx.strokeStyle = isDeflecting ? '#FFFFFF' : 'rgba(0, 255, 136, 0.85)';
+    tCtx.lineWidth = isDeflecting ? 6 : 3;
     tCtx.shadowColor = '#00FF88';
-    tCtx.shadowBlur = isDeflecting ? 26 : 18;
+    tCtx.shadowBlur = isDeflecting ? 26 : 14;
     tCtx.strokeRect(offsetX + 3, offsetY + 3, boardPixelW - 6, boardPixelH - 6);
     tCtx.restore();
   }
@@ -1400,25 +1898,433 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  // Draw topping out overlay for this player
-  if (player.isToppedOut) {
-    tCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-    tCtx.fillRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+  const layoutEntry = boardLayout[index];
+  const headerH = layoutEntry?.headerHeight || 36;
+  const cardH = layoutEntry?.cardHeight || 54;
+  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
+  const isTargeted = Boolean(myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut);
+
+  // Faction awareness for 3v3 Team Deathmatch
+  const isTeamMode = Boolean(gameManager.isTeamMode || activeOnlineMode === 'team-deathmatch');
+  const myPlayerTeam = onlinePlayerTeams[gameManager.myPlayerIndex ?? 0] || (gameManager.players[gameManager.myPlayerIndex ?? 0]?.team);
+  const targetPlayerTeam = onlinePlayerTeams[index] || player.team;
+  const isAlly = Boolean(isTeamMode && myPlayerTeam && targetPlayerTeam && myPlayerTeam === targetPlayerTeam && !isMyPlayer);
+  const isEnemy = Boolean(isTeamMode && myPlayerTeam && targetPlayerTeam && myPlayerTeam !== targetPlayerTeam);
+  const isAllyInDanger = Boolean(isAlly && !player.isToppedOut && gameManager.getMaxColumnHeight(player) >= 14);
+
+  // Squad Glow Border around player board
+  if (isAllyInDanger) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+    tCtx.lineWidth = 2.5;
+    tCtx.shadowColor = '#F59E0B';
+    tCtx.shadowBlur = 12;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  } else if (isAlly) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
+    tCtx.lineWidth = 1.5;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  } else if (isEnemy && !isTargeted) {
+    tCtx.save();
+    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.35)';
+    tCtx.lineWidth = 1.5;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
   }
 
-  // Target Indicator
-  const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
-  if (myPlayer && myPlayer.selectedTargetIndex === index && !player.isToppedOut && true) {
+  // 1. Board Header Badge
+  // Full badge (blockSize >= 20): name + class icon + status tag
+  // Slim badge (BR mosaic, headerHeight >= 14 but blockSize < 20): rank # + status pill only
+  const isBR = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
+  const showFullBadge = !isDuo && blockSize >= 20;
+  const showSlimBadge = !isDuo && !showFullBadge && (layoutEntry?.headerHeight ?? 0) >= 14 && isBR;
+
+  if (showFullBadge) {
+    const hx = offsetX;
+    const hy = offsetY - headerH - 5;
+    const hw = boardPixelW;
+    const hh = headerH;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, hx, hy, hw, hh, 6);
+    if (isTargeted) {
+      tCtx.fillStyle = 'rgba(52, 8, 30, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#FF007F';
+      tCtx.lineWidth = 2.5;
+      tCtx.shadowColor = '#FF007F';
+      tCtx.shadowBlur = 10;
+      tCtx.stroke();
+    } else if (isMyPlayer) {
+      tCtx.fillStyle = 'rgba(6, 28, 48, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#00E5FF';
+      tCtx.lineWidth = 2;
+      tCtx.shadowColor = '#00E5FF';
+      tCtx.shadowBlur = 8;
+      tCtx.stroke();
+    } else if (isAllyInDanger) {
+      tCtx.fillStyle = 'rgba(40, 20, 8, 0.94)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#F59E0B';
+      tCtx.lineWidth = 2.5;
+      tCtx.shadowColor = '#F59E0B';
+      tCtx.shadowBlur = 10;
+      tCtx.stroke();
+    } else if (isAlly) {
+      tCtx.fillStyle = 'rgba(6, 24, 40, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.65)';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+    } else if (isEnemy) {
+      tCtx.fillStyle = 'rgba(28, 8, 20, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.55)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (player.isToppedOut) {
+      tCtx.fillStyle = 'rgba(28, 10, 16, 0.88)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else {
+      tCtx.fillStyle = 'rgba(12, 16, 36, 0.92)';
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    }
+    tCtx.restore();
+
+    // Content inside Header Badge
+    tCtx.save();
+    // Left Status Tag (YOU, ▼ TARGET, REBOOT, K.O., ALLY, RIVAL, or P#)
+    let tagText = `P${index + 1}`;
+    let tagColor = '#94A3B8';
+    if (isMyPlayer) {
+      tagText = 'YOU';
+      tagColor = '#00E5FF';
+    } else if (isTargeted) {
+      tagText = '▼ TARGET';
+      tagColor = '#FF007F';
+    } else if (player.tdmRespawnTimer > 0) {
+      tagText = 'REBOOT';
+      tagColor = '#FF3366';
+    } else if (player.isToppedOut) {
+      tagText = 'K.O.';
+      tagColor = '#EF4444';
+    } else if (isAllyInDanger) {
+      tagText = '⚠️ DANGER';
+      tagColor = '#F59E0B';
+    } else if (isAlly) {
+      tagText = 'ALLY';
+      tagColor = '#00E5FF';
+    } else if (isEnemy) {
+      tagText = 'RIVAL';
+      tagColor = '#FF007F';
+    }
+
+    tCtx.font = 'bold 9px "Press Start 2P", monospace';
+    tCtx.fillStyle = tagColor;
+    tCtx.textAlign = 'left';
+    tCtx.textBaseline = 'middle';
+    tCtx.fillText(tagText, hx + 10, hy + hh / 2);
+
+    const tagWidth = tCtx.measureText(tagText).width;
+
+    // Player Name
+    const rawName = onlinePlayerSpecs[index]?.name || player.id || `Player ${index + 1}`;
+    tCtx.font = 'bold 12px "Inter", sans-serif';
+    tCtx.fillStyle = player.isToppedOut ? '#64748B' : '#FFFFFF';
+    
+    let displayName = rawName;
+    const maxNameWidth = hw - (tagWidth + 24) - 95;
+    if (tCtx.measureText(displayName).width > maxNameWidth && maxNameWidth > 20) {
+      while (displayName.length > 2 && tCtx.measureText(displayName + '…').width > maxNameWidth) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += '…';
+    }
+    tCtx.fillText(displayName, hx + 10 + tagWidth + 8, hy + hh / 2);
+
+    // Right: Class Name + Icon
+    const classInfo = PLAYER_CLASSES.find(c => c.id === player.playerClass);
+    const className = classInfo?.name || player.playerClass || '';
+    const classColor = player.playerClass === 'SPEEDSTER' ? '#00E5FF' :
+                       player.playerClass === 'TANK' ? '#00FF88' :
+                       player.playerClass === 'SABOTEUR' ? '#E879F9' :
+                       player.playerClass === 'SUPPORT' ? '#FFD700' : '#94A3B8';
+
+    const classIcon = classIconCache[player.playerClass];
+    const iconSz = 18;
+    const iconX = hx + hw - iconSz - 8;
+    const iconY = hy + (hh - iconSz) / 2;
+
+    if (classIcon && classIcon.complete && classIcon.naturalWidth > 0) {
+      tCtx.drawImage(classIcon, iconX, iconY, iconSz, iconSz);
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 10px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className.toUpperCase(), iconX - 6, hy + hh / 2);
+    } else {
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 10px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className.toUpperCase(), hx + hw - 10, hy + hh / 2);
+    }
+    tCtx.restore();
+  }
+
+  // 1b. Slim BR Mosaic Badge — rank + status pill for small opponent boards
+  if (showSlimBadge) {
+    const hx = offsetX;
+    const hy = offsetY - headerH - 2;
+    const hw = boardPixelW;
+    const hh = headerH;
+    const isOut = player.isToppedOut;
+    const isDanger = !isOut && gameManager.getMaxColumnHeight(player) >= 15;
+
+    tCtx.save();
+    // Slim background
+    tCtx.fillStyle = isOut ? 'rgba(30,8,12,0.90)' : isDanger ? 'rgba(30,18,4,0.90)' : 'rgba(8,12,28,0.88)';
+    tCtx.fillRect(hx, hy, hw, hh);
+    tCtx.strokeStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : 'rgba(80,100,140,0.5)';
+    tCtx.lineWidth = 1;
+    tCtx.strokeRect(hx + 0.5, hy + 0.5, hw - 1, hh - 1);
+
+    // Status pill text (right-aligned)
+    tCtx.font = 'bold 6px "Press Start 2P", monospace';
+    tCtx.textBaseline = 'middle';
+    tCtx.textAlign = 'right';
+    tCtx.fillStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : '#10B981';
+    const pillText = isOut ? 'OUT' : isDanger ? 'DANGER' : isTargeted ? 'TARGET' : 'ALIVE';
+    tCtx.fillText(pillText, hx + hw - 3, hy + hh / 2);
+
+    // Rank number or player index (left-aligned)
+    tCtx.textAlign = 'left';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.font = 'bold 6px "Press Start 2P", monospace';
+    tCtx.fillText(`P${index + 1}`, hx + 3, hy + hh / 2);
+    tCtx.restore();
+  }
+
+  // 2. Draw topping out overlay and elimination banner
+  if (player.isToppedOut) {
+
+    tCtx.fillStyle = 'rgba(20, 8, 14, 0.76)';
+    tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
+
+    // Cyberpunk Elimination Stamp Banner
+    const bannerW = Math.min(boardPixelW - 24, 240);
+    const bannerH = 46;
+    const bx = offsetX + (boardPixelW - bannerW) / 2;
+    const by = offsetY + (boardPixelH - bannerH) / 2;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, bx, by, bannerW, bannerH, 6);
+    tCtx.fillStyle = 'rgba(38, 10, 18, 0.96)';
+    tCtx.fill();
+    tCtx.strokeStyle = '#EF4444';
+    tCtx.lineWidth = 2.5;
+    tCtx.shadowColor = '#EF4444';
+    tCtx.shadowBlur = 14;
+    tCtx.stroke();
+
+    tCtx.font = 'bold 12px "Press Start 2P", monospace';
+    tCtx.fillStyle = '#FF3366';
+    tCtx.textAlign = 'center';
+    tCtx.textBaseline = 'middle';
+    tCtx.shadowColor = '#FF3366';
+    tCtx.shadowBlur = 10;
+
+    if (player.tdmRespawnTimer > 0) {
+      const secLeft = Math.ceil(player.tdmRespawnTimer / 1000);
+      tCtx.fillText('REBOOTING', bx + bannerW / 2, by + 16);
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#FCA5A5';
+      tCtx.shadowBlur = 0;
+      tCtx.fillText(`RESPAWN IN ${secLeft}s · -20% PTS`, bx + bannerW / 2, by + 32);
+    } else {
+      tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#FDA4AF';
+      tCtx.shadowBlur = 0;
+      tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+    }
+    tCtx.restore();
+  }
+
+  // 3. Target Indicator & Glowing Border
+  if (isTargeted) {
+    tCtx.save();
     tCtx.fillStyle = '#FF007F';
     tCtx.beginPath();
-    const centerX = offsetX + (COLS * blockSize) / 2;
-    tCtx.moveTo(centerX - 12, offsetY); tCtx.lineTo(centerX + 12, offsetY); tCtx.lineTo(centerX, offsetY + 15);
+    const centerX = offsetX + boardPixelW / 2;
+    tCtx.moveTo(centerX - 10, offsetY - 2);
+    tCtx.lineTo(centerX + 10, offsetY - 2);
+    tCtx.lineTo(centerX, offsetY + 12);
     tCtx.fill();
     
     // Glowing border for targeted player
-    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
-    tCtx.lineWidth = 4;
-    tCtx.strokeRect(offsetX, offsetY, COLS * blockSize, ROWS * blockSize);
+    tCtx.strokeStyle = 'rgba(255, 0, 127, 0.9)';
+    tCtx.lineWidth = 3.5;
+    tCtx.shadowColor = '#FF007F';
+    tCtx.shadowBlur = 12;
+    tCtx.strokeRect(offsetX, offsetY, boardPixelW, boardPixelH);
+    tCtx.restore();
+  }
+
+  // 4. Score Card Underneath Each Player Board
+  if (!isDuo && blockSize >= 20) {
+    const cx = offsetX;
+    const cy = offsetY + boardPixelH + 8;
+    const cw = boardPixelW;
+    const ch = cardH;
+
+    tCtx.save();
+    drawRoundedCard(tCtx, cx, cy, cw, ch, 6);
+    tCtx.fillStyle = 'rgba(10, 14, 32, 0.94)';
+    tCtx.fill();
+
+    // Card Border
+    if (isTargeted) {
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.85)';
+      tCtx.lineWidth = 2;
+      tCtx.shadowColor = '#FF007F';
+      tCtx.shadowBlur = 8;
+      tCtx.stroke();
+    } else if (isMyPlayer) {
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (isAllyInDanger) {
+      tCtx.strokeStyle = '#F59E0B';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+    } else if (isAlly) {
+      tCtx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (isEnemy) {
+      tCtx.strokeStyle = 'rgba(255, 0, 127, 0.45)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    } else if (player.isToppedOut) {
+      tCtx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      tCtx.lineWidth = 1;
+      tCtx.stroke();
+    } else {
+      tCtx.strokeStyle = 'rgba(90, 105, 145, 0.4)';
+      tCtx.lineWidth = 1.5;
+      tCtx.stroke();
+    }
+    tCtx.restore();
+
+    // Card Top Accent Line (2px)
+    tCtx.save();
+    const grad = tCtx.createLinearGradient(cx, cy, cx + cw, cy);
+    const accentCol = isTargeted ? '#FF007F' : isMyPlayer ? '#00E5FF' : (playerColor || '#FFD700');
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.3, accentCol);
+    grad.addColorStop(0.7, accentCol);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    tCtx.fillStyle = grad;
+    tCtx.fillRect(cx + 8, cy + 1, cw - 16, 2);
+    tCtx.restore();
+
+    // Card Content - Row 1 (Score + Class)
+    tCtx.save();
+    // Left: Score
+    tCtx.font = 'bold 9px "Inter", sans-serif';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.textAlign = 'left';
+    tCtx.textBaseline = 'alphabetic';
+    tCtx.fillText('SCORE', cx + 12, cy + 19);
+
+    const scoreVal = Math.round(player.scoreManager.score).toLocaleString();
+    tCtx.font = 'bold 12px "Press Start 2P", monospace';
+    tCtx.fillStyle = player.isToppedOut ? '#64748B' : '#FFD700';
+    tCtx.fillText(scoreVal, cx + 64, cy + 20);
+
+    // Right: Class Name + Icon
+    const classInfo = PLAYER_CLASSES.find(c => c.id === player.playerClass);
+    const className = classInfo?.name || player.playerClass || 'CLASS';
+    const classColor = player.playerClass === 'SPEEDSTER' ? '#00E5FF' :
+                       player.playerClass === 'TANK' ? '#00FF88' :
+                       player.playerClass === 'SABOTEUR' ? '#E879F9' :
+                       player.playerClass === 'SUPPORT' ? '#FFD700' : '#94A3B8';
+
+    const classIcon = classIconCache[player.playerClass];
+    const iconSz = 20;
+    const iconX = cx + cw - iconSz - 10;
+    const iconY = cy + 7;
+
+    if (classIcon && classIcon.complete && classIcon.naturalWidth > 0) {
+      tCtx.drawImage(classIcon, iconX, iconY, iconSz, iconSz);
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 11px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className, iconX - 6, cy + 21);
+    } else {
+      tCtx.textAlign = 'right';
+      tCtx.font = 'bold 11px "Inter", sans-serif';
+      tCtx.fillStyle = classColor;
+      tCtx.fillText(className, cx + cw - 12, cy + 21);
+    }
+
+    // Card Content - Row 2 (Lines, Kills + Status Pill)
+    tCtx.font = 'bold 9px "Inter", sans-serif';
+    tCtx.fillStyle = '#94A3B8';
+    tCtx.textAlign = 'left';
+    tCtx.fillText('LINES', cx + 12, cy + 42);
+
+    tCtx.font = 'bold 11px "Press Start 2P", monospace';
+    tCtx.fillStyle = '#E2E8F0';
+    tCtx.fillText(String(player.scoreManager.totalLinesCleared), cx + 58, cy + 43);
+
+    if (player.kills > 0) {
+      tCtx.font = 'bold 9px "Inter", sans-serif';
+      tCtx.fillStyle = '#94A3B8';
+      tCtx.fillText('K.O.', cx + 104, cy + 42);
+      tCtx.font = 'bold 11px "Press Start 2P", monospace';
+      tCtx.fillStyle = '#FF3366';
+      tCtx.fillText(String(player.kills), cx + 138, cy + 43);
+    }
+
+    // Right: Live Status
+    tCtx.textAlign = 'right';
+    tCtx.font = 'bold 9px "Press Start 2P", monospace';
+    if (player.tdmRespawnTimer > 0) {
+      tCtx.fillStyle = '#F59E0B';
+      tCtx.fillText('● REBOOT', cx + cw - 12, cy + 42);
+    } else if (player.isToppedOut) {
+      tCtx.fillStyle = '#EF4444';
+      tCtx.fillText('● OUT', cx + cw - 12, cy + 42);
+    } else if (isTargeted) {
+      tCtx.fillStyle = '#FF007F';
+      tCtx.fillText('● TARGET', cx + cw - 12, cy + 42);
+    } else if (isAllyInDanger) {
+      tCtx.fillStyle = '#F59E0B';
+      tCtx.fillText('● DANGER', cx + cw - 12, cy + 42);
+    } else if (isAlly) {
+      tCtx.fillStyle = '#00E5FF';
+      tCtx.fillText('● ALLY', cx + cw - 12, cy + 42);
+    } else if (isEnemy) {
+      tCtx.fillStyle = '#FF007F';
+      tCtx.fillText('● RIVAL', cx + cw - 12, cy + 42);
+    } else if (isMyPlayer) {
+      tCtx.fillStyle = '#00E5FF';
+      tCtx.fillText('● ACTIVE', cx + cw - 12, cy + 42);
+    } else {
+      tCtx.fillStyle = '#10B981';
+      tCtx.fillText('● ALIVE', cx + cw - 12, cy + 42);
+    }
+    tCtx.restore();
   }
 
   // Pre-game countdown indicator: show "YOU" only on this player's own board
@@ -1497,7 +2403,259 @@ function render() {
     renderPlayer(gameManager.players[i], i, isDuo);
   }
 
+  // 3v3 Team Deathmatch: Render glowing VS Divider between friendly & enemy squad pods
+  if (gameManager.isOnline && activeOnlineMode === 'team-deathmatch' && boardLayout.length >= 6) {
+    const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] || (gameManager.myPlayerIndex < 3 ? 'cyan' : 'magenta');
+    const friendlyIndices = boardLayout.map((_, idx) => idx).filter(idx => (onlinePlayerTeams[idx] || (idx < 3 ? 'cyan' : 'magenta')) === myTeam);
+    const enemyIndices = boardLayout.map((_, idx) => idx).filter(idx => (onlinePlayerTeams[idx] || (idx < 3 ? 'cyan' : 'magenta')) !== myTeam);
+
+    if (friendlyIndices.length > 0 && enemyIndices.length > 0) {
+      const friendlyRight = Math.max(...friendlyIndices.map(idx => boardLayout[idx].offsetX + COLS * boardLayout[idx].blockSize));
+      const enemyLeft = Math.min(...enemyIndices.map(idx => boardLayout[idx].offsetX));
+      const dividerX = Math.round((friendlyRight + enemyLeft) / 2);
+
+      ctx.save();
+      // Glowing neon divider line
+      const grad = ctx.createLinearGradient(dividerX, 10, dividerX, 480);
+      grad.addColorStop(0, 'rgba(0, 229, 255, 0.1)');
+      grad.addColorStop(0.3, 'rgba(0, 229, 255, 0.7)');
+      grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
+      grad.addColorStop(0.7, 'rgba(255, 0, 127, 0.7)');
+      grad.addColorStop(1, 'rgba(255, 0, 127, 0.1)');
+
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#00E5FF';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(dividerX, 10);
+      ctx.lineTo(dividerX, 480);
+      ctx.stroke();
+
+      // VS Badge in center
+      const vsY = 240;
+      ctx.beginPath();
+      ctx.arc(dividerX, vsY, 15, 0, Math.PI * 2);
+      ctx.fillStyle = '#090D16';
+      ctx.fill();
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#F59E0B';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+
+      ctx.font = 'bold 9px "Press Start 2P", monospace';
+      ctx.fillStyle = '#FBBF24';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowBlur = 0;
+      ctx.fillText('VS', dividerX, vsY + 1);
+      ctx.restore();
+    }
+  }
+
+  // Battle Royale: Render on-canvas Phase HUD strip and Live Standings panel
+  if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
+    const stripH = 30;
+    const panelX = canvas.width - BR_STANDINGS_W;
+    const stripW = panelX; // Phase strip only covers the boards area, leaving right column for Standings
+
+    ctx.save();
+
+    // Dark background for boards top strip
+    ctx.fillStyle = 'rgba(4, 6, 18, 0.94)';
+    ctx.fillRect(0, 0, stripW, stripH);
+
+    // Bottom border line
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, stripH - 0.5);
+    ctx.lineTo(stripW, stripH - 0.5);
+    ctx.stroke();
+
+    ctx.textBaseline = 'middle';
+    const cy = stripH / 2 + 1;
+
+    // Left: BATTLE ROYALE label
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'left';
+    ctx.fillText('BATTLE ROYALE', 12, cy);
+
+    // Centre: Phase name (centered over the boards area)
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#E5E7EB';
+    ctx.textAlign = 'center';
+    ctx.fillText(battleRoyalPhaseLabel || 'OPENING BATTLE', stripW / 2, cy);
+
+    // Right side of Phase Strip — positioned cleanly before Standings panel
+    ctx.textAlign = 'right';
+    // Survivor count
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#00E5FF';
+    ctx.fillText(`${battleRoyalRemainingPlayers} ALIVE`, stripW - 14, cy - 6);
+
+    // Phase countdown
+    if (battleRoyalPhaseEndsAt && battleRoyalPhaseEndsAt > Date.now()) {
+      const secLeft = Math.ceil((battleRoyalPhaseEndsAt - Date.now()) / 1000);
+      const m = Math.floor(secLeft / 60);
+      const s = secLeft % 60;
+      const timeStr = `${m}:${String(s).padStart(2, '0')}`;
+      ctx.font = 'bold 8px "Press Start 2P", monospace';
+      ctx.fillStyle = secLeft <= 10 ? '#EF4444' : '#94A3B8';
+      ctx.fillText(`NEXT: ${timeStr}`, stripW - 14, cy + 7);
+    } else if (battleRoyalPhaseEndsAt === null && battleRoyalStartedAt) {
+      ctx.font = 'bold 8px "Press Start 2P", monospace';
+      ctx.fillStyle = '#EF4444';
+      ctx.fillText('FINAL PHASE', stripW - 14, cy + 7);
+    }
+
+    ctx.restore();
+
+    // ── Live Standings Panel (right side of canvas) ──
+    const players = gameManager.players;
+    const myIdx   = gameManager.myPlayerIndex;
+    // Build sorted standings — alive players by score desc, culled players appended at bottom
+    const ranked = players
+      .map((p, i) => ({
+        i,
+        score: Math.round(p.scoreManager?.score ?? 0),
+        name: (onlinePlayerSpecs[i]?.name || p.id || `P${i + 1}`).slice(0, 10),
+        alive: !p.isToppedOut,
+        height: gameManager.getMaxColumnHeight(p),
+        isMe: i === myIdx,
+      }))
+      .sort((a, b) => {
+        if (a.alive !== b.alive) return a.alive ? -1 : 1;
+        return b.score - a.score;
+      });
+
+    // Panel geometry
+    const panelY = 0;
+    const panelH = canvas.height;
+    const headerH = stripH; // 30px so header matches strip height exactly
+    const rowCount = Math.max(1, ranked.length);
+    const hasThreshold = battleRoyalCullThreshold > 0;
+    const threshH = hasThreshold ? 20 : 0;
+    const availableRowH = panelH - headerH - threshH - 4;
+    const rowH = Math.max(16, Math.min(22, Math.floor(availableRowH / rowCount)));
+
+    ctx.save();
+
+    // Panel background + left divider border
+    ctx.fillStyle = 'rgba(4, 6, 20, 0.95)';
+    ctx.fillRect(panelX, panelY, BR_STANDINGS_W, panelH);
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 0.5, panelY);
+    ctx.lineTo(panelX + 0.5, panelY + panelH);
+    ctx.stroke();
+
+    // Header (seamless alignment with Phase strip)
+    ctx.fillStyle = 'rgba(255, 193, 7, 0.12)';
+    ctx.fillRect(panelX + 1, panelY, BR_STANDINGS_W - 1, headerH);
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 1, headerH - 0.5);
+    ctx.lineTo(panelX + BR_STANDINGS_W, headerH - 0.5);
+    ctx.stroke();
+
+    ctx.font = 'bold 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('STANDINGS', panelX + BR_STANDINGS_W / 2, headerH / 2 + 1);
+
+    // Rows
+    ranked.forEach((entry, rank) => {
+      const ry = panelY + headerH + rank * rowH;
+      if (ry + rowH > panelH - threshH) return; // clamp
+
+      const isBelowThreshold = battleRoyalCullThreshold > 0 && entry.score < battleRoyalCullThreshold && entry.alive;
+      const isDanger = entry.alive && entry.height >= 15;
+      const isCulled = !entry.alive;
+
+      // Row background
+      const bg = entry.isMe       ? 'rgba(0, 229, 255, 0.14)' :
+                 isCulled         ? 'rgba(50, 10, 14, 0.70)'  :
+                 isBelowThreshold ? 'rgba(45, 10, 10, 0.60)'  :
+                 isDanger         ? 'rgba(45, 25, 4, 0.60)'   :
+                                    (rank % 2 === 0 ? 'rgba(10, 14, 34, 0.50)' : 'rgba(6, 10, 26, 0.50)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(panelX + 1, ry, BR_STANDINGS_W - 1, rowH);
+
+      // Left accent line for my row
+      if (entry.isMe) {
+        ctx.fillStyle = '#00E5FF';
+        ctx.fillRect(panelX + 1, ry, 2.5, rowH);
+      }
+
+      const midY = ry + rowH / 2;
+      ctx.textBaseline = 'middle';
+
+      // 1. Status dot indicator
+      const dotColor = isCulled ? '#EF4444' : isBelowThreshold ? '#EF4444' : isDanger ? '#F59E0B' : '#10B981';
+      ctx.fillStyle = dotColor;
+      ctx.beginPath();
+      ctx.arc(panelX + 8, midY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. Rank number (#1, #10, #24)
+      const fontPx = rowH >= 20 ? 7 : 6;
+      ctx.font = `bold ${fontPx}px "Press Start 2P", monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isCulled ? '#7F1D1D' : entry.isMe ? '#00E5FF' : '#94A3B8';
+      ctx.fillText(`#${rank + 1}`, panelX + 16, midY);
+
+      // 3. Player name (truncated with room for score)
+      ctx.font = `bold ${rowH >= 20 ? 11 : 10}px "Inter", sans-serif`;
+      ctx.fillStyle = isCulled ? '#991B1B' : entry.isMe ? '#FFFFFF' : '#CBD5E1';
+      const nameMaxW = 68;
+      let displayName = entry.name;
+      while (displayName.length > 2 && ctx.measureText(displayName).width > nameMaxW) {
+        displayName = displayName.slice(0, -1);
+      }
+      ctx.fillText(displayName, panelX + 42, midY);
+
+      // 4. Score (right-aligned, tabular)
+      ctx.textAlign = 'right';
+      ctx.font = `bold ${fontPx}px "Press Start 2P", monospace`;
+      const scoreStr = entry.score >= 1000 ? `${(entry.score / 1000).toFixed(1)}K` : String(entry.score);
+      ctx.fillStyle = isCulled ? '#7F1D1D' : isBelowThreshold ? '#EF4444' : entry.isMe ? '#FFD700' : '#E2E8F0';
+      ctx.fillText(scoreStr, panelX + BR_STANDINGS_W - 8, midY);
+
+      // Separator line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(panelX + 1, ry + rowH - 0.5);
+      ctx.lineTo(panelX + BR_STANDINGS_W, ry + rowH - 0.5);
+      ctx.stroke();
+    });
+
+    // Threshold label at bottom if active
+    if (battleRoyalCullThreshold > 0) {
+      const threshY = panelH - threshH;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+      ctx.fillRect(panelX + 1, threshY, BR_STANDINGS_W - 1, threshH);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctx.strokeRect(panelX + 1, threshY, BR_STANDINGS_W - 1, threshH);
+      ctx.font = 'bold 6.5px "Press Start 2P", monospace';
+      ctx.fillStyle = '#EF4444';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`MIN ${battleRoyalCullThreshold >= 1000 ? `${(battleRoyalCullThreshold/1000).toFixed(0)}K` : battleRoyalCullThreshold} TO SURVIVE`, panelX + BR_STANDINGS_W / 2, threshY + threshH / 2);
+    }
+
+    ctx.restore();
+  }
+
+
   // Render visual effects
+
   const effects = gameManager.getEffects();
   const eCanvas = safeGet('effects-canvas', 'canvas') as HTMLCanvasElement;
   let eCtx = ctx;
@@ -1660,8 +2818,9 @@ function render() {
     }
     setText('level-p1', `${p1.scoreManager.totalLinesCleared}`); setText('level-p1-br', `${p1.scoreManager.totalLinesCleared}`);
     setText('combo-p1', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : ''); setText('combo-p1-br', p1.scoreManager.combo > 1 ? `COMBO x${p1.scoreManager.combo}` : '');
-    const multTextP1 = p1.scoreManager.scoreMultiplier > 1
-      ? `MULT x${p1.scoreManager.scoreMultiplier}${p1.scoreManager.multiplierTimer > 0 ? ` (${(p1.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+    const effectiveMultP1 = p1.scoreManager.scoreMultiplier * p1.scoreManager.globalMultiplier;
+    const multTextP1 = effectiveMultP1 > 1
+      ? `MULT x${effectiveMultP1}${p1.scoreManager.multiplierTimer > 0 ? ` (${(p1.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
       : '';
     setText('multiplier-p1', multTextP1); setText('multiplier-p1-br', multTextP1);
     renderPieceOnMiniCanvas(holdCanvasP1, p1.holdPiece, PLAYER_COLORS[myIdx] || '#00E5FF');
@@ -1692,7 +2851,8 @@ function render() {
       const qStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
       const eStatus = isFrozen1 ? `🔒 LOCKED (${freezeSec1}s)` : ((p1.playerClass === 'SABOTEUR' && p1.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p1.activeEffectTimer > 0 ? ` · ${p1.activeEffectType} ${Math.ceil(p1.activeEffectTimer / 1000)}s` : '';
-      const targetName = p1.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p1.selectedTargetIndex]?.name) ?? `P${p1.selectedTargetIndex + 1}`);
+      const targetPlayer1 = p1.selectedTargetIndex !== null ? gameManager.players[p1.selectedTargetIndex] : null;
+      const targetName = targetPlayer1 ? targetPlayer1.id : (onlinePlayerSpecs[p1.selectedTargetIndex ?? -1]?.name ?? 'default target');
 
       // Visually dim the ability UI when locked out by a Freeze Block [F] (matches Stage 3 Tutorial Step 6)
       abilityMeterP1.classList.toggle('opacity-45', isFrozen1);
@@ -1724,8 +2884,9 @@ function render() {
     scoreElementP2.innerText = `${Math.round(p2.scoreManager.score)}`;
     levelElementP2.innerText = `${p2.scoreManager.totalLinesCleared}`;
     comboElementP2.innerText = p2.scoreManager.combo > 1 ? `COMBO x${p2.scoreManager.combo}` : '';
-    multiplierElementP2.innerText = p2.scoreManager.scoreMultiplier > 1
-      ? `MULT x${p2.scoreManager.scoreMultiplier}${p2.scoreManager.multiplierTimer > 0 ? ` (${(p2.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
+    const effectiveMultP2 = p2.scoreManager.scoreMultiplier * p2.scoreManager.globalMultiplier;
+    multiplierElementP2.innerText = effectiveMultP2 > 1
+      ? `MULT x${effectiveMultP2}${p2.scoreManager.multiplierTimer > 0 ? ` (${(p2.scoreManager.multiplierTimer / 1000).toFixed(1)}s)` : ''}`
       : '';
     
     const holdC2 = safeGet('hold-canvas-p2', 'canvas') as HTMLCanvasElement;
@@ -1754,7 +2915,8 @@ function render() {
       const qStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : (qCooldown > 0 ? `${(qCooldown / 1000).toFixed(1)}s` : 'READY');
       const eStatus = isFrozen2 ? `🔒 LOCKED (${freezeSec2}s)` : ((p2.playerClass === 'SABOTEUR' && p2.gridShiftUsed) ? 'USED' : (eCooldown > 0 ? `${(eCooldown / 1000).toFixed(1)}s` : 'READY'));
       const activeSuffix = p2.activeEffectTimer > 0 ? ` · ${p2.activeEffectType} ${Math.ceil(p2.activeEffectTimer / 1000)}s` : '';
-      const targetName = p2.selectedTargetIndex === null ? 'default target' : ((onlinePlayerSpecs[p2.selectedTargetIndex]?.name) ?? `P${p2.selectedTargetIndex + 1}`);
+      const targetPlayer2 = p2.selectedTargetIndex !== null ? gameManager.players[p2.selectedTargetIndex] : null;
+      const targetName = targetPlayer2 ? targetPlayer2.id : (onlinePlayerSpecs[p2.selectedTargetIndex ?? -1]?.name ?? 'default target');
 
       const abilityMeterP2El = safeGet('ability-meter-p2');
       if (abilityMeterP2El) {
@@ -1843,6 +3005,14 @@ function render() {
   }
 }
 
+
+function formatGameTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 function handleOfflineGameOver() {
   gameManager.state = GameState.POST_GAME;
   if (offlineCountdownInterval !== null) {
@@ -1852,7 +3022,7 @@ function handleOfflineGameOver() {
   AudioManager.playMusic('menu');
   updateNavHighlight('nav-modes');
   preGameOverlay.classList.add('hidden');
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
   lobby.hide();
   uiLayer.classList.remove('hidden');
@@ -1885,6 +3055,11 @@ function handleOfflineGameOver() {
     postGameVotes.innerHTML = `<span class="text-gray-400">PERSONAL BEST: <strong class="text-white">${bestScore.toLocaleString()}</strong></span>`;
   }
 
+  
+    const timeStr = formatGameTime(gameManager.gameTime);
+    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    postGameTime.classList.remove('hidden');
+
   setPostGameButtonLabels('PLAY AGAIN', 'MODE SELECT');
   btnPostRematch.classList.remove('hidden');
 }
@@ -1902,7 +3077,7 @@ window.addEventListener('keydown', (e: any) => {
 function returnToLobbyAuth() {
   AudioManager.playMusic('menu');
   gameManager.state = GameState.MAIN_MENU;
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
 
   // Disconnect from server and reset lobby component to auth panel
@@ -1929,7 +3104,7 @@ function returnToLobbyAuth() {
 function returnToMenu() {
   AudioManager.playMusic('menu');
   gameManager.state = GameState.MAIN_MENU;
-  gameHud.classList.add('hidden');
+  gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
   gameHud.classList.remove('flex');
 
   // Disconnect from server and reset lobby component
