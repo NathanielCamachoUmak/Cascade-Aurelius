@@ -1379,8 +1379,8 @@ export class GameManager {
         AudioManager.playSfx('lineClear');
       }
 
-      if (uniqueSpecials.has(SpecialBlockType.MULTIPLIER) && isLocalHuman) {
-        this.spawnFloatingScoreUiPopup(`+2x Points! (+${Math.round(gainedPoints)} PTS)`);
+      if (uniqueSpecials.has(SpecialBlockType.MULTIPLIER)) {
+        this.spawnFloatingScoreUiPopup(`⚡ +2x Points! (+${Math.round(gainedPoints)} PTS)`, pIdx);
       }
 
       if (linesCleared >= 4) {
@@ -1435,7 +1435,8 @@ export class GameManager {
         player.bombBlastVisual = { row: effRow, col: effCol, timer: 900, maxTimer: 900 };
         AudioManager.playSfx('bomb');
         this.spawnBoardExplosionParticles(pIdx, (effCol + 0.5) * 30, (effRow + 0.5) * 30, '#FF5555', '#FFD700', 28);
-        this.spawnBoardFloatingText(pIdx, '💥 3×3 BLAST!', (effCol + 0.5) * 30, Math.max(60, (effRow - 1) * 30), '#FFD700', 14);
+        this.spawnBoardFloatingText(pIdx, '💥 3×3 BLAST!', 150, Math.max(60, (effRow - 1) * 30), '#FFD700', 14);
+        this.spawnFloatingScoreUiPopup('💥 3×3 Bomb Blast!', pIdx);
       } else if (special === SpecialBlockType.HEAVY) {
         // Row crushing & compaction is handled inside Grid.clearLines()
         const heavyPos = specialBlockPositions.find(pos => pos.type === SpecialBlockType.HEAVY);
@@ -1444,6 +1445,7 @@ export class GameManager {
         AudioManager.playSfx('heavy');
         this.spawnBoardExplosionParticles(pIdx, 150, crushRow * 30, '#FFD700', '#00E5FF', 22);
         this.spawnBoardFloatingText(pIdx, '⬇ HEAVY CRUSH! +1 ROW', 150, Math.max(60, (crushRow - 1) * 30), '#FFD700', 13);
+        this.spawnFloatingScoreUiPopup('⬇ Heavy Crush! +1 Row', pIdx);
       } else if (special === SpecialBlockType.MULTIPLIER) {
         // Already activated above before addScoreForLines; spawn visual feedback
         AudioManager.playSfx('multiplier');
@@ -1459,6 +1461,7 @@ export class GameManager {
         const speedRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, speedRow * 30, '#00E5FF', '#38BDF8', 20);
         this.spawnBoardFloatingText(pIdx, '⚡ SPEED BUFF! -50% DROP SPEED (5s)', 150, Math.max(60, (speedRow - 1) * 30), '#00E5FF', 12);
+        this.spawnFloatingScoreUiPopup('⚡ Speed Buff Active!', pIdx);
       } else if (special === SpecialBlockType.SHIELD) {
         player.shieldActive = true;
         const isSinglePlayer = !this.isOnline && this.players.length === 1;
@@ -1469,11 +1472,13 @@ export class GameManager {
         const shieldRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, shieldRow * 30, '#00FF88', '#00E5FF', 20);
         this.spawnBoardFloatingText(pIdx, isSinglePlayer ? '🛡 SHIELD AURA (1s)!' : '🛡 SHIELD AURA RAISED!', 150, Math.max(60, (shieldRow - 1) * 30), '#00FF88', 13);
+        this.spawnFloatingScoreUiPopup('🛡 Shield Aura Raised!', pIdx);
       } else if (special === SpecialBlockType.FREEZE) {
         this.applyAbilityFreeze(player, 3000);
         const freezeRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, freezeRow * 30, '#38BDF8', '#00E5FF', 20);
         this.spawnBoardFloatingText(pIdx, '❄ LAUNCHING FREEZE TETHER!', 150, Math.max(60, (freezeRow - 1) * 30), '#38BDF8', 12);
+        this.spawnFloatingScoreUiPopup('❄ Freeze Tether Launched!', pIdx);
       } else if (special === SpecialBlockType.GARBAGE_EATER) {
         player.grid.clearGarbageLines(4);
         const bonusPts = player.scoreManager.addFlatBonusScore(800);
@@ -1489,9 +1494,7 @@ export class GameManager {
         const geRow = clearedRows[0] ?? 18;
         this.spawnBoardExplosionParticles(pIdx, 150, geRow * 30, '#F59E0B', '#FFD700', 26);
         this.spawnBoardFloatingText(pIdx, `🍽 GARBAGE CONVERTED → +${Math.round(bonusPts)} PTS!`, 150, Math.max(60, (geRow - 1) * 30), '#FFD700', 13);
-        if (isLocalHuman) {
-          this.spawnFloatingScoreUiPopup(`🍽 Garbage Devoured! +${Math.round(bonusPts)} PTS`);
-        }
+        this.spawnFloatingScoreUiPopup(`🍽 Garbage Devoured! (+${Math.round(bonusPts)} PTS)`, pIdx);
       }
     }
 
@@ -1652,26 +1655,80 @@ export class GameManager {
     });
   }
 
-  private spawnFloatingScoreUiPopup(text: string) {
+  private getPlayerBoardRect(pIdx: number): { left: number; top: number; width: number; height: number } | null {
+    if (typeof document === 'undefined') return null;
+
+    // 1. Check Duo / 1v1 mode board canvases (board-p1, board-p2)
+    const isLocalHuman = !this.isOnline || pIdx === this.myPlayerIndex;
+    const boardId = isLocalHuman ? 'board-p1' : 'board-p2';
+    const boardEl = document.getElementById(boardId);
+    if (boardEl) {
+      const rect = boardEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        return rect;
+      }
+    }
+
+    // 2. Check Battle Royale / Multi-board canvas (#gameCanvas)
+    const gameCanvas = document.getElementById('gameCanvas') as HTMLCanvasElement | null;
+    if (gameCanvas) {
+      const canvasRect = gameCanvas.getBoundingClientRect();
+      if (canvasRect.width > 0 && canvasRect.height > 0) {
+        const layoutEntry = (window as any).__cascadeBoardLayout?.[pIdx];
+        if (layoutEntry && gameCanvas.width > 0 && gameCanvas.height > 0) {
+          const scaleX = canvasRect.width / gameCanvas.width;
+          const scaleY = canvasRect.height / gameCanvas.height;
+          return {
+            left: canvasRect.left + layoutEntry.offsetX * scaleX,
+            top: canvasRect.top + layoutEntry.offsetY * scaleY,
+            width: 10 * layoutEntry.blockSize * scaleX,
+            height: 20 * layoutEntry.blockSize * scaleY,
+          };
+        }
+        return canvasRect;
+      }
+    }
+
+    // 3. Fallback to board-p1 or score-p1
+    const fallbackEl = document.getElementById('board-p1') || document.getElementById('score-p1');
+    if (fallbackEl) {
+      const rect = fallbackEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) return rect;
+    }
+
+    return null;
+  }
+
+  private spawnFloatingScoreUiPopup(text: string, pIdx: number = 0) {
     if (typeof document === 'undefined') return;
-    document.getElementById('gameplay-floating-score-pop')?.remove();
-    const scoreEl = document.getElementById('score-p1');
-    const scoreBrEl = document.getElementById('score-p1-br');
-    const activeEl = (scoreEl && scoreEl.getBoundingClientRect().width > 0) ? scoreEl : scoreBrEl;
-    if (!activeEl) return;
-    const rect = activeEl.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return;
+    const rect = this.getPlayerBoardRect(pIdx);
+    if (!rect || (rect.width === 0 && rect.height === 0)) return;
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const wrapId = `gameplay-floating-score-wrap-${pIdx}`;
+    document.getElementById(wrapId)?.remove();
+
+    const wrapper = document.createElement('div');
+    wrapper.id = wrapId;
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = `${Math.round(centerX)}px`;
+    wrapper.style.top = `${Math.round(centerY)}px`;
+    wrapper.style.transform = 'translate(-50%, -50%)';
+    wrapper.style.zIndex = '100';
+    wrapper.style.pointerEvents = 'none';
 
     const pop = document.createElement('div');
     pop.id = 'gameplay-floating-score-pop';
     pop.className =
-      'fixed z-50 pointer-events-none px-3 py-1.5 rounded-lg border-2 border-neon-yellow bg-deep-purple/95 text-neon-yellow font-extrabold text-xs tracking-wider shadow-[0_0_25px_rgba(255,215,0,0.5)] animate-bounce';
-    pop.style.left = `${Math.max(12, Math.round(rect.left - 10))}px`;
-    pop.style.top = `${Math.max(12, Math.round(rect.top - 38))}px`;
+      'px-3.5 py-2 rounded-lg border-2 border-neon-yellow bg-deep-purple/95 text-neon-yellow font-extrabold text-xs tracking-wider shadow-[0_0_25px_rgba(255,215,0,0.6)] animate-bounce text-center whitespace-nowrap';
     pop.textContent = text;
-    document.body.appendChild(pop);
+
+    wrapper.appendChild(pop);
+    document.body.appendChild(wrapper);
     window.setTimeout(() => {
-      pop.remove();
+      wrapper.remove();
     }, 2200);
   }
 

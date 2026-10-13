@@ -931,19 +931,39 @@ export class Stage3Tutorial {
   }
 
   private spawnFloatingScoreUiPopup(text: string) {
-    document.getElementById('tut3-floating-score-pop')?.remove();
-    const scoreEl = document.getElementById('score-p1');
-    if (!scoreEl) return;
-    const rect = scoreEl.getBoundingClientRect();
+    if (typeof document === 'undefined') return;
+    const boardEl = this.boardCanvas || document.getElementById('board-p1') || document.getElementById('score-p1');
+    if (!boardEl) return;
+    const rect = boardEl.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const wrapId = 'tut3-floating-score-wrap';
+    document.getElementById(wrapId)?.remove();
+
+    const wrapper = document.createElement('div');
+    wrapper.id = wrapId;
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = `${Math.round(centerX)}px`;
+    wrapper.style.top = `${Math.round(centerY)}px`;
+    wrapper.style.transform = 'translate(-50%, -50%)';
+    wrapper.style.zIndex = '100';
+    wrapper.style.pointerEvents = 'none';
 
     const pop = document.createElement('div');
     pop.id = 'tut3-floating-score-pop';
     pop.className =
-      'fixed z-50 pointer-events-none px-3 py-1.5 rounded-lg border-2 border-neon-yellow bg-deep-purple/95 text-neon-yellow font-extrabold text-xs tracking-wider shadow-[0_0_25px_rgba(255,215,0,0.5)] animate-bounce';
-    pop.style.left = `${Math.max(12, Math.round(rect.left - 10))}px`;
-    pop.style.top = `${Math.max(12, Math.round(rect.top - 38))}px`;
+      'px-3.5 py-2 rounded-lg border-2 border-neon-yellow bg-deep-purple/95 text-neon-yellow font-extrabold text-xs tracking-wider shadow-[0_0_25px_rgba(255,215,0,0.6)] animate-bounce text-center whitespace-nowrap';
     pop.textContent = text;
-    document.body.appendChild(pop);
+
+    wrapper.appendChild(pop);
+    document.body.appendChild(wrapper);
+
+    window.setTimeout(() => {
+      wrapper.remove();
+    }, 2200);
   }
 
   private spawnExplosionParticles(cx: number, cy: number, color1: string, color2: string, count: number) {

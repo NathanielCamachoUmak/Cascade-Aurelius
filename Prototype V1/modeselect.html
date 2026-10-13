@@ -265,6 +265,9 @@
 
   <body class="bg-deep-purple text-white font-sans h-screen w-screen overflow-hidden flex flex-col m-0 p-0 selection:bg-neon-pink scanlines">
 
+    <!-- Matrix Falling Blocks Canvas -->
+    <canvas id="matrix-canvas" class="fixed inset-0 pointer-events-none z-0"></canvas>
+
     <!-- ═══════════════════════════════════════════ -->
     <!--             PAGE INDICATOR                  -->
     <!-- ═══════════════════════════════════════════ -->
@@ -721,6 +724,7 @@
     </main>
 
     <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/fallingBlocks.ts"></script>
   
     <!-- UMREC Consent Banner -->
     <div id="cookie-banner" class="fixed bottom-0 left-0 right-0 bg-deep-purple border-t border-card-border p-4 z-[9999] flex flex-col sm:flex-row justify-between items-center gap-4">

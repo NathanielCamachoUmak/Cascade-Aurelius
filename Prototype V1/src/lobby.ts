@@ -2398,6 +2398,7 @@ function render() {
 
   const myIdxForLayout = gameManager.isOnline ? gameManager.myPlayerIndex : -1;
   boardLayout = computeBoardLayout(gameManager.players.length, myIdxForLayout, gameManager.isOnline ? activeOnlineMode : null);
+  (window as any).__cascadeBoardLayout = boardLayout;
 
   for (let i = 0; i < gameManager.players.length; i++) {
     renderPlayer(gameManager.players[i], i, isDuo);
