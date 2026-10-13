@@ -137,17 +137,23 @@ function ensureStyles() {
       padding: clamp(1rem, 4vw, 3rem);
       box-sizing: border-box;
       background:
-        radial-gradient(circle at 18% 0%, rgba(0, 229, 255, 0.11), transparent 32rem),
-        radial-gradient(circle at 86% 100%, rgba(255, 0, 127, 0.12), transparent 28rem),
-        var(--bq-bg);
-      border: 1px solid var(--bq-line);
+        radial-gradient(circle at 18% 0%, rgba(0, 229, 255, 0.16), transparent 32rem),
+        radial-gradient(circle at 86% 100%, rgba(255, 0, 127, 0.16), transparent 28rem),
+        rgba(10, 11, 32, 0.94);
+      border: 1px solid rgba(0, 229, 255, 0.45);
       border-radius: 18px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      box-shadow: 0 18px 55px rgba(0, 0, 0, 0.38);
+      box-shadow:
+        0 0 30px rgba(0, 229, 255, 0.22),
+        0 0 75px rgba(0, 229, 255, 0.10),
+        0 20px 60px rgba(0, 0, 0, 0.75),
+        inset 0 0 25px rgba(0, 229, 255, 0.06);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
     .bq-mode-select * { box-sizing: border-box; }
-    .bq-mode-select__eyebrow { color: var(--bq-cyan); font-size: .72rem; font-weight: 800; letter-spacing: .18em; margin: 0 0 .65rem; text-transform: uppercase; }
-    .bq-mode-select__title { font-size: clamp(1.7rem, 5vw, 3.25rem); line-height: 1; margin: 0; letter-spacing: -.045em; }
+    .bq-mode-select__eyebrow { color: var(--bq-cyan); font-size: .72rem; font-weight: 800; letter-spacing: .18em; margin: 0 0 .65rem; text-transform: uppercase; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5); }
+    .bq-mode-select__title { font-size: clamp(1.7rem, 5vw, 3.25rem); line-height: 1; margin: 0; letter-spacing: -.045em; text-shadow: 0 0 25px rgba(0, 229, 255, 0.3); }
     .bq-mode-select__subtitle { color: var(--bq-muted); font-size: clamp(.95rem, 2vw, 1.08rem); line-height: 1.65; margin: .8rem 0 1.8rem; max-width: 44rem; }
     .bq-mode-select__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
     .bq-mode-select__card {
@@ -158,18 +164,19 @@ function ensureStyles() {
       padding: 1.2rem;
       text-align: left;
       color: var(--bq-text);
-      background: linear-gradient(155deg, rgba(35, 39, 84, .84), rgba(12, 13, 36, .92));
-      border: 1px solid var(--bq-line);
+      background: linear-gradient(155deg, rgba(35, 39, 84, .88), rgba(12, 13, 36, .94));
+      border: 1px solid color-mix(in srgb, var(--mode-color) 45%, rgba(169, 176, 255, 0.22));
       border-radius: 14px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       gap: .7rem;
       position: relative;
+      box-shadow: 0 0 16px color-mix(in srgb, var(--mode-color) 16%, transparent), inset 0 0 14px color-mix(in srgb, var(--mode-color) 6%, transparent);
       transition: border-color 160ms ease-out, box-shadow 160ms ease-out, transform 160ms ease-out, opacity 160ms ease-out;
     }
-    .bq-mode-select__card:hover:not(:disabled), .bq-mode-select__card:focus-visible { border-color: var(--mode-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--mode-color) 18%, transparent), 0 14px 26px rgba(0,0,0,.26); outline: none; transform: translateY(-3px); }
-    .bq-mode-select__card[aria-checked="true"] { border-color: var(--mode-color); box-shadow: inset 0 0 0 1px var(--mode-color), 0 0 26px color-mix(in srgb, var(--mode-color) 20%, transparent); }
+    .bq-mode-select__card:hover:not(:disabled), .bq-mode-select__card:focus-visible { border-color: var(--mode-color); box-shadow: 0 0 0 2px var(--mode-color), 0 0 30px color-mix(in srgb, var(--mode-color) 40%, transparent), 0 14px 26px rgba(0,0,0,.35); outline: none; transform: translateY(-3px); }
+    .bq-mode-select__card[aria-checked="true"] { border-color: var(--mode-color); box-shadow: inset 0 0 0 2px var(--mode-color), 0 0 32px color-mix(in srgb, var(--mode-color) 35%, transparent); }
     .bq-mode-select__card:disabled { cursor: not-allowed; opacity: .48; }
     .bq-mode-select__card[data-accent="yellow"] { --mode-color: var(--bq-yellow); }
     .bq-mode-select__card[data-accent="magenta"] { --mode-color: var(--bq-magenta); }
