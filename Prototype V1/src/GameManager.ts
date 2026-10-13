@@ -1659,8 +1659,9 @@ export class GameManager {
     if (typeof document === 'undefined') return null;
 
     // 1. Check Duo / 1v1 mode board canvases (board-p1, board-p2)
-    const isLocalHuman = !this.isOnline || pIdx === this.myPlayerIndex;
-    const boardId = isLocalHuman ? 'board-p1' : 'board-p2';
+    const localIdx = this.isOnline ? this.myPlayerIndex : 0;
+    const isLocalPlayer = pIdx === localIdx;
+    const boardId = isLocalPlayer ? 'board-p1' : 'board-p2';
     const boardEl = document.getElementById(boardId);
     if (boardEl) {
       const rect = boardEl.getBoundingClientRect();
