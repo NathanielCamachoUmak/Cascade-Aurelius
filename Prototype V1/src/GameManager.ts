@@ -283,6 +283,8 @@ export class GameManager {
         ? evtIndex
         : this.players.findIndex(player => (player as any).socketId === playerId || player.id === playerId);
 
+      const isForLocalPlayer = resolvedIndex === myIndex;
+
       if (state === 'spectating') {
         if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
           this.players[resolvedIndex].isToppedOut = true;
@@ -291,7 +293,7 @@ export class GameManager {
             this.cycleClassTarget(myPlayer);
           }
         }
-        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+        if (isForLocalPlayer) {
           const localPlayer = this.players[myIndex];
           if (localPlayer) {
             localPlayer.isToppedOut = true;
@@ -307,7 +309,7 @@ export class GameManager {
             this.cycleClassTarget(myPlayer);
           }
         }
-        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+        if (isForLocalPlayer) {
           const localPlayer = this.players[myIndex];
           if (localPlayer) {
             localPlayer.isToppedOut = true;
@@ -321,13 +323,12 @@ export class GameManager {
           this.players[resolvedIndex].battleRoyalEliminated = false;
           (this.players[resolvedIndex] as any).isCulled = false;
         }
-        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+        if (isForLocalPlayer) {
           const localPlayer = this.players[myIndex];
           if (localPlayer) {
             localPlayer.isToppedOut = false;
             localPlayer.battleRoyalEliminated = false;
             (localPlayer as any).isCulled = false;
-            localPlayer.inputHandler.unfreeze();
             if (this.state === GameState.GAME_OVER) {
               this.state = GameState.PLAYING;
             }
@@ -902,7 +903,6 @@ export class GameManager {
     const myPlayer = this.players[this.myPlayerIndex];
     if (myPlayer && !myPlayer.battleRoyalEliminated && !(myPlayer as any).isCulled) {
       myPlayer.isToppedOut = false;
-      myPlayer.inputHandler.unfreeze();
       if (this.state === GameState.GAME_OVER) {
         this.state = GameState.PLAYING;
       }

@@ -159,7 +159,7 @@ function highestScoringTeam(teamScores) {
 }
 
 function activePlayerCount(room) {
-  return Array.from(room.players.values()).filter(p => p.state === 'playing').length;
+  return Array.from(room.players.values()).filter(p => p.state === 'playing' && !p.brPermanentlyEliminated).length;
 }
 
 function getRoomState(roomId) {
@@ -475,7 +475,7 @@ function emitBattleRoyalRound(roomId, round) {
 function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
-  const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing');
+  const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing' && !player.brPermanentlyEliminated);
   const allPlayersSorted = rankBattleRoyalPlayers(Array.from(room.players.values()));
   const winner = winnerOverride || (survivors.length > 0 ? closestToTarget(survivors) : allPlayersSorted[0]);
   const entries = Array.from(room.players.entries());
@@ -492,7 +492,7 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
       kills: player.kills || 0,
       koCount: player.koCount || 0,
       state: player.state,
-      eliminated: player.state !== 'playing',
+      eliminated: player.state !== 'playing' || !!player.brPermanentlyEliminated,
       ownerId: player.ownerId || null,
     }));
   clearTimers(room);
@@ -514,10 +514,10 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
 function checkBattleRoyalGameOver(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
-  if (room.battleRoyalPhase === 'intermission') return;
-  const alive = Array.from(room.players.values()).filter(player => player.state === 'playing');
+  if (room.battleRoyalPhase === 'intermission' || room.battleRoyalPhase === 'round-ended') return;
+  const alive = Array.from(room.players.values()).filter(player => player.state === 'playing' && !player.brPermanentlyEliminated);
   if (canFinishBattleRoyalWithSingleSurvivor(alive, room.currentRoundIndex)) {
-    finishBattleRoyalMatch(roomId, 'last-survivor', alive[0]);
+    finishBattleRoyalMatch(roomId, 'last-survivor', alive[0] || null);
     return;
   }
   if (alive.length === 0) {
@@ -553,7 +553,7 @@ function startBattleRoyalRound(roomId) {
   // Deliver starting garbage to active players so grids populate stably during pause
   if (round.startGarbage > 0) {
     for (const [id, player] of room.players) {
-      if (player.state === 'playing') {
+      if (player.state === 'playing' && !player.brPermanentlyEliminated) {
         const socketId = player.isBot ? player.ownerId : id;
         io.to(socketId).emit('receive-garbage', {
           count: round.startGarbage,
@@ -580,6 +580,10 @@ function startBattleRoyalRound(roomId) {
       currentRoom.matchTimer = setTimeout(() => {
         endBattleRoyalRound(roomId);
       }, round.durationMs);
+    } else {
+      io.to(roomId).emit('battle-royale-sudden-death', {
+        remainingPlayers: activePlayerCount(currentRoom)
+      });
     }
     
     emitBattleRoyalRound(roomId, round);
@@ -614,16 +618,24 @@ function endBattleRoyalRound(roomId) {
     const currentRoom = rooms.get(roomId);
     if (!currentRoom || currentRoom.phase !== 'in-game') return;
 
-    // Cull players immediately (Visually removes their grids)
-    const allMatchPlayers = Array.from(currentRoom.players.values()).filter(p => !p.brPermanentlyEliminated);
-    const sorted = rankBattleRoyalPlayers(allMatchPlayers);
+    // Only players who survived this round (alive and not permanently eliminated)
+    const aliveMatchPlayers = Array.from(currentRoom.players.values()).filter(p => p.state === 'playing' && !p.brPermanentlyEliminated);
+    
+    // Check if 1 or 0 survivors remain
+    if (aliveMatchPlayers.length <= 1) {
+      const allPlayersSorted = rankBattleRoyalPlayers(Array.from(currentRoom.players.values()));
+      const winner = aliveMatchPlayers[0] || allPlayersSorted[0] || null;
+      finishBattleRoyalMatch(roomId, 'last-survivor', winner);
+      return;
+    }
 
-    let survivors = sorted;
+    const sortedAlive = rankBattleRoyalPlayers(aliveMatchPlayers);
+    let survivors = sortedAlive;
     let toCull = [];
 
-    if (allMatchPlayers.length > round.targetSurvivors) {
-      toCull = sorted.slice(round.targetSurvivors);
-      survivors = sorted.slice(0, round.targetSurvivors);
+    if (sortedAlive.length > round.targetSurvivors) {
+      toCull = sortedAlive.slice(round.targetSurvivors);
+      survivors = sortedAlive.slice(0, round.targetSurvivors);
       const eliminatedIds = [];
       for (const player of toCull) {
         player.brPermanentlyEliminated = true;
@@ -632,13 +644,14 @@ function endBattleRoyalRound(roomId) {
         player.eliminatedAt = Date.now();
         const entry = Array.from(currentRoom.players.entries()).find(([, p]) => p === player);
         if (entry) {
-          const socketId = player.isBot ? player.ownerId : entry[0];
-          eliminatedIds.push(entry[0]);
+          const actualId = entry[0];
+          const socketId = player.isBot ? player.ownerId : actualId;
+          eliminatedIds.push(actualId);
           io.to(socketId).emit('player-eliminated-prompt', {
             message: 'You have been eliminated from the Battle Royale! You may spectate the rest of the match.',
             canSpectate: true,
           });
-          io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'eliminated' });
+          io.to(roomId).emit('player-state-update', { playerId: actualId, playerIndex: player.index, state: 'eliminated' });
           io.to(roomId).emit('player-topped-out', { playerIndex: player.index, killerIndex: -1 });
         }
       }
@@ -656,33 +669,33 @@ function endBattleRoyalRound(roomId) {
       });
     }
 
-    // Set ALL survivors ready to play (un-spectate them, so they resume next round)
+    // Check again after culling
+    if ((currentRoom.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || survivors.length <= 1) {
+      const winner = survivors[0] || sortedAlive[0] || null;
+      finishBattleRoyalMatch(roomId, 'last-survivor', winner);
+      return;
+    }
+
+    // Set survivors ready to play next round
     for (const player of survivors) {
       player.state = 'playing';
       const entry = Array.from(currentRoom.players.entries()).find(([, p]) => p === player);
       if (entry) {
-        const socketId = player.isBot ? player.ownerId : entry[0];
-        io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'playing', remainingPlayers: survivors.length });
+        const actualId = entry[0];
+        io.to(roomId).emit('player-state-update', { playerId: actualId, playerIndex: player.index, state: 'playing', remainingPlayers: survivors.length });
       }
     }
-    
-    const alivePlayers = Array.from(currentRoom.players.values()).filter(p => p.state === 'playing');
-    if ((currentRoom.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alivePlayers.length <= 1) {
-      const winner = alivePlayers[0] || sorted[0] || null;
-      finishBattleRoyalMatch(roomId, 'last-survivor', winner);
-      return;
-    }
-    
+
     currentRoom.currentRoundIndex++;
     const nextRound = getBattleRoyalRound(currentRoom.currentRoundIndex);
-    const cullThreshold = Math.max(0, alivePlayers.length - nextRound.targetSurvivors);
+    const cullThreshold = Math.max(0, survivors.length - nextRound.targetSurvivors);
     currentRoom.battleRoyalPhase = 'intermission';
 
     const INTERMISSION_MS = 3000;
     io.to(roomId).emit('battle-royale-phase', {
       phase: 'intermission',
       label: `Round ${currentRoom.currentRoundIndex + 1} — ${nextRound.label}`,
-      remainingPlayers: alivePlayers.length,
+      remainingPlayers: survivors.length,
       cullThreshold,
       atMs: 0,
       nextAtMs: INTERMISSION_MS,
@@ -750,7 +763,6 @@ function startMatch(roomId) {
       remainingPlayers: playerList.length,
     });
   }
-  io.to(roomId).emit('pre-game-countdown', 5);
   if (room.mode.isTeamMode) io.to(roomId).emit('team-score-update', { teamScores: calculateTeamScores(room) });
   emitRoomState(roomId);
 
@@ -759,8 +771,9 @@ function startMatch(roomId) {
     setTimeout(() => {
       startBattleRoyalRound(roomId);
       emitRoomState(roomId);
-    }, 500);
+    }, 100);
   } else {
+    io.to(roomId).emit('pre-game-countdown', 5);
     room.pregameTimer = setTimeout(() => {
       startTeamMatchTimer(roomId);
     }, 5000);
@@ -1195,6 +1208,10 @@ io.on('connection', socket => {
     }
 
     // Otherwise (> 4 players remaining in elimination modes), trigger Elimination and allow Spectator / Lobby Choice
+    if (room.mode.id === 'battle-royale') {
+      player.brPermanentlyEliminated = true;
+      player.brEliminatedRoundIndex = room.currentRoundIndex ?? 0;
+    }
     player.state = 'spectating';
     player.eliminatedAt = Date.now();
 
@@ -1213,7 +1230,7 @@ io.on('connection', socket => {
 
     socket.to(roomId).emit('opponent-topped-out', { playerIndex: player.index });
     io.to(roomId).emit('player-state-update', { 
-      playerId: socketId, 
+      playerId: botId || socket.id, 
       playerIndex: player.index, 
       state: 'spectating',
       remainingPlayers: activePlayerCount(room) 

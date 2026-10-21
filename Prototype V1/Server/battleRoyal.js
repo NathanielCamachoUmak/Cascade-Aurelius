@@ -122,7 +122,7 @@ export function rankBattleRoyalPlayers(players) {
 }
 
 export function canFinishBattleRoyalWithSingleSurvivor(activePlayers, roundIndex) {
-  return roundIndex === BATTLE_ROYALE_RULES.rounds.length - 1 && activePlayers.length === 1;
+  return activePlayers.length <= 1;
 }
 
 // Match placement is survival order, not raw score order. Score/lines/kills
@@ -141,7 +141,9 @@ export function rankBattleRoyalPlacements(players, winnerId = null, currentRound
     const roundDifference = roundOf(b) - roundOf(a);
     if (roundDifference !== 0) return roundDifference;
 
-    const aliveDifference = Number(b.state === 'playing') - Number(a.state === 'playing');
+    const aAlive = a.state === 'playing' && !a.brPermanentlyEliminated;
+    const bAlive = b.state === 'playing' && !b.brPermanentlyEliminated;
+    const aliveDifference = Number(bAlive) - Number(aAlive);
     if (aliveDifference !== 0) return aliveDifference;
 
     if (numeric(b.score) !== numeric(a.score)) return numeric(b.score) - numeric(a.score);

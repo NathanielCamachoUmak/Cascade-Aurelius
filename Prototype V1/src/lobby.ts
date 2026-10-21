@@ -599,7 +599,8 @@ function updateBattleRoyalHud() {
       timerEl.classList.toggle('text-red-400', secLeft <= 10);
       timerEl.classList.toggle('text-white', secLeft > 10);
     } else {
-      timerEl.textContent = !endsAt ? '—' : 'FINAL';
+      const isFinal = battleRoyalPhaseLabel.includes('Final') || battleRoyalPhaseLabel.includes('Sudden Death');
+      timerEl.textContent = isFinal ? 'FINAL' : (!endsAt ? '—' : '0:00');
     }
   }
 
@@ -796,13 +797,20 @@ const lobby = mountLobbyScreen({
 });
 
 function wireGameCallbacks(network: NetworkManager) {
+  let preGameCountdownInterval: number | null = null;
   network.onPreGameCountdown = (seconds: number) => {
+    if (preGameCountdownInterval !== null) {
+      clearInterval(preGameCountdownInterval);
+      preGameCountdownInterval = null;
+    }
+    hideBrIntermissionOverlay();
     preGameOverlay.classList.remove('hidden');
+    preGameOverlay.classList.add('flex');
     const p = gameManager.players[gameManager.myPlayerIndex ?? -1];
     if (p && p.inputHandler) p.inputHandler.freeze();
     let s = seconds;
     preGameText.innerText = s.toString();
-    const interval = setInterval(() => {
+    preGameCountdownInterval = window.setInterval(() => {
       s--;
       if (s > 0) {
         preGameText.innerText = s.toString();
@@ -812,14 +820,19 @@ function wireGameCallbacks(network: NetworkManager) {
         if (pGo && pGo.inputHandler) pGo.inputHandler.unfreeze();
         gameManager.unpauseRound();
       } else {
-        clearInterval(interval);
+        if (preGameCountdownInterval !== null) {
+          clearInterval(preGameCountdownInterval);
+          preGameCountdownInterval = null;
+        }
+        preGameOverlay.classList.remove('flex');
         preGameOverlay.classList.add('hidden');
       }
     }, 1000);
   };
 
   network.onPlayerStateUpdate = (data) => {
-    if (data.playerId === network?.mySocketId) {
+    const isMe = data.playerIndex === gameManager.myPlayerIndex;
+    if (isMe) {
       if (data.state === 'spectating' || data.state === 'eliminated') {
         spectatorBanner.classList.remove('hidden');
       } else if (data.state === 'playing') {
@@ -833,6 +846,13 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onPostGameStart = (data) => {
+    hideBrIntermissionOverlay();
+    if (preGameCountdownInterval !== null) {
+      clearInterval(preGameCountdownInterval);
+      preGameCountdownInterval = null;
+    }
+    preGameOverlay.classList.remove('flex');
+    preGameOverlay.classList.add('hidden');
     gameManager.state = GameState.POST_GAME;
     updateNavHighlight('nav-lobby');
     uiLayer.classList.remove('hidden');
@@ -1048,6 +1068,7 @@ function wireGameCallbacks(network: NetworkManager) {
   };
 
   network.onRoundStart = (data?: any) => {
+    hideBrIntermissionOverlay();
     const me = gameManager.players[gameManager.myPlayerIndex];
     if (me && !me.battleRoyalEliminated && !(me as any).isCulled) {
       spectatorBanner.classList.add('hidden');
@@ -1627,10 +1648,7 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
   const otherIndices: number[] = [];
   for (let i = 0; i < playerCount; i++) {
     if (i !== myIndex) {
-      const p = gameManager.players[i];
-      if (!p || !(p as any).isCulled) {
-        otherIndices.push(i);
-      }
+      otherIndices.push(i);
     }
   }
 
@@ -1665,8 +1683,19 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
 let boardLayout: BoardLayoutEntry[] = [];
 
 function renderPlayer(player: Player, index: number, isDuo: boolean) {
-  let { blockSize, offsetX, offsetY } = boardLayout[index] ?? { blockSize: BLOCK_SIZE, offsetX: index * (COLS * BLOCK_SIZE + PADDING), offsetY: 0 };
   const isMyPlayer = index === (gameManager.isOnline ? gameManager.myPlayerIndex : 0);
+  const isBROnline = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
+
+  const layoutEntry = boardLayout[index];
+  if (!layoutEntry && isBROnline && !isMyPlayer) {
+    return; // Safety guard: never draw ghost opponent boards if layout is somehow undefined
+  }
+
+  let { blockSize, offsetX, offsetY } = layoutEntry ?? { 
+    blockSize: isBROnline && !isMyPlayer ? BLOCK_SIZE * OTHER_BOARD_SCALE_BR : BLOCK_SIZE, 
+    offsetX: index * (COLS * BLOCK_SIZE + PADDING), 
+    offsetY: 0 
+  };
   const playerColor = isDuo ? (isMyPlayer ? PLAYER_COLORS[0] : PLAYER_COLORS[3]) : (PLAYER_COLORS[index] || '#00E5FF');
   
   let tCtx = ctx;
@@ -1692,7 +1721,6 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
   // Draw Player Grid Border
-  const isBROnline = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
   const myPlayerObj = gameManager.players[gameManager.myPlayerIndex ?? 0];
   const isCurrentTarget = Boolean(myPlayerObj && myPlayerObj.selectedTargetIndex === index && !player.isToppedOut);
 
@@ -1939,7 +1967,6 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  const layoutEntry = boardLayout[index];
   const headerH = layoutEntry?.headerHeight || 36;
   const cardH = layoutEntry?.cardHeight || 54;
   const myPlayer = gameManager.players[gameManager.myPlayerIndex ?? 0];
@@ -2247,7 +2274,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
   // 4. Score Card Underneath Each Player Board
-  if (!isDuo && blockSize >= 20) {
+  if (!isDuo && blockSize >= 20 && (!isBROnline || isMyPlayer)) {
     const cx = offsetX;
     const cy = offsetY + boardPixelH + 8;
     const cw = boardPixelW;
@@ -2590,7 +2617,7 @@ function render() {
         i,
         score: Math.round(p.scoreManager?.score ?? 0),
         name: (onlinePlayerSpecs[i]?.name || p.id || `P${i + 1}`).slice(0, 10),
-        alive: !p.isToppedOut,
+        alive: !p.isToppedOut && !p.battleRoyalEliminated && !(p as any).isCulled,
         height: gameManager.getMaxColumnHeight(p),
         isMe: i === myIdx,
       }))
