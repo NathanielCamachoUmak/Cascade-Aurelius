@@ -73,6 +73,8 @@ export class GameManager {
   public myPlayerIndex: number = 0;
   public isOnline: boolean = false;
   public onlineWinnerName: string = "";
+  public isRoundPaused: boolean = false;
+  public roundPauseTimer: number = 0;
   public gameTime: number = 0;
   public battleRoyalMode = false;
   public isTeamMode = false;
@@ -360,8 +362,9 @@ export class GameManager {
           targetPlayer.lastAttackerIndex = fromIndex;
         }
 
+        const isStartGarbage = fromIndex === -1;
         const isSolidSuddenDeath = Boolean(options?.solid || options?.unClearable);
-        if (!isSolidSuddenDeath && targetPlayer.shieldActive) {
+        if (!isStartGarbage && !isSolidSuddenDeath && targetPlayer.shieldActive) {
           targetPlayer.shieldActive = false;
           targetPlayer.shieldDeflectTimer = 900;
           AudioManager.playSfx('shield');
@@ -554,6 +557,18 @@ export class GameManager {
       return;
     }
     if (this.state !== GameState.PLAYING && this.state !== GameState.TUTORIAL) return;
+
+    if (this.isRoundPaused) {
+      this.roundPauseTimer = Math.max(0, this.roundPauseTimer - dt);
+      if (this.roundPauseTimer === 0) {
+        this.isRoundPaused = false;
+      }
+      this.updateEffects(dt);
+      if (this.isOnline && this.network) {
+        this.handleNetworkSync(dt);
+      }
+      return;
+    }
 
     this.gameTime += dt;
 
@@ -846,6 +861,25 @@ export class GameManager {
     player.currentPiece = null;
     player.inputHandler.clear();
     this.handlePlayerToppedOutTargeting(player);
+  }
+
+    public pauseRound(durationMs: number = 3000) {
+    this.isRoundPaused = true;
+    this.roundPauseTimer = durationMs;
+    for (const p of this.players) {
+      if (p.inputHandler) {
+        p.inputHandler.freezeFor(durationMs);
+      }
+    }
+  }
+
+  public unpauseRound() {
+    this.isRoundPaused = false;
+    this.roundPauseTimer = 0;
+    const localPlayer = this.players[this.myPlayerIndex];
+    if (localPlayer && localPlayer.inputHandler && !localPlayer.isToppedOut) {
+      localPlayer.inputHandler.unfreeze();
+    }
   }
 
   public startNewRound() {

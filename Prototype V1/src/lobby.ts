@@ -810,6 +810,7 @@ function wireGameCallbacks(network: NetworkManager) {
         preGameText.innerText = "GO!";
         const pGo = gameManager.players[gameManager.myPlayerIndex ?? -1];
         if (pGo && pGo.inputHandler) pGo.inputHandler.unfreeze();
+        gameManager.unpauseRound();
       } else {
         clearInterval(interval);
         preGameOverlay.classList.add('hidden');
@@ -1040,12 +1041,20 @@ function wireGameCallbacks(network: NetworkManager) {
     showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
   };
 
-  network.onRoundStart = () => {
+  network.onRoundEnded = (data) => {
+    const pauseMs = data?.durationMs ?? 3000;
+    gameManager.pauseRound(pauseMs);
+    showGlobalRibbon('⏱ ROUND COMPLETE · RESYNCING...');
+  };
+
+  network.onRoundStart = (data?: any) => {
     const me = gameManager.players[gameManager.myPlayerIndex];
     if (me && !me.battleRoyalEliminated && !(me as any).isCulled) {
       spectatorBanner.classList.add('hidden');
     }
+    const pauseMs = data?.pauseMs ?? 3000;
     gameManager.startNewRound();
+    gameManager.pauseRound(pauseMs);
   };
   network.onMatchTimerStart = (data) => {
     teamMatchEndsAt = data.endsAt;

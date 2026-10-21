@@ -128,7 +128,8 @@ export class NetworkManager {
   public onRoomHostChanged: ((data: { hostId: string | null }) => void) | null = null;
   public onKicked: (() => void) | null = null;
   public onTeamScoreUpdate: ((data: { playerIndex?: number; playerId?: string; teamScores: { cyan: number; magenta: number } }) => void) | null = null;
-  public onRoundStart: (() => void) | null = null;
+  public onRoundStart: ((data?: any) => void) | null = null;
+  public onRoundEnded: ((data?: any) => void) | null = null;
   public onMatchTimerStart: ((data: { endsAt: number; durationMs: number }) => void) | null = null;
   public onClassEffect: ((data: ClassEffectData) => void) | null = null;
   public onBattleRoyalPhase: ((data: { phase: string; label: string; remainingPlayers: number; nextAtMs?: number; cullThreshold?: number; scoreMultiplier?: number }) => void) | null = null;

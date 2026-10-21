@@ -536,136 +536,165 @@ function startBattleRoyalRound(roomId) {
   }
   
   const round = getBattleRoyalRound(room.currentRoundIndex);
-  room.battleRoyalStartedAt = Date.now();
   room.battleRoyalPhase = round.id;
 
-  io.to(roomId).emit('round-start');
-  for (const [id, player] of room.players) {
-    if (player.state === 'playing') {
-      const socketId = player.isBot ? player.ownerId : id;
-      io.to(socketId).emit('round-start');
-    }
-  }
+  const PRE_ROUND_PAUSE_MS = 3000;
 
-  if (round.durationMs > 0) {
-    if (room.matchTimer) clearTimeout(room.matchTimer);
-    room.matchEndsAt = Date.now() + round.durationMs;
-    io.to(roomId).emit('match-timer-start', { endsAt: room.matchEndsAt, durationMs: round.durationMs });
-    
-    room.matchTimer = setTimeout(() => {
-      endBattleRoyalRound(roomId);
-    }, round.durationMs);
-  }
-  
-  emitBattleRoyalRound(roomId, round);
-  
+  // 1. Tell clients to prepare boards and apply start garbage while paused
+  io.to(roomId).emit('round-start', {
+    roundIndex: room.currentRoundIndex,
+    startGarbage: round.startGarbage,
+    pauseMs: PRE_ROUND_PAUSE_MS,
+  });
+
+  // Emit 3-second countdown so players see 3... 2... 1... GO!
+  io.to(roomId).emit('pre-game-countdown', 3);
+
+  // Deliver starting garbage to active players so grids populate stably during pause
   if (round.startGarbage > 0) {
     for (const [id, player] of room.players) {
       if (player.state === 'playing') {
         const socketId = player.isBot ? player.ownerId : id;
-        io.to(socketId).emit('receive-garbage', { count: round.startGarbage, fromIndex: -1, targetIndex: player.index });
+        io.to(socketId).emit('receive-garbage', {
+          count: round.startGarbage,
+          fromIndex: -1,
+          targetIndex: player.index,
+          isStartingGarbage: true
+        });
       }
     }
   }
+
+  // 2. Start actual gameplay timer AFTER the 3-second pre-round pause
+  setTimeout(() => {
+    const currentRoom = rooms.get(roomId);
+    if (!currentRoom || currentRoom.phase !== 'in-game') return;
+
+    currentRoom.battleRoyalStartedAt = Date.now();
+
+    if (round.durationMs > 0) {
+      if (currentRoom.matchTimer) clearTimeout(currentRoom.matchTimer);
+      currentRoom.matchEndsAt = Date.now() + round.durationMs;
+      io.to(roomId).emit('match-timer-start', { endsAt: currentRoom.matchEndsAt, durationMs: round.durationMs });
+      
+      currentRoom.matchTimer = setTimeout(() => {
+        endBattleRoyalRound(roomId);
+      }, round.durationMs);
+    }
+    
+    emitBattleRoyalRound(roomId, round);
+  }, PRE_ROUND_PAUSE_MS);
 }
 
 function endBattleRoyalRound(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.mode.id !== 'battle-royale' || room.phase !== 'in-game') return;
+  if (room.battleRoyalPhase === 'round-ended' || room.battleRoyalPhase === 'intermission') return;
   
   const round = getBattleRoyalRound(room.currentRoundIndex || 0);
-  room.battleRoyalPhase = 'intermission';
+  room.battleRoyalPhase = 'round-ended';
   
   if (room.matchTimer) clearTimeout(room.matchTimer);
 
-  // 1. Cull players immediately (Visually removes their grids)
-  const allMatchPlayers = Array.from(room.players.values()).filter(p => !p.brPermanentlyEliminated);
-  const sorted = rankBattleRoyalPlayers(allMatchPlayers);
+  // 1. Tell all clients to PAUSE for 3 seconds: inputs freeze, gravity stops, players catch breath
+  const ROUND_END_PAUSE_MS = 3000;
+  io.to(roomId).emit('round-ended', { durationMs: ROUND_END_PAUSE_MS });
+  io.to(roomId).emit('battle-royale-phase', {
+    phase: 'round-ended',
+    label: 'Round Ended · Resyncing...',
+    remainingPlayers: activePlayerCount(room),
+    cullThreshold: 0,
+    atMs: 0,
+    nextAtMs: ROUND_END_PAUSE_MS,
+    scoreMultiplier: round.scoreMultiplier,
+  });
 
-  let survivors = sorted;
-  let toCull = [];
+  // 2. After 3-second resync pause, process cull & intermission
+  setTimeout(() => {
+    const currentRoom = rooms.get(roomId);
+    if (!currentRoom || currentRoom.phase !== 'in-game') return;
 
-  if (allMatchPlayers.length > round.targetSurvivors) {
-    toCull = sorted.slice(round.targetSurvivors);
-    survivors = sorted.slice(0, round.targetSurvivors);
-    const eliminatedIds = [];
-    for (const player of toCull) {
-      player.brPermanentlyEliminated = true;
-      player.brEliminatedRoundIndex = room.currentRoundIndex ?? 0;
-      player.state = 'eliminated';
-      player.eliminatedAt = Date.now();
-      const entry = Array.from(room.players.entries()).find(([, p]) => p === player);
+    // Cull players immediately (Visually removes their grids)
+    const allMatchPlayers = Array.from(currentRoom.players.values()).filter(p => !p.brPermanentlyEliminated);
+    const sorted = rankBattleRoyalPlayers(allMatchPlayers);
+
+    let survivors = sorted;
+    let toCull = [];
+
+    if (allMatchPlayers.length > round.targetSurvivors) {
+      toCull = sorted.slice(round.targetSurvivors);
+      survivors = sorted.slice(0, round.targetSurvivors);
+      const eliminatedIds = [];
+      for (const player of toCull) {
+        player.brPermanentlyEliminated = true;
+        player.brEliminatedRoundIndex = currentRoom.currentRoundIndex ?? 0;
+        player.state = 'eliminated';
+        player.eliminatedAt = Date.now();
+        const entry = Array.from(currentRoom.players.entries()).find(([, p]) => p === player);
+        if (entry) {
+          const socketId = player.isBot ? player.ownerId : entry[0];
+          eliminatedIds.push(entry[0]);
+          io.to(socketId).emit('player-eliminated-prompt', {
+            message: 'You have been eliminated from the Battle Royale! You may spectate the rest of the match.',
+            canSpectate: true,
+          });
+          io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'eliminated' });
+          io.to(roomId).emit('player-topped-out', { playerIndex: player.index, killerIndex: -1 });
+        }
+      }
+      io.to(roomId).emit('battle-royale-cull', {
+        eliminatedIds,
+        eliminated: toCull.map(p => ({
+          id: p.id,
+          name: p.name,
+          score: p.score || 0,
+          lines: p.lines || 0,
+          kills: p.kills || 0
+        })),
+        remainingPlayers: survivors.length,
+        reason: 'score-cull'
+      });
+    }
+
+    // Set ALL survivors ready to play (un-spectate them, so they resume next round)
+    for (const player of survivors) {
+      player.state = 'playing';
+      const entry = Array.from(currentRoom.players.entries()).find(([, p]) => p === player);
       if (entry) {
         const socketId = player.isBot ? player.ownerId : entry[0];
-        eliminatedIds.push(entry[0]);
-        io.to(socketId).emit('player-eliminated-prompt', {
-          message: 'You have been eliminated from the Battle Royale! You may spectate the rest of the match.',
-          canSpectate: true,
-        });
-        io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'eliminated' });
-        io.to(roomId).emit('player-topped-out', { playerIndex: player.index, killerIndex: -1 });
-      }
-    }
-    io.to(roomId).emit('battle-royale-cull', {
-      eliminatedIds,
-      eliminated: toCull.map(p => ({
-        id: p.id,
-        name: p.name,
-        score: p.score || 0,
-        lines: p.lines || 0,
-        kills: p.kills || 0
-      })),
-      remainingPlayers: survivors.length,
-      reason: 'score-cull'
-    });
-  }
-
-  // Set ALL survivors ready to play (un-spectate them, so they resume next round)
-  for (const player of survivors) {
-    player.state = 'playing';
-    const entry = Array.from(room.players.entries()).find(([, p]) => p === player);
-    if (entry) {
-      const socketId = player.isBot ? player.ownerId : entry[0];
-      io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'playing', remainingPlayers: survivors.length });
-    }
-  }
-  
-  const alivePlayers = Array.from(room.players.values()).filter(p => p.state === 'playing');
-  if ((room.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alivePlayers.length <= 1) {
-    const winner = alivePlayers[0] || sorted[0] || null;
-    finishBattleRoyalMatch(roomId, 'last-survivor', winner);
-    return;
-  }
-  
-  room.currentRoundIndex++;
-  const nextRound = getBattleRoyalRound(room.currentRoundIndex);
-  const cullThreshold = Math.max(0, alivePlayers.length - nextRound.targetSurvivors);
-
-  io.to(roomId).emit('battle-royale-phase', {
-    phase: 'intermission',
-    label: `Round ${room.currentRoundIndex + 1} — ${nextRound.label}`,
-    remainingPlayers: alivePlayers.length,
-    cullThreshold,
-    atMs: 0,
-    nextAtMs: 6000,
-    scoreMultiplier: nextRound.scoreMultiplier,
-  });
-  
-  // 2. Clear all boards after 3 seconds
-  setTimeout(() => {
-    io.to(roomId).emit('round-start');
-    for (const [id, player] of room.players) {
-      if (player.state === 'playing') {
-        const socketId = player.isBot ? player.ownerId : id;
-        io.to(socketId).emit('round-start');
+        io.to(roomId).emit('player-state-update', { playerId: socketId, playerIndex: player.index, state: 'playing', remainingPlayers: survivors.length });
       }
     }
     
-    // 3. Start next round after another 3 seconds (6 seconds total)
-    room.matchTimer = setTimeout(() => {
+    const alivePlayers = Array.from(currentRoom.players.values()).filter(p => p.state === 'playing');
+    if ((currentRoom.currentRoundIndex || 0) >= BATTLE_ROYALE_RULES.rounds.length - 1 || alivePlayers.length <= 1) {
+      const winner = alivePlayers[0] || sorted[0] || null;
+      finishBattleRoyalMatch(roomId, 'last-survivor', winner);
+      return;
+    }
+    
+    currentRoom.currentRoundIndex++;
+    const nextRound = getBattleRoyalRound(currentRoom.currentRoundIndex);
+    const cullThreshold = Math.max(0, alivePlayers.length - nextRound.targetSurvivors);
+    currentRoom.battleRoyalPhase = 'intermission';
+
+    const INTERMISSION_MS = 3000;
+    io.to(roomId).emit('battle-royale-phase', {
+      phase: 'intermission',
+      label: `Round ${currentRoom.currentRoundIndex + 1} — ${nextRound.label}`,
+      remainingPlayers: alivePlayers.length,
+      cullThreshold,
+      atMs: 0,
+      nextAtMs: INTERMISSION_MS,
+      scoreMultiplier: nextRound.scoreMultiplier,
+    });
+    
+    // 3. After intermission, prepare and start the next round
+    setTimeout(() => {
       startBattleRoyalRound(roomId);
-    }, 3000);
-  }, 3000);
+    }, INTERMISSION_MS);
+
+  }, ROUND_END_PAUSE_MS);
 }
 
 function startTeamMatchTimer(roomId) {
