@@ -223,6 +223,10 @@ export class NetworkManager {
       this.onPreGameCountdown?.(seconds);
     });
 
+    this.socket.on("round-start", () => {
+      this.onRoundStart?.();
+    });
+
     this.socket.on("player-state-update", (data: { playerId: string; playerIndex?: number; state: string; remainingPlayers?: number; }) => {
       this.onPlayerStateUpdate?.(data);
     });

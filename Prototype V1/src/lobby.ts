@@ -1040,7 +1040,13 @@ function wireGameCallbacks(network: NetworkManager) {
     showGlobalRibbon(`💥 SQUAD ACE! ${squadName} +${data.bonusPoints.toLocaleString()} PTS!`);
   };
 
-  network.onRoundStart = () => { gameManager.startNewRound(); };
+  network.onRoundStart = () => {
+    const me = gameManager.players[gameManager.myPlayerIndex];
+    if (me && !me.battleRoyalEliminated && !(me as any).isCulled) {
+      spectatorBanner.classList.add('hidden');
+    }
+    gameManager.startNewRound();
+  };
   network.onMatchTimerStart = (data) => {
     teamMatchEndsAt = data.endsAt;
     if (teamTimerInterval) clearInterval(teamTimerInterval);
@@ -2141,46 +2147,72 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
 
   // 2. Draw topping out overlay and elimination banner
   if (player.isToppedOut) {
-
+    tCtx.save();
     tCtx.fillStyle = 'rgba(20, 8, 14, 0.76)';
     tCtx.fillRect(offsetX, offsetY, boardPixelW, boardPixelH);
 
-    // Cyberpunk Elimination Stamp Banner
-    const bannerW = Math.min(boardPixelW - 24, 240);
-    const bannerH = 46;
-    const bx = offsetX + (boardPixelW - bannerW) / 2;
-    const by = offsetY + (boardPixelH - bannerH) / 2;
+    const isMiniMosaic = !isDuo && blockSize < 20;
 
-    tCtx.save();
-    drawRoundedCard(tCtx, bx, by, bannerW, bannerH, 6);
-    tCtx.fillStyle = 'rgba(38, 10, 18, 0.96)';
-    tCtx.fill();
-    tCtx.strokeStyle = '#EF4444';
-    tCtx.lineWidth = 2.5;
-    tCtx.shadowColor = '#EF4444';
-    tCtx.shadowBlur = 14;
-    tCtx.stroke();
+    if (isMiniMosaic) {
+      // Compact banner for small BR mosaic boards that stays inside board bounds
+      const bannerW = Math.max(30, boardPixelW - 8);
+      const bannerH = 22;
+      const bx = offsetX + (boardPixelW - bannerW) / 2;
+      const by = offsetY + (boardPixelH - bannerH) / 2;
 
-    tCtx.font = 'bold 12px "Press Start 2P", monospace';
-    tCtx.fillStyle = '#FF3366';
-    tCtx.textAlign = 'center';
-    tCtx.textBaseline = 'middle';
-    tCtx.shadowColor = '#FF3366';
-    tCtx.shadowBlur = 10;
+      drawRoundedCard(tCtx, bx, by, bannerW, bannerH, 4);
+      tCtx.fillStyle = 'rgba(38, 10, 18, 0.95)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#EF4444';
+      tCtx.lineWidth = 1.5;
+      tCtx.shadowColor = '#EF4444';
+      tCtx.shadowBlur = 6;
+      tCtx.stroke();
 
-    if (player.tdmRespawnTimer > 0) {
-      const secLeft = Math.ceil(player.tdmRespawnTimer / 1000);
-      tCtx.fillText('REBOOTING', bx + bannerW / 2, by + 16);
-      tCtx.font = 'bold 9px "Inter", sans-serif';
-      tCtx.fillStyle = '#FCA5A5';
+      tCtx.font = 'bold 7px "Press Start 2P", monospace';
+      tCtx.fillStyle = '#FF3366';
+      tCtx.textAlign = 'center';
+      tCtx.textBaseline = 'middle';
       tCtx.shadowBlur = 0;
-      tCtx.fillText(`RESPAWN IN ${secLeft}s · -20% PTS`, bx + bannerW / 2, by + 32);
+      const label = (player.battleRoyalEliminated || (player as any).isCulled) ? 'CULLED' : 'OUT';
+      tCtx.fillText(label, bx + bannerW / 2, by + bannerH / 2);
     } else {
-      tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
-      tCtx.font = 'bold 9px "Inter", sans-serif';
-      tCtx.fillStyle = '#FDA4AF';
-      tCtx.shadowBlur = 0;
-      tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+      // Full-size cyberpunk stamp for local player or 1v1 boards
+      const bannerW = Math.min(boardPixelW - 24, 240);
+      const bannerH = 46;
+      const bx = offsetX + (boardPixelW - bannerW) / 2;
+      const by = offsetY + (boardPixelH - bannerH) / 2;
+
+      drawRoundedCard(tCtx, bx, by, bannerW, bannerH, 6);
+      tCtx.fillStyle = 'rgba(38, 10, 18, 0.96)';
+      tCtx.fill();
+      tCtx.strokeStyle = '#EF4444';
+      tCtx.lineWidth = 2.5;
+      tCtx.shadowColor = '#EF4444';
+      tCtx.shadowBlur = 14;
+      tCtx.stroke();
+
+      tCtx.font = 'bold 12px "Press Start 2P", monospace';
+      tCtx.fillStyle = '#FF3366';
+      tCtx.textAlign = 'center';
+      tCtx.textBaseline = 'middle';
+      tCtx.shadowColor = '#FF3366';
+      tCtx.shadowBlur = 10;
+
+      if (player.tdmRespawnTimer > 0) {
+        const secLeft = Math.ceil(player.tdmRespawnTimer / 1000);
+        tCtx.fillText('REBOOTING', bx + bannerW / 2, by + 16);
+        tCtx.font = 'bold 9px "Inter", sans-serif';
+        tCtx.fillStyle = '#FCA5A5';
+        tCtx.shadowBlur = 0;
+        tCtx.fillText(`RESPAWN IN ${secLeft}s · -20% PTS`, bx + bannerW / 2, by + 32);
+      } else {
+        tCtx.fillText('ELIMINATED', bx + bannerW / 2, by + 16);
+        tCtx.font = 'bold 9px "Inter", sans-serif';
+        tCtx.fillStyle = '#FDA4AF';
+        tCtx.shadowBlur = 0;
+        tCtx.fillText('OUT OF MATCH · K.O.', bx + bannerW / 2, by + 32);
+      }
     }
     tCtx.restore();
   }

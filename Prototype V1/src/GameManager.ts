@@ -276,23 +276,60 @@ export class GameManager {
     net.onPlayerStateUpdate = (data) => {
       prevOnPlayerStateUpdate?.(data);
       const { playerId, playerIndex: evtIndex, state } = data;
-      if (state !== 'spectating') return;
+
       const resolvedIndex = (typeof evtIndex === 'number' && evtIndex >= 0 && evtIndex < this.players.length)
         ? evtIndex
         : this.players.findIndex(player => (player as any).socketId === playerId || player.id === playerId);
-      if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
-        this.players[resolvedIndex].isToppedOut = true;
-        this.players[resolvedIndex].battleRoyalEliminated = this.battleRoyalMode;
-        const myPlayer = this.players[myIndex];
-        if (myPlayer && myPlayer.selectedTargetIndex === resolvedIndex) {
-          this.cycleClassTarget(myPlayer);
+
+      if (state === 'spectating') {
+        if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
+          this.players[resolvedIndex].isToppedOut = true;
+          const myPlayer = this.players[myIndex];
+          if (myPlayer && myPlayer.selectedTargetIndex === resolvedIndex) {
+            this.cycleClassTarget(myPlayer);
+          }
         }
-      }
-      if (playerId === net.mySocketId) {
-        const localPlayer = this.players[myIndex];
-        if (localPlayer) {
-          localPlayer.isToppedOut = true;
-          localPlayer.battleRoyalEliminated = this.battleRoyalMode;
+        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+          const localPlayer = this.players[myIndex];
+          if (localPlayer) {
+            localPlayer.isToppedOut = true;
+          }
+        }
+      } else if (state === 'eliminated') {
+        if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
+          this.players[resolvedIndex].isToppedOut = true;
+          this.players[resolvedIndex].battleRoyalEliminated = true;
+          (this.players[resolvedIndex] as any).isCulled = true;
+          const myPlayer = this.players[myIndex];
+          if (myPlayer && myPlayer.selectedTargetIndex === resolvedIndex) {
+            this.cycleClassTarget(myPlayer);
+          }
+        }
+        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+          const localPlayer = this.players[myIndex];
+          if (localPlayer) {
+            localPlayer.isToppedOut = true;
+            localPlayer.battleRoyalEliminated = true;
+            (localPlayer as any).isCulled = true;
+          }
+        }
+      } else if (state === 'playing') {
+        if (resolvedIndex >= 0 && this.players[resolvedIndex]) {
+          this.players[resolvedIndex].isToppedOut = false;
+          this.players[resolvedIndex].battleRoyalEliminated = false;
+          (this.players[resolvedIndex] as any).isCulled = false;
+        }
+        if (playerId === net.mySocketId || resolvedIndex === myIndex) {
+          const localPlayer = this.players[myIndex];
+          if (localPlayer) {
+            localPlayer.isToppedOut = false;
+            localPlayer.battleRoyalEliminated = false;
+            (localPlayer as any).isCulled = false;
+            localPlayer.inputHandler.unfreeze();
+            if (this.state === GameState.GAME_OVER) {
+              this.state = GameState.PLAYING;
+            }
+          }
         }
       }
       this.renderFn();
@@ -369,7 +406,19 @@ export class GameManager {
     };
     net.onBattleRoyalCull = data => {
       this.battleRoyalMode = true;
-      this.battleRoyalRemaining = data.remainingPlayers;
+      if (typeof data.remainingPlayers === 'number') {
+        this.battleRoyalRemaining = data.remainingPlayers;
+      }
+      if (Array.isArray(data.eliminated)) {
+        for (const elim of data.eliminated) {
+          const idx = this.players.findIndex(p => (p as any).socketId === elim.id || p.id === elim.id || (p as any).botId === elim.id);
+          if (idx >= 0) {
+            this.players[idx].isToppedOut = true;
+            this.players[idx].battleRoyalEliminated = true;
+            (this.players[idx] as any).isCulled = true;
+          }
+        }
+      }
       this.renderFn();
     };
     net.onBattleRoyalSuddenDeath = data => {
@@ -800,15 +849,32 @@ export class GameManager {
   }
 
   public startNewRound() {
-    for (const player of this.players) {
-      if (!player.isToppedOut) {
+    for (let i = 0; i < this.players.length; i++) {
+      const player = this.players[i];
+      if (!(player as any).isCulled && !player.battleRoyalEliminated) {
         player.grid.clear();
         player.currentPiece = null;
+        player.nextPiece = null;
+        player.holdPiece = null;
+        player.hasHeld = false;
+        player.isToppedOut = false;
+        player.dropTimer = 0;
+        player.spawnDelayTimer = 0;
+        player.lockTimer = 0;
+        player.isGrounded = false;
+        player.inputHandler.clear();
       }
     }
-    if (this.myPlayerIndex >= 0) {
+    const myPlayer = this.players[this.myPlayerIndex];
+    if (myPlayer && !myPlayer.battleRoyalEliminated && !(myPlayer as any).isCulled) {
+      myPlayer.isToppedOut = false;
+      myPlayer.inputHandler.unfreeze();
+      if (this.state === GameState.GAME_OVER) {
+        this.state = GameState.PLAYING;
+      }
       this.spawnFloatingScoreUiPopup('NEW ROUND!');
     }
+    this.renderFn();
   }
 
   public applyTdmRespawn(playerIndex: number) {
@@ -1301,6 +1367,15 @@ export class GameManager {
     player.hasHeld = true;
     player.dropTimer = 0;
     if (player.isToppedOut) {
+      AudioManager.playSfx('death');
+      if (this.isOnline) {
+        const killer = player.lastAttackerIndex ?? undefined;
+        if ((player as any).botId) {
+          this.network?.sendEliminated(killer, (player as any).botId);
+        } else {
+          this.network?.sendEliminated(killer);
+        }
+      }
       this.checkGameOver();
     }
   }
