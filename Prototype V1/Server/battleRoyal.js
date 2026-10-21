@@ -121,6 +121,36 @@ export function rankBattleRoyalPlayers(players) {
   });
 }
 
+export function canFinishBattleRoyalWithSingleSurvivor(activePlayers, roundIndex) {
+  return roundIndex === BATTLE_ROYALE_RULES.rounds.length - 1 && activePlayers.length === 1;
+}
+
+// Match placement is survival order, not raw score order. Score/lines/kills
+// only break ties between players eliminated during the same round.
+export function rankBattleRoyalPlacements(players, winnerId = null, currentRoundIndex = 0) {
+  const roundOf = player => Number.isInteger(player.brEliminatedRoundIndex)
+    ? player.brEliminatedRoundIndex
+    : currentRoundIndex;
+
+  return [...players].sort((a, b) => {
+    if (winnerId !== null) {
+      if (String(a.id) === String(winnerId)) return -1;
+      if (String(b.id) === String(winnerId)) return 1;
+    }
+
+    const roundDifference = roundOf(b) - roundOf(a);
+    if (roundDifference !== 0) return roundDifference;
+
+    const aliveDifference = Number(b.state === 'playing') - Number(a.state === 'playing');
+    if (aliveDifference !== 0) return aliveDifference;
+
+    if (numeric(b.score) !== numeric(a.score)) return numeric(b.score) - numeric(a.score);
+    if (numeric(b.lines) !== numeric(a.lines)) return numeric(b.lines) - numeric(a.lines);
+    if (numeric(b.kills) !== numeric(a.kills)) return numeric(b.kills) - numeric(a.kills);
+    return String(a.id ?? a.name ?? '').localeCompare(String(b.id ?? b.name ?? ''));
+  });
+}
+
 export function rankForCull(players, primary, tieBreakers = []) {
   const keys = [primary, ...tieBreakers];
   return [...players].sort((a, b) => {

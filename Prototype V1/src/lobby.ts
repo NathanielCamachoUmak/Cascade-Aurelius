@@ -975,7 +975,9 @@ function wireGameCallbacks(network: NetworkManager) {
     updateBattleRoyalHud();
   };
   network.onBattleRoyalPostGame = (data) => {
-    const myRank = data.rankings.find(entry => entry.id === network?.mySocketId)?.rank;
+    gameManager.handleBattleRoyalPostGame(data);
+    const rankings = Array.isArray(data.rankings) ? data.rankings : [];
+    const myRank = rankings.find(entry => entry.id === network?.mySocketId)?.rank;
     const isDraw = !data.winnerId || data.winnerName.startsWith('Draw');
     const place = myRank === 1 ? '1ST PLACE' : myRank === 2 ? '2ND PLACE' : myRank === 3 ? '3RD PLACE' : '';
     postGameWinner.textContent = isDraw
@@ -989,7 +991,7 @@ function wireGameCallbacks(network: NetworkManager) {
     target.textContent = `TARGET ${Number(data.targetScore).toLocaleString()} · ${data.reason}`;
     podium.appendChild(target);
     const placeNames = ['1ST PLACE', '2ND PLACE', '3RD PLACE'];
-    [...data.rankings]
+    [...rankings]
       .sort((a, b) => a.rank - b.rank)
       .filter(entry => entry.rank >= 1 && entry.rank <= 3)
       .forEach(entry => {

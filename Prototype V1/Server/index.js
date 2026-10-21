@@ -6,6 +6,8 @@ import {
   getBattleRoyalRound, 
   selectBattleRoyalCullTargets, 
   rankBattleRoyalPlayers, 
+  rankBattleRoyalPlacements,
+  canFinishBattleRoyalWithSingleSurvivor,
   closestToTarget, 
   hasReachedTarget, 
   getDensityBracket, 
@@ -475,7 +477,10 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
   const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing');
   const winner = winnerOverride || closestToTarget(survivors);
-  const rankings = rankBattleRoyalPlayers(Array.from(room.players.entries()).map(([id, player]) => ({ ...player, id })))
+  const entries = Array.from(room.players.entries());
+  const winnerEntry = winner ? entries.find(([, player]) => player === winner) : null;
+  const winnerId = winnerEntry?.[0] ?? null;
+  const rankings = rankBattleRoyalPlacements(entries.map(([id, player]) => ({ ...player, id })), winnerId, room.currentRoundIndex ?? 0)
     .map((player, index) => ({
       rank: index + 1,
       id: player.id,
@@ -491,9 +496,8 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
     }));
   clearTimers(room);
   resetAfterMatch(room);
-  const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;
   io.to(roomId).emit('post-game-start', {
-    winnerId: winnerEntry ? (winnerEntry[1].isBot ? winnerEntry[1].ownerId : winnerEntry[0]) : null,
+    winnerId,
     winnerName: winner ? winner.name : 'Draw — no survivor',
     winnerTeam: winner ? winner.team : null,
     teamScores: { cyan: 0, magenta: 0 },
@@ -511,6 +515,10 @@ function checkBattleRoyalGameOver(roomId) {
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
   if (room.battleRoyalPhase === 'intermission') return;
   const alive = Array.from(room.players.values()).filter(player => player.state === 'playing');
+  if (canFinishBattleRoyalWithSingleSurvivor(alive, room.currentRoundIndex)) {
+    finishBattleRoyalMatch(roomId, 'last-survivor', alive[0]);
+    return;
+  }
   if (alive.length === 0) {
     // If everyone somehow topped out mid-round, end the round early!
     if (room.matchTimer) clearTimeout(room.matchTimer);
@@ -576,6 +584,7 @@ function endBattleRoyalRound(roomId) {
     const eliminatedIds = [];
     for (const player of toCull) {
       player.brPermanentlyEliminated = true;
+      player.brEliminatedRoundIndex = room.currentRoundIndex ?? 0;
       player.state = 'eliminated';
       player.eliminatedAt = Date.now();
       const entry = Array.from(room.players.entries()).find(([, p]) => p === player);
@@ -667,6 +676,8 @@ function startMatch(roomId) {
     player.lastClearAt = Date.now();
     player.lastScoreEventAt = 0;
     player.eliminatedAt = null;
+    player.brPermanentlyEliminated = false;
+    player.brEliminatedRoundIndex = null;
     playerList.push({
       id,
       name: player.name,

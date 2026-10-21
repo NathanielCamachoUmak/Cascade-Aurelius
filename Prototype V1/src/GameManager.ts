@@ -380,15 +380,6 @@ export class GameManager {
       });
       this.renderFn();
     };
-    net.onBattleRoyalPostGame = data => {
-      this.battleRoyalMode = true;
-      this.battleRoyalRankings = data.rankings.map(entry => ({ rank: entry.rank, name: entry.name, score: entry.score, lines: entry.lines, kills: entry.kills, eliminated: entry.eliminated }));
-      this.battleRoyalTargetScore = data.targetScore;
-      this.onlineWinnerName = data.winnerName;
-      this.state = GameState.POST_GAME;
-      this.renderFn();
-    };
-
     net.onClassEffect = effect => {
       const resolvedIdx = (effect.targetIndex !== undefined && effect.targetIndex !== null)
         ? effect.targetIndex
@@ -451,6 +442,26 @@ export class GameManager {
     this.scoreSyncTimer = 0;
 
     this.start(5000);
+  }
+
+  public handleBattleRoyalPostGame(data: {
+    winnerName: string;
+    targetScore: number;
+    rankings: Array<{ rank: number; name: string; score: number; lines: number; kills: number; eliminated: boolean }>;
+  }) {
+    this.battleRoyalMode = true;
+    this.battleRoyalRankings = data.rankings.map(entry => ({
+      rank: entry.rank,
+      name: entry.name,
+      score: entry.score,
+      lines: entry.lines,
+      kills: entry.kills,
+      eliminated: entry.eliminated,
+    }));
+    this.battleRoyalTargetScore = data.targetScore;
+    this.onlineWinnerName = data.winnerName;
+    this.state = GameState.POST_GAME;
+    this.renderFn();
   }
 
   private preGameTimerMs: number = 0;
