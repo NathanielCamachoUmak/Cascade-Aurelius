@@ -57,7 +57,7 @@ export class Player {
   public dropTimer = 0;
   public dropInterval = 1000;
   public lockTimer = 0;          // ms the piece has been grounded (> 0 means lock countdown active)
-  public lockMoveResets = 0;     // how many times the player has moved/rotated to reset lock timer (max 15)
+  public lockMoveResets = 0;     // how many times the player has moved/rotated to reset lock timer (max 30)
   public isGrounded = false;     // true when piece can't move down
   public timeSurvived = 0;
   public isToppedOut = false;
