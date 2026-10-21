@@ -241,7 +241,10 @@ function finishEliminationMatch(roomId, reason = 'elimination') {
 
   clearTimers(room);
   const survivors = Array.from(room.players.entries()).filter(([, player]) => player.state === 'playing');
-  const winner = survivors.length === 1 ? { id: survivors[0][0], name: survivors[0][1].name } : null;
+  const winnerEntry = survivors.length === 1 ? survivors[0] : null;
+  const winner = winnerEntry
+    ? { id: winnerEntry[1].isBot ? (winnerEntry[1].ownerId || winnerEntry[0]) : winnerEntry[0], name: winnerEntry[1].name }
+    : null;
   resetAfterMatch(room);
 
   io.to(roomId).emit('post-game-start', {
@@ -472,7 +475,20 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   if (!room || room.phase !== 'in-game' || room.mode.id !== 'battle-royale') return;
   const survivors = Array.from(room.players.values()).filter(player => player.state === 'playing');
   const winner = winnerOverride || closestToTarget(survivors);
-  const rankings = rankBattleRoyalPlayers(Array.from(room.players.values()));
+  const rankings = rankBattleRoyalPlayers(Array.from(room.players.entries()).map(([id, player]) => ({ ...player, id })))
+    .map((player, index) => ({
+      rank: index + 1,
+      id: player.id,
+      name: player.name,
+      score: player.score || 0,
+      finalScore: finalScoreWithDecay(player.score || 0, player.koCount || 0),
+      lines: player.lines || 0,
+      kills: player.kills || 0,
+      koCount: player.koCount || 0,
+      state: player.state,
+      eliminated: player.state !== 'playing',
+      ownerId: player.ownerId || null,
+    }));
   clearTimers(room);
   resetAfterMatch(room);
   const winnerEntry = winner ? Array.from(room.players.entries()).find(([, player]) => player === winner) : null;

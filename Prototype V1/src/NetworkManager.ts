@@ -28,10 +28,13 @@ export interface BattleRoyalRanking {
   id: string;
   name: string;
   score: number;
+  finalScore?: number;
   lines: number;
   kills: number;
+  koCount?: number;
   state: string;
   eliminated: boolean;
+  ownerId?: string | null;
 }
 
 export interface LobbyPlayer {
@@ -119,7 +122,7 @@ export class NetworkManager {
   public onCountdownCancel: (() => void) | null = null;
   public onPreGameCountdown: ((seconds: number) => void) | null = null;
   public onPlayerStateUpdate: ((data: { playerId: string; playerIndex?: number; state: string; remainingPlayers?: number; }) => void) | null = null;
-  public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string }) => void) | null = null;
+  public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string; modeId?: OnlineModeId; battleRoyal?: boolean; rankings?: BattleRoyalRanking[]; targetScore?: number }) => void) | null = null;
   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
   public onRoomHostChanged: ((data: { hostId: string | null }) => void) | null = null;

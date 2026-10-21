@@ -839,25 +839,27 @@ function wireGameCallbacks(network: NetworkManager) {
     screenPostGame.classList.remove('hidden');
     screenPostGame.classList.add('flex');
     gameHud.classList.add('hidden'); document.body.classList.remove('game-active');
-    
-    if (data.winnerTeam) {
-      postGameWinner.innerText = `${data.winnerName} WINS`;
-      postGameTeamScores.innerHTML = `<span class="text-neon-cyan">CYAN ${Math.round(data.teamScores.cyan)}</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">MAGENTA ${Math.round(data.teamScores.magenta)}</span>`;
-    } else {
-      const isDraw = data.winnerName.startsWith('Draw');
-      postGameWinner.innerText = isDraw ? 'MATCH DRAW' : `${data.winnerName} WINS`;
 
-    const timeStr = formatGameTime(gameManager.gameTime);
-    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    const me = gameManager.players[gameManager.myPlayerIndex];
+    const myTeam = me?.team ?? null;
+    const isDraw = data.winnerName.startsWith('Draw') || (!data.winnerTeam && !data.winnerId);
+    const won = data.winnerTeam
+      ? data.winnerTeam === myTeam
+      : data.winnerId === network?.mySocketId;
+    postGameWinner.textContent = isDraw ? 'MATCH DRAW' : won ? 'YOU WIN!' : 'YOU LOSE!';
+    postGameTime.textContent = `MATCH DURATION ${formatGameTime(gameManager.gameTime)}`;
     postGameTime.classList.remove('hidden');
 
-      postGameTeamScores.innerText = `${getSelectedOnlineMode().title} · ${getSelectedOnlineMode().winCondition}`;
+    if (data.winnerTeam) {
+      postGameTeamScores.textContent = `${data.winnerName} · CYAN ${Math.round(data.teamScores.cyan)} — MAGENTA ${Math.round(data.teamScores.magenta)}`;
+    } else {
+      const mode = getSelectedOnlineMode();
+      postGameTeamScores.textContent = `${mode.title} · ${isDraw ? 'No winner' : `Winner: ${data.winnerName}`} · ${mode.winCondition}`;
     }
     postGameVotes.innerText = `0 voted for rematch`;
     setPostGameButtonLabels('VOTE REMATCH', 'LEAVE LOBBY');
     btnPostRematch.classList.remove('hidden');
 
-    const me = gameManager.players[gameManager.myPlayerIndex];
     if (me) {
       recordModeScore(activeOnlineMode, me.scoreManager.score ?? 0, me.scoreManager.totalLinesCleared ?? 0);
     }
@@ -866,9 +868,9 @@ function wireGameCallbacks(network: NetworkManager) {
     // achievements, unlockables). Only meaningful for online matches, which
     // is the only place onPostGameStart ever fires.
     if (progression) {
-      const myTeam = onlinePlayerTeams[gameManager.myPlayerIndex] ?? null;
+      const resultTeam = onlinePlayerTeams[gameManager.myPlayerIndex] ?? myTeam;
       const won = data.winnerTeam
-        ? data.winnerTeam === myTeam
+        ? data.winnerTeam === resultTeam
         : data.winnerId === network?.mySocketId;
       progression.recordMatch({
         mode: activeOnlineMode as ProgressionMode,
@@ -973,8 +975,30 @@ function wireGameCallbacks(network: NetworkManager) {
     updateBattleRoyalHud();
   };
   network.onBattleRoyalPostGame = (data) => {
-    const rankingText = data.rankings.slice(0, 10).map((entry: any) => `${entry.rank}. ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`).join('<br>');
-    postGameTeamScores.innerHTML = `<div class="text-neon-yellow mb-2">TARGET ${data.targetScore.toLocaleString()} · ${data.reason}</div><div class="text-left text-xs leading-5">${rankingText}</div>`;
+    const myRank = data.rankings.find(entry => entry.id === network?.mySocketId)?.rank;
+    const isDraw = !data.winnerId || data.winnerName.startsWith('Draw');
+    const place = myRank === 1 ? '1ST PLACE' : myRank === 2 ? '2ND PLACE' : myRank === 3 ? '3RD PLACE' : '';
+    postGameWinner.textContent = isDraw
+      ? 'MATCH DRAW'
+      : `${data.winnerId === network?.mySocketId ? 'YOU WIN!' : 'YOU LOSE!'}${place ? ` · ${place}` : ''}`;
+
+    const podium = document.createElement('div');
+    podium.className = 'text-left text-xs leading-5';
+    const target = document.createElement('div');
+    target.className = 'text-neon-yellow mb-2';
+    target.textContent = `TARGET ${Number(data.targetScore).toLocaleString()} · ${data.reason}`;
+    podium.appendChild(target);
+    const placeNames = ['1ST PLACE', '2ND PLACE', '3RD PLACE'];
+    [...data.rankings]
+      .sort((a, b) => a.rank - b.rank)
+      .filter(entry => entry.rank >= 1 && entry.rank <= 3)
+      .forEach(entry => {
+        const row = document.createElement('div');
+        row.className = 'text-white';
+        row.textContent = `${placeNames[entry.rank - 1]} · ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`;
+        podium.appendChild(row);
+      });
+    postGameTeamScores.replaceChildren(podium);
   };
   network.onTeamScoreUpdate = (data) => {
     onlineTeamScores = data.teamScores;
@@ -3029,6 +3053,7 @@ function handleOfflineGameOver() {
   uiLayer.classList.remove('hidden');
   screenPostGame.classList.remove('hidden');
   screenPostGame.classList.add('flex');
+  postGameTime.classList.add('hidden');
 
   const p1 = gameManager.players[0];
   const finalScore = Math.round(p1?.scoreManager.score ?? 0);
@@ -3038,14 +3063,17 @@ function handleOfflineGameOver() {
   const bestScore = topScores[0]?.score ?? finalScore;
 
   if (modeKey === 'SOLO' || gameManager.players.length === 1) {
-    postGameWinner.innerText = `FINAL SCORE: ${finalScore.toLocaleString()}`;
-    postGameTeamScores.innerHTML = `<span class="text-neon-green">SOLO ENDLESS</span> <span class="text-gray-500">·</span> <span class="text-neon-cyan">${finalLines} LINES CLEARED</span>`;
+    postGameWinner.textContent = 'RUN OVER';
+    postGameTeamScores.textContent = `SOLO ENDLESS · FINAL SCORE ${finalScore.toLocaleString()} · ${finalLines} LINES CLEARED`;
   } else {
     const p2 = gameManager.players[1];
     const botScore = Math.round(p2?.scoreManager.score ?? 0);
-    const playerWon = !p1?.isToppedOut && Boolean(p2?.isToppedOut);
-    postGameWinner.innerText = playerWon ? 'YOU WIN!' : 'BOT WINS';
-    postGameTeamScores.innerHTML = `<span class="text-neon-cyan">YOUR SCORE: ${finalScore.toLocaleString()} (${finalLines} LINES)</span> <span class="text-gray-500">—</span> <span class="text-neon-pink">${modeKey} BOT: ${botScore.toLocaleString()}</span>`;
+    const playerToppedOut = Boolean(p1?.isToppedOut);
+    const botToppedOut = Boolean(p2?.isToppedOut);
+    postGameWinner.textContent = playerToppedOut === botToppedOut
+      ? 'MATCH DRAW'
+      : playerToppedOut ? 'YOU LOSE!' : 'YOU WIN!';
+    postGameTeamScores.textContent = `YOUR SCORE: ${finalScore.toLocaleString()} (${finalLines} LINES) — ${modeKey} BOT: ${botScore.toLocaleString()}`;
   }
 
   if (rank === 1) {
@@ -3058,7 +3086,7 @@ function handleOfflineGameOver() {
 
   
     const timeStr = formatGameTime(gameManager.gameTime);
-    postGameTime.innerText = `You survived for ${timeStr} amount of time`;
+    postGameTime.textContent = `RUN TIME ${timeStr}`;
     postGameTime.classList.remove('hidden');
 
   setPostGameButtonLabels('PLAY AGAIN', 'MODE SELECT');

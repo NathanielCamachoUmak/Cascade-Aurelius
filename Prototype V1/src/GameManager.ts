@@ -385,7 +385,7 @@ export class GameManager {
       this.battleRoyalRankings = data.rankings.map(entry => ({ rank: entry.rank, name: entry.name, score: entry.score, lines: entry.lines, kills: entry.kills, eliminated: entry.eliminated }));
       this.battleRoyalTargetScore = data.targetScore;
       this.onlineWinnerName = data.winnerName;
-      this.state = GameState.GAME_OVER;
+      this.state = GameState.POST_GAME;
       this.renderFn();
     };
 
@@ -874,39 +874,7 @@ export class GameManager {
   /** How long a piece can sit on the ground before locking (ms). */
   private readonly LOCK_DELAY = 500;
   /** Maximum number of move/rotate resets allowed per piece. */
-  private readonly MAX_LOCK_RESETS = 30;
-
-  /**
-   * Immediately updates grounded status when a piece touches down or shifts off a ledge.
-   * Returns true if the piece is grounded.
-   */
-  private updateGroundedState(player: Player): boolean {
-    if (!player.currentPiece) {
-      player.isGrounded = false;
-      player.lockTimer = 0;
-      return false;
-    }
-
-    const grounded = player.grid.checkCollision(
-      player.currentPiece,
-      player.currentPiece.x,
-      player.currentPiece.y + 1
-    );
-
-    if (grounded) {
-      if (!player.isGrounded) {
-        // Just touched down / collided with floor or block below — start 500ms hang time
-        player.isGrounded = true;
-        player.lockTimer = 0;
-      }
-    } else {
-      // Piece is in mid-air (e.g. moved or kicked off a ledge)
-      player.isGrounded = false;
-      player.lockTimer = 0;
-    }
-
-    return grounded;
-  }
+  private readonly MAX_LOCK_RESETS = 15;
 
   private handleActiveDrop(player: Player, dt: number) {
     while (player.inputHandler.hasInput()) {
@@ -916,14 +884,31 @@ export class GameManager {
 
     if (!player.currentPiece) return; // Might have locked from hard drop
 
-    // Evaluate grounded state and tick lock delay countdown
-    if (this.updateGroundedState(player)) {
+    // Check if piece is currently grounded (can't move down)
+    const grounded = player.grid.checkCollision(
+      player.currentPiece,
+      player.currentPiece.x,
+      player.currentPiece.y + 1
+    );
+
+    if (grounded) {
+      if (!player.isGrounded) {
+        // Just became grounded — start the lock timer
+        player.isGrounded = true;
+        player.lockTimer = 0;
+      }
+
+      // Tick lock timer
       player.lockTimer += dt;
       if (player.lockTimer >= this.LOCK_DELAY) {
         // Lock delay expired — lock the piece
         this.handlePieceLock(player);
         return;
       }
+    } else {
+      // Piece is NOT grounded (e.g. moved off a ledge) — reset lock state
+      player.isGrounded = false;
+      player.lockTimer = 0;
     }
 
     // Normal gravity drop
@@ -1314,16 +1299,11 @@ export class GameManager {
 
     if (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x + dx, player.currentPiece.y + dy)) {
       player.currentPiece.move(dx, dy);
-      // Horizontal player movement while grounded resets 500ms hang time (up to MAX_LOCK_RESETS)
-      // Soft drop and gravity (dx === 0) do not reset lock delay
-      const maxResets = this.state === GameState.TUTORIAL ? 15 : this.MAX_LOCK_RESETS;
-      if (dx !== 0 && player.isGrounded && player.lockMoveResets < maxResets) {
+      // Reset lock timer if the player moved while grounded (gives more time to T-spin)
+      if (player.isGrounded && player.lockMoveResets < this.MAX_LOCK_RESETS) {
         player.lockTimer = 0;
         player.lockMoveResets++;
       }
-
-      // Immediately re-evaluate collision state on landing or moving off a ledge
-      this.updateGroundedState(player);
       return true;
     }
     // No instant lock here — the lock delay in handleActiveDrop handles it
@@ -1341,15 +1321,11 @@ export class GameManager {
       if (!player.grid.checkCollision(player.currentPiece, player.currentPiece.x + kick.x, player.currentPiece.y + kick.y)) {
         player.currentPiece.move(kick.x, kick.y);
         kicked = true;
-        // Reset lock timer ONLY on successful rotation while grounded (up to MAX_LOCK_RESETS)
-        const maxResets = this.state === GameState.TUTORIAL ? 15 : this.MAX_LOCK_RESETS;
-        if (player.isGrounded && player.lockMoveResets < maxResets) {
+        // Reset lock timer on successful rotation (allows T-spins)
+        if (player.isGrounded && player.lockMoveResets < this.MAX_LOCK_RESETS) {
           player.lockTimer = 0;
           player.lockMoveResets++;
         }
-
-        // Immediately update collision state after kick
-        this.updateGroundedState(player);
         break;
       }
     }
