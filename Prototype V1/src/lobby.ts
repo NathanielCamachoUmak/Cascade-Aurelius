@@ -1216,7 +1216,11 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   }
 
   // Initialize the online game
-  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass, { isTeamMode: mode?.isTeamMode ?? false });
+  gameManager.initOnline(playerCount, myIndex, lobby.network!, onlinePlayerSpecs, selectedClass, {
+    isTeamMode: mode?.isTeamMode ?? false,
+    isBattleRoyale: mode?.id === 'battle-royale',
+    modeId: mode?.id ?? undefined,
+  });
 }
 
 function startGame(mode: 'SOLO' | 'EASY' | 'HARD') {

@@ -156,13 +156,13 @@ export class GameManager {
    * @param myIndex This player's index (0-based)
    * @param net The active NetworkManager instance
    */
-  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerSpecs: any[] = [], humanClass: PlayerClass = 'TANK', modeOptions?: { isTeamMode?: boolean }) {
+  public initOnline(playerCount: number, myIndex: number, net: NetworkManager, playerSpecs: any[] = [], humanClass: PlayerClass = 'TANK', modeOptions?: { isTeamMode?: boolean; isBattleRoyale?: boolean; modeId?: string }) {
     this.isOnline = true;
     this.network = net;
     this.myPlayerIndex = myIndex;
     this.onlineWinnerName = "";
-    this.battleRoyalMode = false;
     this.isTeamMode = modeOptions?.isTeamMode ?? false;
+    this.battleRoyalMode = Boolean(modeOptions?.isBattleRoyale || modeOptions?.modeId === 'battle-royale');
     this.battleRoyalPhase = '';
     this.battleRoyalRemaining = playerCount;
     this.battleRoyalKills = 0;
@@ -190,6 +190,12 @@ export class GameManager {
         // We'll attach the botId to the player object so we know how to broadcast for it
         (botPlayer as any).botId = spec.id;
         
+        // In Battle Royale mode strictly, support bots' supporting abilities must strictly be targeted to their own board.
+        // They should not have the option to target others.
+        if (this.battleRoyalMode && pClass === 'SUPPORT') {
+          botPlayer.selectedTargetIndex = i;
+        }
+
         // Assign personality
         if (!chaserAssigned && !this.isTeamMode) {
           if (botPlayer.bot) {
@@ -898,6 +904,9 @@ export class GameManager {
         player.lockTimer = 0;
         player.isGrounded = false;
         player.inputHandler.clear();
+        if (this.battleRoyalMode && player.playerClass === 'SUPPORT' && (player.bot || (player as any).botId)) {
+          player.selectedTargetIndex = i;
+        }
       }
     }
     const myPlayer = this.players[this.myPlayerIndex];
@@ -1113,6 +1122,18 @@ export class GameManager {
         player.abilityCooldowns.Q = 12_000;
         this.spawnBoardFloatingText(pIdx, '🎲 [Q] SCRAMBLE SENT!', 150, 12 * 30, '#B026FF', 12);
       } else if (player.playerClass === 'SUPPORT') {
+        const isBot = Boolean(player.bot || (player as any).botId);
+        if (this.battleRoyalMode && isBot) {
+          // In Battle Royale mode strictly, support bots' supporting abilities must strictly be targeted to their own board.
+          // They should not have the option to target others, and must not dispatch class-ability to server.
+          const convertedNow = player.grid.convertGarbageToSpecialBlocks(4);
+          player.recycleGarbageLines = Math.max(0, 4 - convertedNow);
+          if (player.bot) player.bot.replan();
+          this.spawnBoardFloatingText(pIdx, '♻ [Q] RECYCLE! GARBAGE → ITEMS', 150, 12 * 30, '#00E5FF', 12);
+          player.abilityCooldowns.Q = CLASS_Q_COOLDOWN_MS;
+          return;
+        }
+
         const isAllyTarget = this.isTeamMode && player.selectedTargetIndex !== null && this.players[player.selectedTargetIndex]?.team === player.team;
         const targetIdx = isAllyTarget ? player.selectedTargetIndex! : undefined;
         this.sendOrApplyClassEffect(player, { type: 'RECYCLE', amount: 4, targetIndex: targetIdx });
@@ -1179,6 +1200,16 @@ export class GameManager {
       this.sendOrApplyClassEffect(player, { type: 'CHAOS', durationMs: CHAOS_DURATION_MS });
       this.spawnBoardFloatingText(pIdx, '🌀 [R] CHAOS MODE! [E] RESET', 150, 10 * 30, '#FF1493', 13);
     } else if (player.playerClass === 'SUPPORT') {
+      const isBot = Boolean(player.bot || (player as any).botId);
+      if (this.battleRoyalMode && isBot) {
+        // In Battle Royale mode strictly, support bots' supporting abilities must strictly be targeted to their own board.
+        // They should not have the option to target others, and must not dispatch class-ability to server.
+        player.grid.clearBottomLines(4);
+        if (player.bot) player.bot.replan();
+        this.spawnBoardFloatingText(pIdx, '👼 [R] GUARDIAN ANGEL!', 150, 10 * 30, '#00FF88', 14);
+        return;
+      }
+
       const isAllyTarget = this.isTeamMode && player.selectedTargetIndex !== null && this.players[player.selectedTargetIndex]?.team === player.team;
       const targetIdx = isAllyTarget ? player.selectedTargetIndex! : undefined;
       this.sendOrApplyClassEffect(player, { type: 'GUARDIAN_ANGEL', amount: 4, targetIndex: targetIdx });
@@ -1194,6 +1225,13 @@ export class GameManager {
     }
     const myIndex = this.players.indexOf(player);
     if (myIndex < 0) return;
+
+    // In Battle Royale mode strictly, support bots must strictly target their own board and cannot target others
+    const isBot = Boolean(player.bot || (player as any).botId);
+    if (this.battleRoyalMode && isBot && player.playerClass === 'SUPPORT') {
+      player.selectedTargetIndex = myIndex;
+      return;
+    }
 
     let candidates: number[] = [];
 
@@ -1241,7 +1279,12 @@ export class GameManager {
   private handlePlayerToppedOutTargeting(toppedOutPlayer: Player) {
     const toppedIdx = this.players.indexOf(toppedOutPlayer);
     if (toppedIdx < 0) return;
-    for (const p of this.players) {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (this.battleRoyalMode && p.playerClass === 'SUPPORT' && (p.bot || (p as any).botId)) {
+        p.selectedTargetIndex = i;
+        continue;
+      }
       if (p !== toppedOutPlayer && p.selectedTargetIndex === toppedIdx) {
         this.cycleClassTarget(p);
       }
@@ -1292,7 +1335,7 @@ export class GameManager {
         if (tIdx >= 0) this.spawnBoardFloatingText(tIdx, '⚡ SPRINT! 2x DROP SPEED', 150, 10 * 30, '#FF1493', 13);
       }
     } else if (effect.type === 'RECYCLE') {
-      const allyTarget = selectedTarget && !selectedTarget.isToppedOut ? selectedTarget : player;
+      const allyTarget = (this.isTeamMode && selectedTarget && !selectedTarget.isToppedOut && selectedTarget.team === player.team) ? selectedTarget : player;
       const totalToRecycle = effect.amount ?? 4;
       const convertedNow = allyTarget.grid.convertGarbageToSpecialBlocks(totalToRecycle);
       allyTarget.recycleGarbageLines = Math.max(0, totalToRecycle - convertedNow);
@@ -1312,7 +1355,7 @@ export class GameManager {
         this.applyIncomingGarbageToTarget(player, target, count);
       });
     } else if (effect.type === 'GUARDIAN_ANGEL') {
-      const rescueTarget = (this.isTeamMode && selectedTarget && !selectedTarget.isToppedOut) ? selectedTarget : player;
+      const rescueTarget = (this.isTeamMode && selectedTarget && !selectedTarget.isToppedOut && selectedTarget.team === player.team) ? selectedTarget : player;
       rescueTarget.grid.clearBottomLines(effect.amount ?? 4);
       if (rescueTarget.bot) rescueTarget.bot.replan();
       const tIdx = this.players.indexOf(rescueTarget);
@@ -1534,8 +1577,13 @@ export class GameManager {
       if (linesCleared >= 2) {
         const garbageCount = linesCleared - 1;
         if (this.isOnline) {
-          // In online mode, send garbage through the server
-          this.network?.sendGarbage(garbageCount, player.selectedTargetIndex ?? undefined);
+          // In online mode, send garbage through the server.
+          // If a player's selectedTargetIndex is pointing to themselves (e.g. self-targeted support bot in BR),
+          // do NOT send targetIndex to server so server distributes to a valid random opponent.
+          const target = (player.selectedTargetIndex !== null && player.selectedTargetIndex !== pIdx)
+            ? player.selectedTargetIndex
+            : undefined;
+          this.network?.sendGarbage(garbageCount, target);
         } else {
           this.distributeGarbage(player, garbageCount);
         }

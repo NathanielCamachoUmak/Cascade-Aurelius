@@ -1375,6 +1375,10 @@ io.on('connection', socket => {
     } else if (type === 'EARTHQUAKE') {
       emitToOpponents('receive-garbage', (player) => ({ count: safeAmount || 4, fromIndex: sender.index, targetIndex: player.index }));
     } else if (type === 'RECYCLE') {
+      if (room.mode.id === 'battle-royale') {
+        io.to(socket.id).emit('class-effect', { type: 'RECYCLE', amount: safeAmount || 4, targetIndex: sender.index });
+        return;
+      }
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
         : null;
@@ -1384,6 +1388,10 @@ io.on('connection', socket => {
       const targetSockId = selectedAlly ? (selectedAlly[1].isBot ? selectedAlly[1].ownerId : selectedAlly[0]) : socket.id;
       io.to(targetSockId).emit('class-effect', { type: 'RECYCLE', amount: safeAmount || 4, targetIndex: selectedAlly ? selectedAlly[1].index : sender.index });
     } else if (type === 'GUARDIAN_ANGEL') {
+      if (room.mode.id === 'battle-royale') {
+        io.to(socket.id).emit('class-effect', { type: 'GUARDIAN_ANGEL', amount: safeAmount || 4, targetIndex: sender.index });
+        return;
+      }
       const allies = room.mode.isTeamMode
         ? Array.from(room.players.entries()).filter(([id, player]) => id !== socket.id && player.team === sender.team && player.state === 'playing')
         : null;
