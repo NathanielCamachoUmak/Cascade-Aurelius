@@ -1,7 +1,7 @@
 /**
  * MobileOrientation.ts
  * Strictly enforces landscape orientation on mobile devices across Cascade.
- * Displays a retro cyberpunk rotating device prompt when in portrait mode.
+ * Displays a full-sized retro cyberpunk rotating device prompt when in portrait mode.
  */
 
 export function isMobileDevice(): boolean {
@@ -62,16 +62,20 @@ export function initOrientationEnforcer(): void {
       #cascade-orientation-enforcer {
         position: fixed;
         inset: 0;
-        z-index: 999999;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 9999999;
         display: none;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 24px;
+        padding: 32px 20px;
         background: radial-gradient(circle at center, #17112E 0%, #0D0B1A 70%, #06050C 100%);
         color: #FFFFFF;
         text-align: center;
         user-select: none;
+        -webkit-user-select: none;
         box-sizing: border-box;
       }
 
@@ -94,88 +98,90 @@ export function initOrientationEnforcer(): void {
       /* Ambient glowing neon backdrop */
       .coe-glow-sphere {
         position: absolute;
-        width: 320px;
-        height: 320px;
+        width: 480px;
+        height: 480px;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(0, 255, 255, 0.15) 0%, rgba(255, 20, 147, 0.08) 50%, transparent 70%);
-        filter: blur(40px);
+        background: radial-gradient(circle, rgba(0, 255, 255, 0.2) 0%, rgba(255, 20, 147, 0.12) 50%, transparent 70%);
+        filter: blur(50px);
         pointer-events: none;
         animation: coe-pulse 4s ease-in-out infinite alternate;
       }
 
       @keyframes coe-pulse {
         0% { transform: scale(0.9); opacity: 0.7; }
-        100% { transform: scale(1.15); opacity: 1; }
+        100% { transform: scale(1.2); opacity: 1; }
       }
 
       .coe-content {
         position: relative;
         z-index: 2;
+        width: 100%;
         max-width: 420px;
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
       }
 
-      /* Phone rotation animation */
+      /* Large phone rotation animation */
       .coe-phone-wrapper {
         position: relative;
-        width: 100px;
-        height: 100px;
-        margin-bottom: 24px;
+        width: 160px;
+        height: 160px;
+        margin-bottom: 28px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
       .coe-phone-icon {
-        width: 54px;
-        height: 88px;
-        border: 3px solid #00FFFF;
-        border-radius: 12px;
+        width: 86px;
+        height: 140px;
+        border: 4px solid #00FFFF;
+        border-radius: 18px;
         position: relative;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         align-items: center;
-        padding: 6px 0;
-        box-shadow: 0 0 20px rgba(0, 255, 255, 0.4), inset 0 0 10px rgba(0, 255, 255, 0.2);
+        padding: 8px 0;
+        box-shadow: 0 0 35px rgba(0, 255, 255, 0.5), inset 0 0 15px rgba(0, 255, 255, 0.25);
         animation: coe-rotate-phone 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         transform-origin: center center;
-        background: rgba(13, 11, 26, 0.85);
+        background: rgba(13, 11, 26, 0.92);
       }
 
       .coe-phone-screen {
-        width: 38px;
-        height: 56px;
-        border: 1px dashed rgba(0, 255, 255, 0.6);
-        border-radius: 4px;
+        width: 66px;
+        height: 96px;
+        border: 1.5px dashed rgba(0, 255, 255, 0.6);
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(0, 255, 255, 0.05);
+        background: rgba(0, 255, 255, 0.08);
       }
 
       .coe-phone-screen-tetromino {
-        width: 18px;
-        height: 18px;
-        border: 2px solid #FFD700;
-        box-shadow: 0 0 8px #FFD700;
-        background: rgba(255, 215, 0, 0.3);
+        width: 30px;
+        height: 30px;
+        border: 3px solid #FFD700;
+        box-shadow: 0 0 12px #FFD700;
+        background: rgba(255, 215, 0, 0.4);
       }
 
       .coe-phone-notch {
-        width: 16px;
-        height: 3px;
+        width: 26px;
+        height: 4px;
         background: #00FFFF;
         border-radius: 2px;
       }
 
       .coe-phone-bar {
-        width: 20px;
-        height: 2px;
-        background: rgba(0, 255, 255, 0.6);
-        border-radius: 1px;
+        width: 30px;
+        height: 3px;
+        background: rgba(0, 255, 255, 0.7);
+        border-radius: 2px;
       }
 
       @keyframes coe-rotate-phone {
@@ -192,35 +198,35 @@ export function initOrientationEnforcer(): void {
 
       .coe-badge {
         font-family: 'Press Start 2P', monospace;
-        font-size: 9px;
-        letter-spacing: 0.15em;
+        font-size: 10px;
+        letter-spacing: 0.16em;
         color: #FF1493;
-        border: 1px solid rgba(255, 20, 147, 0.4);
-        background: rgba(255, 20, 147, 0.1);
-        padding: 5px 12px;
+        border: 1.5px solid rgba(255, 20, 147, 0.5);
+        background: rgba(255, 20, 147, 0.12);
+        padding: 8px 16px;
         border-radius: 9999px;
-        margin-bottom: 16px;
+        margin-bottom: 20px;
         text-transform: uppercase;
-        box-shadow: 0 0 10px rgba(255, 20, 147, 0.2);
+        box-shadow: 0 0 15px rgba(255, 20, 147, 0.3);
       }
 
       .coe-title {
         font-family: 'Press Start 2P', monospace;
-        font-size: 15px;
+        font-size: clamp(20px, 6vw, 26px);
         line-height: 1.5;
         color: #00FFFF;
-        margin-bottom: 12px;
-        text-shadow: 0 0 12px rgba(0, 255, 255, 0.6);
+        margin-bottom: 18px;
+        text-shadow: 0 0 20px rgba(0, 255, 255, 0.7);
         text-transform: uppercase;
       }
 
       .coe-desc {
         font-family: 'Inter', sans-serif;
-        font-size: 13px;
+        font-size: clamp(15px, 4.2vw, 17px);
         line-height: 1.6;
         color: #CBD5E1;
-        margin-bottom: 24px;
-        max-width: 340px;
+        margin-bottom: 32px;
+        max-width: 360px;
       }
 
       .coe-actions {
@@ -228,27 +234,27 @@ export function initOrientationEnforcer(): void {
         flex-direction: column;
         gap: 12px;
         width: 100%;
-        max-width: 280px;
+        max-width: 320px;
       }
 
       .coe-btn-fullscreen {
         font-family: 'Press Start 2P', monospace;
-        font-size: 10px;
-        padding: 14px 18px;
+        font-size: 13px;
+        padding: 18px 24px;
         background: linear-gradient(135deg, #00FFFF 0%, #00B8D4 100%);
         color: #0D0B1A;
         font-weight: bold;
         border: none;
-        border-radius: 8px;
+        border-radius: 10px;
         cursor: pointer;
-        box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        box-shadow: 0 0 25px rgba(0, 255, 255, 0.5);
         transition: transform 0.15s, box-shadow 0.15s;
         text-transform: uppercase;
       }
 
       .coe-btn-fullscreen:active {
         transform: scale(0.96);
-        box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
       }
     </style>
 
@@ -264,7 +270,7 @@ export function initOrientationEnforcer(): void {
         </div>
       </div>
 
-      <div class="coe-badge">MOBILE SENSOR DETECTED</div>
+      <div class="coe-badge">LANDSCAPE REQUIRED</div>
       <h2 class="coe-title">ROTATE DEVICE TO LANDSCAPE</h2>
       <p class="coe-desc">
         Cascade is strictly configured for <strong>landscape mode</strong>. Please turn your phone sideways to unlock the game boards, tactical radar, and controls.

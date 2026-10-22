@@ -9,13 +9,21 @@
    Strictly enforces landscape orientation on mobile devices.
 ───────────────────────────────────────────────────────────── */
 
-/* Lock body scroll and prevent touch panning while in portrait orientation */
+/* Lock body scroll and isolate viewport while in portrait orientation on mobile */
 body.orientation-portrait-blocked {
   overflow: hidden !important;
   touch-action: none !important;
-  position: fixed;
-  width: 100%;
-  height: 100%;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
+/* Hide underlying wide game wrappers in portrait mode so the browser does NOT zoom-out the viewport */
+body.orientation-portrait-blocked > *:not(#cascade-orientation-enforcer):not(script):not(style) {
+  display: none !important;
 }
 
 /* In mobile landscape mode during active gameplay:
