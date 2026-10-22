@@ -1,7 +1,7 @@
 /**
  * MobileOrientation.ts
  * Strictly enforces landscape orientation on mobile devices across Cascade.
- * Displays a massive, full-screen retro cyberpunk rotating device prompt in portrait mode.
+ * Displays a massive, full-screen retro cyberpunk rotating device prompt in portrait mode (+60% enlarged).
  */
 
 export function isMobileDevice(): boolean {
@@ -113,11 +113,11 @@ export function initOrientationEnforcer(): void {
     /* Ambient glowing neon backdrop */
     .coe-glow-sphere {
       position: absolute;
-      width: 750px;
-      height: 750px;
+      width: 850px;
+      height: 850px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(0, 255, 255, 0.28) 0%, rgba(255, 20, 147, 0.18) 50%, transparent 70%);
-      filter: blur(80px);
+      background: radial-gradient(circle, rgba(0, 255, 255, 0.3) 0%, rgba(255, 20, 147, 0.2) 50%, transparent 70%);
+      filter: blur(90px);
       pointer-events: none;
       animation: coe-pulse 4s ease-in-out infinite alternate;
     }
@@ -127,45 +127,45 @@ export function initOrientationEnforcer(): void {
       100% { transform: scale(1.3); opacity: 1; }
     }
 
-    /* Main full-screen flex container */
+    /* Main full-screen flex container (+60% max-width) */
     .coe-content {
       position: relative;
       z-index: 2;
       width: 100%;
-      max-width: 520px;
+      max-width: 680px;
       min-height: 100%;
       flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: space-evenly;
-      padding: 18px 6px;
+      padding: 20px 8px;
       box-sizing: border-box;
     }
 
-    /* GIGANTIC phone rotation animation (nearly full width when horizontal) */
+    /* GIGANTIC phone rotation animation (+60% larger, nearly full width when horizontal) */
     .coe-phone-wrapper {
       position: relative;
-      width: clamp(300px, 82vw, 380px);
-      height: clamp(300px, 82vw, 380px);
+      width: clamp(340px, 92vw, 480px);
+      height: clamp(340px, 92vw, 480px);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 10px 0;
+      margin: 14px 0;
     }
 
     .coe-phone-icon {
-      width: clamp(190px, 50vw, 240px);
-      height: clamp(310px, 78vw, 370px);
-      border: 8px solid #00FFFF;
-      border-radius: 36px;
+      width: clamp(220px, 58vw, 300px);
+      height: clamp(350px, 90vw, 460px);
+      border: 12px solid #00FFFF;
+      border-radius: 44px;
       position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 0;
-      box-shadow: 0 0 75px rgba(0, 255, 255, 0.75), inset 0 0 35px rgba(0, 255, 255, 0.4);
+      padding: 20px 0;
+      box-shadow: 0 0 100px rgba(0, 255, 255, 0.85), inset 0 0 45px rgba(0, 255, 255, 0.45);
       animation: coe-rotate-phone 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
       transform-origin: center center;
       background: rgba(13, 11, 26, 0.96);
@@ -174,35 +174,35 @@ export function initOrientationEnforcer(): void {
 
     .coe-phone-screen {
       width: 82%;
-      height: 72%;
-      border: 3px dashed rgba(0, 255, 255, 0.75);
-      border-radius: 18px;
+      height: 74%;
+      border: 4px dashed rgba(0, 255, 255, 0.8);
+      border-radius: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0, 255, 255, 0.14);
+      background: rgba(0, 255, 255, 0.16);
     }
 
     .coe-phone-screen-tetromino {
-      width: 76px;
-      height: 76px;
-      border: 7px solid #FFD700;
-      box-shadow: 0 0 30px #FFD700;
-      background: rgba(255, 215, 0, 0.55);
+      width: 105px;
+      height: 105px;
+      border: 9px solid #FFD700;
+      box-shadow: 0 0 40px #FFD700;
+      background: rgba(255, 215, 0, 0.6);
     }
 
     .coe-phone-notch {
-      width: 58px;
-      height: 8px;
+      width: 76px;
+      height: 10px;
       background: #00FFFF;
-      border-radius: 4px;
+      border-radius: 5px;
     }
 
     .coe-phone-bar {
-      width: 72px;
-      height: 6px;
-      background: rgba(0, 255, 255, 0.85);
-      border-radius: 3px;
+      width: 96px;
+      height: 8px;
+      background: rgba(0, 255, 255, 0.9);
+      border-radius: 4px;
     }
 
     @keyframes coe-rotate-phone {
@@ -217,41 +217,41 @@ export function initOrientationEnforcer(): void {
       }
     }
 
-    /* TRIPLED FONT SIZES */
+    /* +60% BIGGER FONT SIZES & BADGES */
     .coe-badge {
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(16px, 4.6vw, 22px);
+      font-size: clamp(22px, 6vw, 30px);
       letter-spacing: 0.22em;
       color: #FF1493;
-      border: 3.5px solid rgba(255, 20, 147, 0.75);
-      background: rgba(255, 20, 147, 0.2);
-      padding: 14px 32px;
+      border: 5px solid rgba(255, 20, 147, 0.85);
+      background: rgba(255, 20, 147, 0.22);
+      padding: 18px 42px;
       border-radius: 9999px;
       text-transform: uppercase;
-      box-shadow: 0 0 30px rgba(255, 20, 147, 0.5);
-      margin-bottom: 8px;
+      box-shadow: 0 0 40px rgba(255, 20, 147, 0.6);
+      margin-bottom: 12px;
     }
 
     .coe-title {
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(28px, 8.2vw, 44px);
-      line-height: 1.4;
+      font-size: clamp(36px, 10.5vw, 56px);
+      line-height: 1.35;
       color: #00FFFF;
-      text-shadow: 0 0 35px rgba(0, 255, 255, 0.9), 0 0 70px rgba(0, 255, 255, 0.6);
+      text-shadow: 0 0 45px rgba(0, 255, 255, 0.95), 0 0 90px rgba(0, 255, 255, 0.7);
       text-transform: uppercase;
-      margin: 16px 0 12px 0;
+      margin: 20px 0 16px 0;
       width: 98%;
     }
 
     .coe-desc {
       font-family: 'Inter', sans-serif;
-      font-size: clamp(22px, 6.2vw, 32px);
+      font-size: clamp(28px, 8vw, 42px);
       font-weight: 700;
       line-height: 1.5;
       color: #F1F5F9;
-      max-width: 480px;
+      max-width: 580px;
       width: 95%;
-      margin: 8px 0 20px 0;
+      margin: 12px 0 24px 0;
       padding: 0 6px;
     }
 
@@ -260,25 +260,25 @@ export function initOrientationEnforcer(): void {
       flex-direction: column;
       align-items: center;
       width: 100%;
-      margin-top: 10px;
+      margin-top: 14px;
     }
 
     .coe-btn-fullscreen {
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(18px, 5.2vw, 25px);
-      height: 82px;
-      padding: 0 36px;
+      font-size: clamp(22px, 6.5vw, 32px);
+      height: 96px;
+      padding: 0 44px;
       background: linear-gradient(135deg, #00FFFF 0%, #00B8D4 100%);
       color: #0D0B1A;
       font-weight: bold;
       border: none;
-      border-radius: 20px;
+      border-radius: 26px;
       cursor: pointer;
-      box-shadow: 0 0 50px rgba(0, 255, 255, 0.85);
+      box-shadow: 0 0 65px rgba(0, 255, 255, 0.9);
       transition: transform 0.15s, box-shadow 0.15s;
       text-transform: uppercase;
       width: 95%;
-      max-width: 460px;
+      max-width: 520px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -286,7 +286,7 @@ export function initOrientationEnforcer(): void {
 
     .coe-btn-fullscreen:active {
       transform: scale(0.96);
-      box-shadow: 0 0 30px rgba(0, 255, 255, 1);
+      box-shadow: 0 0 40px rgba(0, 255, 255, 1);
     }
   `;
   document.head.appendChild(styleEl);
