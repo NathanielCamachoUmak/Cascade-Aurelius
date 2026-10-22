@@ -1,7 +1,7 @@
 /**
  * MobileOrientation.ts
  * Strictly enforces landscape orientation on mobile devices across Cascade.
- * Displays a massive, full-screen retro cyberpunk rotating device prompt in portrait mode (+60% enlarged).
+ * Displays a monumental, full-screen retro cyberpunk rotating device prompt in portrait mode.
  */
 
 export function isMobileDevice(): boolean {
@@ -76,6 +76,7 @@ export function initOrientationEnforcer(): void {
       position: fixed;
       inset: 0;
       width: 100vw;
+      max-width: 100vw;
       height: 100vh;
       height: 100dvh;
       z-index: 9999999;
@@ -83,13 +84,14 @@ export function initOrientationEnforcer(): void {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: env(safe-area-inset-top, 24px) 14px env(safe-area-inset-bottom, 24px) 14px;
-      background: radial-gradient(circle at 50% 35%, #261655 0%, #0D0B1A 65%, #020205 100%);
+      padding: env(safe-area-inset-top, 24px) 12px env(safe-area-inset-bottom, 24px) 12px;
+      background: radial-gradient(circle at 50% 35%, #2A175C 0%, #0D0B1A 65%, #020104 100%);
       color: #FFFFFF;
       text-align: center;
       user-select: none;
       -webkit-user-select: none;
       box-sizing: border-box;
+      overflow-x: hidden !important;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
@@ -113,59 +115,60 @@ export function initOrientationEnforcer(): void {
     /* Ambient glowing neon backdrop */
     .coe-glow-sphere {
       position: absolute;
-      width: 850px;
-      height: 850px;
+      width: 900px;
+      height: 900px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(0, 255, 255, 0.3) 0%, rgba(255, 20, 147, 0.2) 50%, transparent 70%);
-      filter: blur(90px);
+      background: radial-gradient(circle, rgba(0, 255, 255, 0.32) 0%, rgba(255, 20, 147, 0.22) 50%, transparent 70%);
+      filter: blur(100px);
       pointer-events: none;
       animation: coe-pulse 4s ease-in-out infinite alternate;
     }
 
     @keyframes coe-pulse {
-      0% { transform: scale(0.9); opacity: 0.7; }
+      0% { transform: scale(0.9); opacity: 0.75; }
       100% { transform: scale(1.3); opacity: 1; }
     }
 
-    /* Main full-screen flex container (+60% max-width) */
+    /* Monumental full-screen flex container filling the phone screen */
     .coe-content {
       position: relative;
       z-index: 2;
       width: 100%;
-      max-width: 680px;
+      max-width: 600px;
       min-height: 100%;
       flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: space-evenly;
-      padding: 20px 8px;
+      padding: 18px 6px;
       box-sizing: border-box;
+      overflow-x: hidden;
     }
 
-    /* GIGANTIC phone rotation animation (+60% larger, nearly full width when horizontal) */
+    /* MONUMENTAL phone rotation animation (spans ~88% screen width when rotated horizontally) */
     .coe-phone-wrapper {
       position: relative;
-      width: clamp(340px, 92vw, 480px);
-      height: clamp(340px, 92vw, 480px);
+      width: clamp(330px, 88vw, 440px);
+      height: clamp(330px, 88vw, 440px);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 14px 0;
+      margin: 12px 0;
     }
 
     .coe-phone-icon {
-      width: clamp(220px, 58vw, 300px);
-      height: clamp(350px, 90vw, 460px);
+      width: clamp(220px, 56vw, 290px);
+      height: clamp(340px, 86vw, 430px);
       border: 12px solid #00FFFF;
-      border-radius: 44px;
+      border-radius: 46px;
       position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
-      padding: 20px 0;
-      box-shadow: 0 0 100px rgba(0, 255, 255, 0.85), inset 0 0 45px rgba(0, 255, 255, 0.45);
+      padding: 22px 0;
+      box-shadow: 0 0 95px rgba(0, 255, 255, 0.95), inset 0 0 45px rgba(0, 255, 255, 0.5);
       animation: coe-rotate-phone 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
       transform-origin: center center;
       background: rgba(13, 11, 26, 0.96);
@@ -175,8 +178,8 @@ export function initOrientationEnforcer(): void {
     .coe-phone-screen {
       width: 82%;
       height: 74%;
-      border: 4px dashed rgba(0, 255, 255, 0.8);
-      border-radius: 22px;
+      border: 4px dashed rgba(0, 255, 255, 0.9);
+      border-radius: 24px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -184,25 +187,25 @@ export function initOrientationEnforcer(): void {
     }
 
     .coe-phone-screen-tetromino {
-      width: 105px;
-      height: 105px;
-      border: 9px solid #FFD700;
-      box-shadow: 0 0 40px #FFD700;
-      background: rgba(255, 215, 0, 0.6);
+      width: 110px;
+      height: 110px;
+      border: 10px solid #FFD700;
+      box-shadow: 0 0 45px #FFD700, inset 0 0 20px rgba(255, 215, 0, 0.6);
+      background: rgba(255, 215, 0, 0.65);
     }
 
     .coe-phone-notch {
-      width: 76px;
-      height: 10px;
+      width: 80px;
+      height: 12px;
       background: #00FFFF;
-      border-radius: 5px;
+      border-radius: 6px;
     }
 
     .coe-phone-bar {
-      width: 96px;
-      height: 8px;
-      background: rgba(0, 255, 255, 0.9);
-      border-radius: 4px;
+      width: 100px;
+      height: 10px;
+      background: rgba(0, 255, 255, 0.95);
+      border-radius: 5px;
     }
 
     @keyframes coe-rotate-phone {
@@ -217,42 +220,64 @@ export function initOrientationEnforcer(): void {
       }
     }
 
-    /* +60% BIGGER FONT SIZES & BADGES */
+    /* MONUMENTAL FONT SIZES & BADGES */
     .coe-badge {
+      display: inline-flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(22px, 6vw, 30px);
-      letter-spacing: 0.22em;
+      font-size: clamp(20px, 5.8vw, 28px);
+      letter-spacing: 0.2em;
       color: #FF1493;
-      border: 5px solid rgba(255, 20, 147, 0.85);
-      background: rgba(255, 20, 147, 0.22);
-      padding: 18px 42px;
+      border: 4.5px solid rgba(255, 20, 147, 0.9);
+      background: rgba(255, 20, 147, 0.24);
+      padding: 16px 36px;
       border-radius: 9999px;
       text-transform: uppercase;
       box-shadow: 0 0 40px rgba(255, 20, 147, 0.6);
-      margin-bottom: 12px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+      max-width: 95vw;
     }
 
     .coe-title {
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(36px, 10.5vw, 56px);
+      font-size: clamp(32px, 8.8vw, 44px);
       line-height: 1.35;
       color: #00FFFF;
-      text-shadow: 0 0 45px rgba(0, 255, 255, 0.95), 0 0 90px rgba(0, 255, 255, 0.7);
+      text-shadow: 0 0 40px rgba(0, 255, 255, 0.95), 0 0 80px rgba(0, 255, 255, 0.7);
       text-transform: uppercase;
-      margin: 20px 0 16px 0;
-      width: 98%;
+      margin: 14px 0 10px 0;
+      width: 100%;
+      letter-spacing: 0.02em;
+      word-break: normal;
+    }
+
+    .coe-title-highlight {
+      color: #FFD700;
+      text-shadow: 0 0 40px rgba(255, 215, 0, 0.95), 0 0 80px rgba(255, 215, 0, 0.7);
     }
 
     .coe-desc {
       font-family: 'Inter', sans-serif;
-      font-size: clamp(28px, 8vw, 42px);
+      font-size: clamp(22px, 6.2vw, 30px);
       font-weight: 700;
       line-height: 1.5;
-      color: #F1F5F9;
-      max-width: 580px;
+      color: #FFFFFF;
+      text-shadow: 0 0 16px rgba(255, 255, 255, 0.4);
+      max-width: 560px;
       width: 95%;
-      margin: 12px 0 24px 0;
-      padding: 0 6px;
+      margin: 8px 0 20px 0;
+      padding: 0 8px;
+    }
+
+    .coe-desc strong {
+      color: #00FFFF;
+      text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+      font-weight: 900;
     }
 
     .coe-actions {
@@ -260,21 +285,21 @@ export function initOrientationEnforcer(): void {
       flex-direction: column;
       align-items: center;
       width: 100%;
-      margin-top: 14px;
+      margin-top: 10px;
     }
 
     .coe-btn-fullscreen {
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(22px, 6.5vw, 32px);
-      height: 96px;
-      padding: 0 44px;
+      font-size: clamp(18px, 5.2vw, 26px);
+      min-height: 94px;
+      padding: 18px 36px;
       background: linear-gradient(135deg, #00FFFF 0%, #00B8D4 100%);
       color: #0D0B1A;
       font-weight: bold;
-      border: none;
+      border: 4px solid #FFFFFF;
       border-radius: 26px;
       cursor: pointer;
-      box-shadow: 0 0 65px rgba(0, 255, 255, 0.9);
+      box-shadow: 0 0 55px rgba(0, 255, 255, 0.95), 0 8px 20px rgba(0, 0, 0, 0.6);
       transition: transform 0.15s, box-shadow 0.15s;
       text-transform: uppercase;
       width: 95%;
@@ -282,11 +307,18 @@ export function initOrientationEnforcer(): void {
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 14px;
+      letter-spacing: 0.05em;
     }
 
     .coe-btn-fullscreen:active {
       transform: scale(0.96);
-      box-shadow: 0 0 40px rgba(0, 255, 255, 1);
+      box-shadow: 0 0 35px rgba(0, 255, 255, 1);
+    }
+
+    .coe-btn-icon {
+      font-size: 1.25em;
+      line-height: 1;
     }
   `;
   document.head.appendChild(styleEl);
@@ -300,7 +332,10 @@ export function initOrientationEnforcer(): void {
   overlay.innerHTML = `
     <div class="coe-glow-sphere"></div>
     <div class="coe-content">
-      <div class="coe-badge">LANDSCAPE REQUIRED</div>
+      <div class="coe-badge">
+        <span>LANDSCAPE</span>
+        <span>REQUIRED</span>
+      </div>
 
       <div class="coe-phone-wrapper">
         <div class="coe-phone-icon">
@@ -312,14 +347,21 @@ export function initOrientationEnforcer(): void {
         </div>
       </div>
 
-      <h2 class="coe-title">ROTATE DEVICE TO LANDSCAPE</h2>
+      <h2 class="coe-title">
+        ROTATE<br>
+        DEVICE TO<br>
+        <span class="coe-title-highlight">LANDSCAPE</span>
+      </h2>
+
       <p class="coe-desc">
-        Cascade is built for <strong>landscape mode</strong>.<br>Turn your phone sideways to play!
+        Cascade is built for <strong>landscape mode</strong>.<br>
+        Turn your phone sideways to play!
       </p>
 
       <div class="coe-actions">
         <button id="coe-fullscreen-btn" class="coe-btn-fullscreen">
-          ROTATE &amp; PLAY ⤢
+          <span>ROTATE &amp; PLAY</span>
+          <span class="coe-btn-icon">⤢</span>
         </button>
       </div>
     </div>
