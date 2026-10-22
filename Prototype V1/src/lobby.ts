@@ -1,4 +1,5 @@
 import { initMobileControls } from './MobileControls'
+import { initOrientationEnforcer, isMobileDevice } from './MobileOrientation'
 import './style.css'
 import { GameManager, GameState } from './GameManager'
 import { Player } from './Player'
@@ -41,6 +42,45 @@ function safeGet(id: string, tag: string = 'div'): any {
 
 const canvas = safeGet('gameCanvas', 'canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
+
+initOrientationEnforcer();
+initMobileControls();
+
+// Canvas click / tap to target visible opponents on mobile & desktop
+canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+  if (gameManager.state !== GameState.PLAYING) return;
+  const myIdx = gameManager.isOnline ? (gameManager.myPlayerIndex ?? 0) : 0;
+  const myPlayer = gameManager.players[myIdx];
+  if (!myPlayer || myPlayer.isToppedOut) return;
+
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top) * scaleY;
+
+  for (let i = 0; i < boardLayout.length; i++) {
+    const entry = boardLayout[i];
+    if (!entry) continue;
+    if (i === myIdx) continue;
+    const targetP = gameManager.players[i];
+    if (!targetP || targetP.isToppedOut || targetP.battleRoyalEliminated || (targetP as any).isCulled) continue;
+
+    const bW = COLS * entry.blockSize;
+    const bH = ROWS * entry.blockSize;
+    const hH = entry.headerHeight ?? 24;
+    const top = entry.offsetY - hH - 4;
+    const bottom = entry.offsetY + bH + (entry.cardHeight ?? 0) + 4;
+
+    if (clickX >= entry.offsetX - 4 && clickX <= entry.offsetX + bW + 4 &&
+        clickY >= top && clickY <= bottom) {
+      myPlayer.selectedTargetIndex = i;
+      AudioManager.playSfx('menuSelect');
+      break;
+    }
+  }
+});
 
 const BLOCK_SIZE = 30;
 const COLS = 10;
@@ -1198,9 +1238,11 @@ function startOnlineGame(playerCount: number, myIndex: number, players?: any[], 
   // mosaic grid beside it, so canvas.width/height must span every board's
   // actual bounding box rather than assuming one straight line of boards.
   const layout = computeBoardLayout(playerCount, myIndex, mode?.id ?? null);
-  const standingsExtra = mode?.id === 'battle-royale' ? BR_STANDINGS_W : 0;
-  canvas.width  = Math.max(...layout.map(l => l.offsetX + COLS * l.blockSize)) + 24 + standingsExtra;
-  canvas.height = Math.max(...layout.map(l => l.offsetY + ROWS * l.blockSize + (l.cardHeight ? l.cardHeight + 16 : 0)));
+  const isMobile = isMobileDevice();
+  const standingsExtra = (mode?.id === 'battle-royale' && !isMobile) ? BR_STANDINGS_W : 0;
+  const activeEntries = layout.filter(Boolean);
+  canvas.width  = (activeEntries.length > 0 ? Math.max(...activeEntries.map(l => l.offsetX + COLS * l.blockSize)) : 600) + 24 + standingsExtra;
+  canvas.height = activeEntries.length > 0 ? Math.max(...activeEntries.map(l => l.offsetY + ROWS * l.blockSize + (l.cardHeight ? l.cardHeight + 16 : 0))) : 400;
 
   // Our own board is always pinned at (0,0) when emphasized, so make sure the
   // container starts scrolled there instead of wherever it was left before.
@@ -1551,12 +1593,78 @@ interface BoardLayoutEntry {
 
 function computeBoardLayout(playerCount: number, myIndex: number, modeId: string | null): BoardLayoutEntry[] {
   const layout: BoardLayoutEntry[] = new Array(playerCount);
+  const isMobile = isMobileDevice();
 
   if (modeId === 'team-deathmatch' && myIndex >= 0) {
-    // 3v3 Squad Pod Layout
-    // Friendly Pod (Left): [YOU] [ALLY 1] [ALLY 2]
-    // VS Divider
-    // Enemy Pod (Right): [ENEMY 1] [ENEMY 2] [ENEMY 3]
+    if (isMobile) {
+      // 3v3 on Mobile: Strictly capped at maximum 4 boards (You, 1 Ally, up to 2 Enemies)
+      const headerHeight = 28;
+      const cardHeight = 44;
+      const myTeam = onlinePlayerTeams[myIndex] || (gameManager.players[myIndex]?.team) || (myIndex < 3 ? 'cyan' : 'magenta');
+
+      const allyIndices: number[] = [];
+      const enemyIndices: number[] = [];
+      for (let i = 0; i < playerCount; i++) {
+        if (i === myIndex) continue;
+        const pTeam = onlinePlayerTeams[i] || (gameManager.players[i]?.team) || (i < 3 ? 'cyan' : 'magenta');
+        if (pTeam === myTeam) allyIndices.push(i);
+        else enemyIndices.push(i);
+      }
+
+      const myPlayer = gameManager.players[myIndex];
+      const targetIdx = myPlayer?.selectedTargetIndex;
+
+      // Pick 1 ally (preferring living or danger)
+      const chosenAlly = allyIndices.find(idx => !gameManager.players[idx]?.isToppedOut) ?? allyIndices[0];
+
+      // Pick up to 2 enemies (preferring current target)
+      const chosenEnemies: number[] = [];
+      if (targetIdx !== null && targetIdx !== undefined && enemyIndices.includes(targetIdx)) {
+        chosenEnemies.push(targetIdx);
+      }
+      for (const eIdx of enemyIndices) {
+        if (chosenEnemies.length >= 2) break;
+        if (!chosenEnemies.includes(eIdx)) chosenEnemies.push(eIdx);
+      }
+
+      let cursorX = 8;
+      const ownBlockSize = 14;
+      layout[myIndex] = {
+        blockSize: ownBlockSize,
+        offsetX: cursorX,
+        offsetY: headerHeight + 6,
+        headerHeight,
+        cardHeight,
+      };
+      cursorX += COLS * ownBlockSize + 14;
+
+      const oppBlockSize = 11;
+      if (chosenAlly !== undefined) {
+        layout[chosenAlly] = {
+          blockSize: oppBlockSize,
+          offsetX: cursorX,
+          offsetY: headerHeight + 6,
+          headerHeight,
+          cardHeight,
+        };
+        cursorX += COLS * oppBlockSize + 16;
+      }
+
+      for (const enemyIdx of chosenEnemies) {
+        layout[enemyIdx] = {
+          blockSize: oppBlockSize,
+          offsetX: cursorX,
+          offsetY: headerHeight + 6,
+          headerHeight,
+          cardHeight,
+        };
+        cursorX += COLS * oppBlockSize + 10;
+      }
+
+      return layout;
+    }
+
+    // 3v3 Desktop Squad Pod Layout
     const headerHeight = 36;
     const cardHeight = 54;
     const myTeam = onlinePlayerTeams[myIndex] || (gameManager.players[myIndex]?.team) || (myIndex < 3 ? 'cyan' : 'magenta');
@@ -1627,16 +1735,93 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
     return layout;
   }
 
-  // ─── Battle Royale: Tetris-99-style compact mosaic layout ───
-  // Canvas structure:
-  //   [PHASE STRIP · 32px]
-  //   [Your Board (large) | Mosaic Grid of up-to-29 rivals (right)]
-  //   [Your Scorecard]
-  //
-  const brPhaseStripH = 32;    // on-canvas phase strip height above boards
+  // ─── Battle Royale on Mobile: Strictly Maximum 4 Boards (Player + up to 3 Opponents) ───
+  if (isMobile) {
+    const brPhaseStripH = 30;
+    const ownHeaderH = 28;
+    const ownCardH   = 44;
+    const ownBlockSize = 14; // 140px x 280px
+    const ownWidth = COLS * ownBlockSize;
+    const ownOffsetY = brPhaseStripH + ownHeaderH + 4;
+
+    layout[myIndex] = {
+      blockSize: ownBlockSize,
+      offsetX: 8,
+      offsetY: ownOffsetY,
+      headerHeight: ownHeaderH,
+      cardHeight: ownCardH,
+    };
+
+    // Select up to 3 opponents to display
+    const chosenOpponentIndices: number[] = [];
+    const myPlayer = gameManager.players[myIndex];
+    const targetIdx = myPlayer?.selectedTargetIndex;
+
+    // 1. Current selected target
+    if (targetIdx !== null && targetIdx !== undefined && targetIdx >= 0 && targetIdx !== myIndex && targetIdx < playerCount) {
+      chosenOpponentIndices.push(targetIdx);
+    }
+
+    // 2. Attackers currently targeting player
+    for (let i = 0; i < playerCount; i++) {
+      if (chosenOpponentIndices.length >= 3) break;
+      if (i === myIndex || chosenOpponentIndices.includes(i)) continue;
+      const p = gameManager.players[i];
+      if (p && !p.isToppedOut && !p.battleRoyalEliminated && !(p as any).isCulled && p.selectedTargetIndex === myIndex) {
+        chosenOpponentIndices.push(i);
+      }
+    }
+
+    // 3. Top living rivals by score
+    const aliveOpponents: { idx: number; score: number }[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      if (i === myIndex || chosenOpponentIndices.includes(i)) continue;
+      const p = gameManager.players[i];
+      if (p && !p.isToppedOut && !p.battleRoyalEliminated && !(p as any).isCulled) {
+        aliveOpponents.push({ idx: i, score: p.scoreManager?.score || 0 });
+      }
+    }
+    aliveOpponents.sort((a, b) => b.score - a.score);
+    for (const opp of aliveOpponents) {
+      if (chosenOpponentIndices.length >= 3) break;
+      chosenOpponentIndices.push(opp.idx);
+    }
+
+    // 4. Fill remaining slots if fewer than 3 alive exist
+    for (let i = 0; i < playerCount; i++) {
+      if (chosenOpponentIndices.length >= 3) break;
+      if (i !== myIndex && !chosenOpponentIndices.includes(i)) {
+        chosenOpponentIndices.push(i);
+      }
+    }
+
+    // Lay out the up to 3 opponents beside the player board
+    const oppBlockSize = 11; // 110px x 220px
+    const oppWidth = COLS * oppBlockSize;
+    const oppHeaderH = 24;
+    const oppOffsetY = ownOffsetY + 4;
+    const oppGap = 10;
+    let oppCursorX = 8 + ownWidth + 14;
+
+    chosenOpponentIndices.forEach(playerIdx => {
+      layout[playerIdx] = {
+        blockSize: oppBlockSize,
+        offsetX: oppCursorX,
+        offsetY: oppOffsetY,
+        headerHeight: oppHeaderH,
+        cardHeight: 0,
+      };
+      oppCursorX += oppWidth + oppGap;
+    });
+
+    return layout;
+  }
+
+  // ─── Desktop Battle Royale: Tetris-99-style compact mosaic layout (all 29 rivals) ───
+  const brPhaseStripH = 32;
   const ownHeaderH = 36;
   const ownCardH   = 54;
-  const ownBlockSize = BLOCK_SIZE;   // 30px — own board at 1× (not scaled up, canvas needs to stay tight)
+  const ownBlockSize = BLOCK_SIZE; // 30px
   const ownWidth = COLS * ownBlockSize;
   const ownHeight = ROWS * ownBlockSize;
   const ownOffsetY = brPhaseStripH + ownHeaderH + 4;
@@ -1656,10 +1841,10 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
     }
   }
 
-  const otherBlockSize = BLOCK_SIZE * OTHER_BOARD_SCALE_BR;   // ~7.8px blocks
+  const otherBlockSize = BLOCK_SIZE * OTHER_BOARD_SCALE_BR; // ~7.8px blocks
   const otherWidth  = COLS * otherBlockSize;
   const otherHeight = ROWS * otherBlockSize;
-  const mosaicHeaderH = 14;   // slim header for BR badge (rank + status pill)
+  const mosaicHeaderH = 14;
   const mosaicGap = 5;
   const mosaicStartX = 8 + ownWidth + 18;
   const mosaicTopY   = brPhaseStripH + mosaicHeaderH + 4;
@@ -1674,7 +1859,7 @@ function computeBoardLayout(playerCount: number, myIndex: number, modeId: string
       offsetX: mosaicStartX + col * (otherWidth + mosaicGap),
       offsetY: mosaicTopY + row * mosaicSlotH,
       headerHeight: mosaicHeaderH,
-      cardHeight: 0,   // no scorecard for mosaic — space too tight
+      cardHeight: 0,
     };
   });
 
@@ -1691,8 +1876,8 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   const isBROnline = activeOnlineMode === 'battle-royale' && gameManager.isOnline;
 
   const layoutEntry = boardLayout[index];
-  if (!layoutEntry && isBROnline && !isMyPlayer) {
-    return; // Safety guard: never draw ghost opponent boards if layout is somehow undefined
+  if (!layoutEntry && !isDuo) {
+    return; // Don't draw boards that are not part of the active layout (e.g. mobile 4-board cap)
   }
 
   let { blockSize, offsetX, offsetY } = layoutEntry ?? { 
@@ -2152,36 +2337,40 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
     tCtx.restore();
   }
 
-  // 1b. Slim BR Mosaic Badge — rank + status pill for small opponent boards
+  // 1b. Slim BR Mosaic Badge — rank + status pill for opponent boards
   if (showSlimBadge) {
     const hx = offsetX;
     const hy = offsetY - headerH - 2;
     const hw = boardPixelW;
     const hh = headerH;
-    const isOut = player.isToppedOut;
+    const isOut = player.isToppedOut || player.battleRoyalEliminated || (player as any).isCulled;
     const isDanger = !isOut && gameManager.getMaxColumnHeight(player) >= 15;
+    const isAttacker = !isOut && !isMyPlayer && player.selectedTargetIndex === (gameManager.isOnline ? gameManager.myPlayerIndex : 0);
 
     tCtx.save();
     // Slim background
-    tCtx.fillStyle = isOut ? 'rgba(30,8,12,0.90)' : isDanger ? 'rgba(30,18,4,0.90)' : 'rgba(8,12,28,0.88)';
+    tCtx.fillStyle = isOut ? 'rgba(30,8,12,0.92)' : isTargeted ? 'rgba(44,10,24,0.95)' : isAttacker ? 'rgba(40,20,6,0.92)' : isDanger ? 'rgba(30,18,4,0.90)' : 'rgba(8,12,28,0.90)';
     tCtx.fillRect(hx, hy, hw, hh);
-    tCtx.strokeStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : 'rgba(80,100,140,0.5)';
-    tCtx.lineWidth = 1;
+    tCtx.strokeStyle = isOut ? '#EF4444' : isTargeted ? '#FF007F' : isAttacker ? '#F59E0B' : isDanger ? '#F59E0B' : 'rgba(80,100,140,0.5)';
+    tCtx.lineWidth = isTargeted || isAttacker ? 2 : 1;
     tCtx.strokeRect(hx + 0.5, hy + 0.5, hw - 1, hh - 1);
 
     // Status pill text (right-aligned)
-    tCtx.font = 'bold 6px "Press Start 2P", monospace';
+    const fontSz = hh >= 20 ? 7 : 6;
+    tCtx.font = `bold ${fontSz}px "Press Start 2P", monospace`;
     tCtx.textBaseline = 'middle';
     tCtx.textAlign = 'right';
-    tCtx.fillStyle = isOut ? '#EF4444' : isDanger ? '#F59E0B' : isTargeted ? '#FF007F' : '#10B981';
-    const pillText = isOut ? 'OUT' : isDanger ? 'DANGER' : isTargeted ? 'TARGET' : 'ALIVE';
-    tCtx.fillText(pillText, hx + hw - 3, hy + hh / 2);
+    tCtx.fillStyle = isOut ? '#EF4444' : isTargeted ? '#FF007F' : isAttacker ? '#F59E0B' : isDanger ? '#F59E0B' : '#10B981';
+    const pillText = isOut ? 'OUT' : isTargeted ? 'TARGET' : isAttacker ? 'ATTACK' : isDanger ? 'DANGER' : 'ALIVE';
+    tCtx.fillText(pillText, hx + hw - 4, hy + hh / 2);
 
-    // Rank number or player index (left-aligned)
+    // Player name / rank (left-aligned)
     tCtx.textAlign = 'left';
-    tCtx.fillStyle = '#94A3B8';
-    tCtx.font = 'bold 6px "Press Start 2P", monospace';
-    tCtx.fillText(`P${index + 1}`, hx + 3, hy + hh / 2);
+    tCtx.fillStyle = isTargeted ? '#FF007F' : '#E2E8F0';
+    tCtx.font = `bold ${fontSz}px "Press Start 2P", monospace`;
+    const rawName = onlinePlayerSpecs[index]?.name || `P${index + 1}`;
+    const displayName = rawName.length > 7 ? rawName.slice(0, 6) + '..' : rawName;
+    tCtx.fillText(displayName, hx + 4, hy + hh / 2);
     tCtx.restore();
   }
 
@@ -2278,7 +2467,7 @@ function renderPlayer(player: Player, index: number, isDuo: boolean) {
   }
 
   // 4. Score Card Underneath Each Player Board
-  if (!isDuo && blockSize >= 20 && (!isBROnline || isMyPlayer)) {
+  if (!isDuo && (blockSize >= 14 || isMyPlayer) && (!isBROnline || isMyPlayer)) {
     const cx = offsetX;
     const cy = offsetY + boardPixelH + 8;
     const cw = boardPixelW;
@@ -2555,9 +2744,10 @@ function render() {
 
   // Battle Royale: Render on-canvas Phase HUD strip and Live Standings panel
   if (gameManager.isOnline && activeOnlineMode === 'battle-royale' && gameManager.state === GameState.PLAYING) {
+    const isMobile = isMobileDevice();
     const stripH = 30;
-    const panelX = canvas.width - BR_STANDINGS_W;
-    const stripW = panelX; // Phase strip only covers the boards area, leaving right column for Standings
+    const panelX = canvas.width - (isMobile ? 0 : BR_STANDINGS_W);
+    const stripW = panelX;
 
     ctx.save();
 
@@ -2629,6 +2819,20 @@ function render() {
         if (a.alive !== b.alive) return a.alive ? -1 : 1;
         return b.score - a.score;
       });
+
+    if (isMobile) {
+      // In mobile mode, show live rank in top phase strip
+      const myRank = ranked.findIndex(r => r.i === myIdx) + 1;
+      if (myRank > 0) {
+        ctx.save();
+        ctx.font = 'bold 8px "Press Start 2P", monospace';
+        ctx.fillStyle = '#FFD700';
+        ctx.textAlign = 'center';
+        ctx.fillText(`RANK #${myRank}`, stripW / 2, cy + 8);
+        ctx.restore();
+      }
+    } else {
+
 
     // Panel geometry
     const panelY = 0;
@@ -2750,6 +2954,7 @@ function render() {
     }
 
     ctx.restore();
+    } // end if (!isMobile)
   }
 
 
@@ -2794,8 +2999,9 @@ function render() {
       tx = tOff.x + (COLS * BLOCK_SIZE) / 2;
       ty = tOff.y + 8 * BLOCK_SIZE;
     } else {
-      const sLay = boardLayout[i] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
-      const tLay = boardLayout[tv.targetPlayerIndex] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
+      const sLay = boardLayout[i];
+      const tLay = boardLayout[tv.targetPlayerIndex];
+      if (!sLay || !tLay) continue;
       sx = sLay.offsetX + (COLS * sLay.blockSize) / 2;
       sy = sLay.offsetY + 15 * sLay.blockSize;
       tx = tLay.offsetX + (COLS * tLay.blockSize) / 2;
@@ -2825,6 +3031,7 @@ function render() {
   // Draw line clear flashes
   for (const flash of effects.lineClearEffects) {
     const pIdx = flash.playerIndex ?? 0;
+    if (!isDuo && !boardLayout[pIdx]) continue;
     const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
     const rectOffset = getCanvasRectOffset(pIdx);
     
@@ -2840,6 +3047,7 @@ function render() {
   // Draw particles (stored in board-local 300x600 coordinates)
   for (const p of effects.particles) {
     const pIdx = p.playerIndex ?? 0;
+    if (!isDuo && !boardLayout[pIdx]) continue;
     const rectOffset = getCanvasRectOffset(pIdx);
     const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
     const scale = isDuo ? 1 : (blockSize / BLOCK_SIZE);
@@ -2861,6 +3069,7 @@ function render() {
   // Draw combo & ability/block floating texts (stored in board-local 300x600 coordinates)
   for (const t of effects.comboTexts) {
     const pIdx = t.playerIndex ?? 0;
+    if (!isDuo && !boardLayout[pIdx]) continue;
     const rectOffset = getCanvasRectOffset(pIdx);
     const { blockSize, offsetX, offsetY } = boardLayout[pIdx] ?? { blockSize: BLOCK_SIZE, offsetX: 0, offsetY: 0 };
     const scale = isDuo ? 1 : Math.max(0.6, blockSize / BLOCK_SIZE);

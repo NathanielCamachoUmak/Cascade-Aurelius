@@ -1,3 +1,5 @@
+import { initOrientationEnforcer } from './MobileOrientation';
+initOrientationEnforcer();
 import './globalAudio';
 import './style.css'
 import { PLAYER_CLASSES, type PlayerClass } from './PlayerClass'
