@@ -1,2 +1,0 @@
-ENV: Windows
-Always use 'cmd /c' for all shell executions to ensure the process releases properly.
