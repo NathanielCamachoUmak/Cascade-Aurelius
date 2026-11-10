@@ -11,6 +11,16 @@ export interface MatchProgressionInput {
   score: number;
   lines: number;
   kills: number;
+  /** Battle Royale: 1-indexed finish position (1 = winner, N = last place) */
+  placement?: number;
+  /** Battle Royale: total players in the match */
+  totalPlayers?: number;
+  /** Battle Royale: total garbage lines sent to opponents */
+  garbageSent?: number;
+  /** Battle Royale: server-authoritative placement reward (Phase 1 regression curve) */
+  placementReward?: number;
+  /** Battle Royale: whether this player was the match MVP (Phase 1) */
+  isMVP?: boolean;
 }
 
 export interface Achievement {
@@ -63,6 +73,9 @@ const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked' | 'unlockedAt'>[] = [
   { id: 'br-champion', title: 'Last Board Standing', description: 'Win a Battle Royale match.', reward: 400 },
   { id: 'high-score', title: 'Score Surge', description: 'Reach 100,000 points in a match.', reward: 200 },
   { id: 'triple-threat', title: 'Triple Threat', description: 'Win in Classic, FFA, and 3v3 Deathmatch.', reward: 500 },
+  // Phase 1: New BR achievements (Panel Comment #5 & #6)
+  { id: 'br-mvp', title: 'Battle Royale MVP', description: 'Earn the MVP award in a Battle Royale match.', reward: 500 },
+  { id: 'br-survivor', title: 'Survived the Cull', description: 'Finish in the top 10 of a Battle Royale match.', reward: 200 },
 ];
 
 const MUSIC_COSMETIC_DEFS: Omit<Cosmetic, 'unlocked' | 'equipped'>[] = Object.values(OST_TRACKS).map(track => ({
@@ -257,15 +270,34 @@ export class ProgressionStore {
   public recordMatch(input: MatchProgressionInput): { earned: number; achievements: Achievement[] } {
     this.save.matches += 1; if (input.won) this.save.wins += 1;
     this.history.push(input.mode); this.history = this.history.slice(-20);
-    const base = input.won ? 100 : 25; const modeBonus = input.won ? ({ 'classic-pvp': 50, 'free-for-all': 100, 'team-deathmatch': 150, 'battle-royale': 300 }[input.mode]) : 0;
-    const statBonus = Math.min(100, Math.floor(input.lines / 5) * 10) + Math.min(100, input.kills * 20);
-    let earned = base + modeBonus + statBonus; this.save.points += earned;
+
+    // ── Phase 1: Use server-authoritative placement reward for Battle Royale ──
+    // For BR matches the server computes a regression-based reward via
+    // computePlacementReward() (Comment #4 & #6). Other modes keep the legacy
+    // flat formula so existing Classic/FFA/TDM progression is untouched.
+    let earned: number;
+    if (input.mode === 'battle-royale' && input.placementReward !== undefined && input.placementReward > 0) {
+      earned = input.placementReward;
+    } else {
+      // Legacy flat formula for non-BR modes (unchanged)
+      const base = input.won ? 100 : 25;
+      const modeBonus = input.won ? ({ 'classic-pvp': 50, 'free-for-all': 100, 'team-deathmatch': 150, 'battle-royale': 300 }[input.mode] ?? 0) : 0;
+      const statBonus = Math.min(100, Math.floor(input.lines / 5) * 10) + Math.min(100, input.kills * 20);
+      earned = base + modeBonus + statBonus;
+    }
+    this.save.points += earned;
+
     const unlocked: Achievement[] = [];
     const ids: string[] = [];
     if (input.won) ids.push('first-win', 'top-player', `${input.mode === 'classic-pvp' ? 'classic' : input.mode === 'free-for-all' ? 'ffa' : input.mode === 'team-deathmatch' ? 'tdm' : 'br'}-champion`);
     if (input.lines >= 20) ids.push('top-lines'); if (input.score >= 100000) ids.push('high-score');
     const has = (mode: ProgressionMode) => this.history.includes(mode);
     if (has('classic-pvp') && has('free-for-all') && has('team-deathmatch')) ids.push('triple-threat');
+
+    // Phase 1: New BR-specific achievement checks (Comment #5 & #6)
+    if (input.isMVP) ids.push('br-mvp');
+    if (input.mode === 'battle-royale' && input.placement !== undefined && input.placement <= 10) ids.push('br-survivor');
+
     for (const id of ids) { const item = this.unlock(id); if (item) { unlocked.push(item); earned += item.reward; } }
     this.persist(); return { earned, achievements: unlocked };
   }
@@ -346,7 +378,7 @@ export function mountProgression(profileNav: HTMLElement): ProgressionController
           <div class="bq-progress-stat"><b data-points>0</b><span>customization points</span></div>
           <div class="bq-progress-stat"><b data-wins>0</b><span>multiplayer wins</span></div>
           <div class="bq-progress-stat"><b data-matches>0</b><span>matches played</span></div>
-          <div class="bq-progress-stat"><b data-achievements-unlocked>0 / 9</b><span>achievements unlocked</span></div>
+          <div class="bq-progress-stat"><b data-achievements-unlocked>0 / 11</b><span>achievements unlocked</span></div>
         </div>
         <div class="bq-progress-section">
           <h3>Achievements</h3>

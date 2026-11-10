@@ -15,7 +15,9 @@ import {
   isKoFloorReached, 
   applyKoPenalty, 
   finalScoreWithDecay, 
-  DYNAMIC_RULES 
+  DYNAMIC_RULES,
+  computeAllPlacementRewards,
+  computeMVP,
 } from './battleRoyal.js';
 
 const app = express();
@@ -481,20 +483,48 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
   const entries = Array.from(room.players.entries());
   const winnerEntry = winner ? entries.find(([, player]) => player === winner) : null;
   const winnerId = winnerEntry?.[0] ?? null;
-  const rankings = rankBattleRoyalPlacements(entries.map(([id, player]) => ({ ...player, id })), winnerId, room.currentRoundIndex ?? 0)
-    .map((player, index) => ({
+  const totalPlayers = entries.length;
+  const finalRoundIndex = room.currentRoundIndex ?? 0;
+
+  // 1. Compute survival-order placements (existing logic)
+  const basePlacements = rankBattleRoyalPlacements(entries.map(([id, player]) => ({ ...player, id })), winnerId, finalRoundIndex);
+
+  // 2. Compute regression-based placement rewards (Phase 1 — Comment #4 & #6)
+  const withRewards = computeAllPlacementRewards(basePlacements, totalPlayers);
+
+  // 3. Compute MVP composite scores (Phase 1 — Comment #5)
+  const mvpResults = computeMVP(basePlacements, totalPlayers, finalRoundIndex);
+  const mvpPlayer = mvpResults.length > 0 ? mvpResults[0] : null;
+  const mvpId = mvpPlayer?.id ?? null;
+  const mvpName = mvpPlayer?.name ?? null;
+
+  // Build a lookup for MVP scores by player id
+  const mvpLookup = new Map();
+  for (const p of mvpResults) {
+    mvpLookup.set(String(p.id), { mvpScore: p.mvpScore, mvpRank: p.mvpRank });
+  }
+
+  // 4. Assemble final rankings with all new fields
+  const rankings = withRewards.map((player, index) => {
+    const mvpData = mvpLookup.get(String(player.id)) || { mvpScore: 0, mvpRank: totalPlayers };
+    return {
       rank: index + 1,
       id: player.id,
       name: player.name,
       score: player.score || 0,
       finalScore: finalScoreWithDecay(player.score || 0, player.koCount || 0),
+      placementReward: player.placementReward,
+      mvpScore: mvpData.mvpScore,
+      mvpRank: mvpData.mvpRank,
       lines: player.lines || 0,
       kills: player.kills || 0,
       koCount: player.koCount || 0,
       state: player.state,
       eliminated: player.state !== 'playing' || !!player.brPermanentlyEliminated,
       ownerId: player.ownerId || null,
-    }));
+    };
+  });
+
   clearTimers(room);
   resetAfterMatch(room);
   io.to(roomId).emit('post-game-start', {
@@ -507,6 +537,8 @@ function finishBattleRoyalMatch(roomId, reason = 'time', winnerOverride = null) 
     battleRoyal: true,
     rankings,
     targetScore: BATTLE_ROYALE_RULES.targetScore,
+    mvpId,
+    mvpName,
   });
   emitRoomState(roomId);
 }

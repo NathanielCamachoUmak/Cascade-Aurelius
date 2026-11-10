@@ -933,12 +933,18 @@ function wireGameCallbacks(network: NetworkManager) {
       const won = data.winnerTeam
         ? data.winnerTeam === resultTeam
         : data.winnerId === network?.mySocketId;
+      const myRanking = data.rankings?.find(r => r.id === network?.mySocketId);
+      const isMVP = Boolean((data.mvpId && data.mvpId === network?.mySocketId) || (myRanking?.mvpRank === 1));
       progression.recordMatch({
         mode: activeOnlineMode as ProgressionMode,
         won,
         score: me?.scoreManager.score ?? 0,
         lines: me?.scoreManager.totalLinesCleared ?? 0,
         kills: me?.kills ?? 0,
+        placement: myRanking?.rank,
+        totalPlayers: data.rankings?.length,
+        placementReward: myRanking?.placementReward,
+        isMVP,
       });
     }
   };
@@ -1038,7 +1044,8 @@ function wireGameCallbacks(network: NetworkManager) {
   network.onBattleRoyalPostGame = (data) => {
     gameManager.handleBattleRoyalPostGame(data);
     const rankings = Array.isArray(data.rankings) ? data.rankings : [];
-    const myRank = rankings.find(entry => entry.id === network?.mySocketId)?.rank;
+    const myEntry = rankings.find(entry => entry.id === network?.mySocketId);
+    const myRank = myEntry?.rank;
     const isDraw = !data.winnerId || data.winnerName.startsWith('Draw');
     const place = myRank === 1 ? '1ST PLACE' : myRank === 2 ? '2ND PLACE' : myRank === 3 ? '3RD PLACE' : '';
     postGameWinner.textContent = isDraw
@@ -1046,19 +1053,40 @@ function wireGameCallbacks(network: NetworkManager) {
       : `${data.winnerId === network?.mySocketId ? 'YOU WIN!' : 'YOU LOSE!'}${place ? ` · ${place}` : ''}`;
 
     const podium = document.createElement('div');
-    podium.className = 'text-left text-xs leading-5';
+    podium.className = 'text-left text-xs leading-5 max-w-xl mx-auto';
+
+    // ── Phase 1: MVP Spotlight (Comment #5) ──
+    if (data.mvpName) {
+      const mvpBanner = document.createElement('div');
+      mvpBanner.className = 'bg-neon-yellow/15 border border-neon-yellow/60 rounded-lg px-3 py-2 mb-3 flex items-center justify-between text-neon-yellow font-bold text-xs tracking-wider shadow-[0_0_12px_rgba(255,215,0,0.25)]';
+      mvpBanner.innerHTML = `<span class="flex items-center gap-2">★ MATCH MVP: <span class="text-white font-bold">${data.mvpName}</span></span><span class="text-[9px] uppercase tracking-widest text-neon-yellow font-pixel">TOP HONORS</span>`;
+      podium.appendChild(mvpBanner);
+    }
+
+    // ── Phase 1: Player's Own Result & Regression Reward (Comment #4 & #6) ──
+    if (myEntry) {
+      const rewardBanner = document.createElement('div');
+      rewardBanner.className = 'bg-neon-cyan/10 border border-neon-cyan/40 rounded-lg px-3 py-2 mb-3 text-xs text-neon-cyan flex justify-between items-center';
+      rewardBanner.innerHTML = `<span>YOUR FINISH: <strong class="text-white">RANK #${myEntry.rank} OF ${rankings.length}</strong></span><span>EARNED: <strong class="text-neon-green font-bold">+${myEntry.placementReward ?? 50} PTS</strong></span>`;
+      podium.appendChild(rewardBanner);
+    }
+
     const target = document.createElement('div');
-    target.className = 'text-neon-yellow mb-2';
+    target.className = 'text-neon-yellow mb-2 text-[10px] tracking-widest uppercase';
     target.textContent = `TARGET ${Number(data.targetScore).toLocaleString()} · ${data.reason}`;
     podium.appendChild(target);
+
     const placeNames = ['1ST PLACE', '2ND PLACE', '3RD PLACE'];
     [...rankings]
       .sort((a, b) => a.rank - b.rank)
       .filter(entry => entry.rank >= 1 && entry.rank <= 3)
       .forEach(entry => {
         const row = document.createElement('div');
-        row.className = 'text-white';
-        row.textContent = `${placeNames[entry.rank - 1]} · ${entry.name} · ${Math.round(entry.finalScore ?? entry.score).toLocaleString()} pts · ${entry.lines} lines · ${entry.kills} kills · ${entry.koCount ?? 0} K.O.`;
+        row.className = 'text-white flex justify-between py-0.5 border-b border-gray-800/50';
+        const isEntryMVP = entry.mvpRank === 1 || entry.id === data.mvpId;
+        const mvpTag = isEntryMVP ? ' <span class="text-neon-yellow font-bold">★ MVP</span>' : '';
+        const rewardText = entry.placementReward ? ` · <span class="text-neon-green">+${entry.placementReward} pts</span>` : '';
+        row.innerHTML = `<span>${placeNames[entry.rank - 1]} · <strong class="text-neon-cyan">${entry.name}</strong>${mvpTag}</span><span class="text-gray-300">${Math.round(entry.finalScore ?? entry.score).toLocaleString()} score · ${entry.lines}L · ${entry.kills}K${rewardText}</span>`;
         podium.appendChild(row);
       });
     postGameTeamScores.replaceChildren(podium);

@@ -29,6 +29,9 @@ export interface BattleRoyalRanking {
   name: string;
   score: number;
   finalScore?: number;
+  placementReward?: number;
+  mvpScore?: number;
+  mvpRank?: number;
   lines: number;
   kills: number;
   koCount?: number;
@@ -122,7 +125,7 @@ export class NetworkManager {
   public onCountdownCancel: (() => void) | null = null;
   public onPreGameCountdown: ((seconds: number) => void) | null = null;
   public onPlayerStateUpdate: ((data: { playerId: string; playerIndex?: number; state: string; remainingPlayers?: number; }) => void) | null = null;
-  public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string; modeId?: OnlineModeId; battleRoyal?: boolean; rankings?: BattleRoyalRanking[]; targetScore?: number }) => void) | null = null;
+  public onPostGameStart: ((data: { winnerId: string; winnerName: string; winnerTeam: 'cyan' | 'magenta' | null; teamScores: { cyan: number; magenta: number }; reason: string; modeId?: OnlineModeId; battleRoyal?: boolean; rankings?: BattleRoyalRanking[]; targetScore?: number; mvpId?: string; mvpName?: string }) => void) | null = null;
   public onRematchUpdate: ((data: { votes: number; required: number }) => void) | null = null;
   public onPlayerDisconnected: ((data: { playerId: string }) => void) | null = null;
   public onRoomHostChanged: ((data: { hostId: string | null }) => void) | null = null;
@@ -148,7 +151,7 @@ export class NetworkManager {
   public onReceiveGarbage: (count: number, fromIndex?: number, options?: { solid?: boolean; unClearable?: boolean; source?: string }, targetIndex?: number) => void = () => {};
   public onShowRibbon: (message: string) => void = () => {};
   public onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
-  public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number }) => void) | null = null;
+  public onBattleRoyalPostGame: ((data: { winnerId: string; winnerName: string; reason: string; rankings: BattleRoyalRanking[]; targetScore: number; mvpId?: string; mvpName?: string }) => void) | null = null;
   public onTdmPlayerRebooting?: (data: { playerId: string; playerIndex: number; team: 'cyan' | 'magenta' | null; killerIndex: number | null; score: number; koCount: number; durationMs: number; teamScores: { cyan: number; magenta: number } }) => void;
   public onTdmPlayerRespawned?: (data: { playerId: string; playerIndex: number; team: 'cyan' | 'magenta' | null }) => void;
   public onTeamAceWipeout?: (data: { victimTeam: string; scoringTeam: string; bonusPoints: number; teamScores: { cyan: number; magenta: number } }) => void;
