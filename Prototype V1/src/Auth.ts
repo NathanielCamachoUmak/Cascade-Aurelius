@@ -279,10 +279,22 @@ export async function mountAuth() {
     if (user) {
       btnOpen?.classList.add('hidden');
       userDisplay?.classList.remove('hidden');
+      const name = user.user_metadata?.display_name || user.user_metadata?.username || user.email?.split('@')[0] || 'Player';
       if (usernameDisplay) {
-        usernameDisplay.textContent = user.user_metadata?.username || user.email?.split('@')[0] || 'Player';
+        usernameDisplay.textContent = name;
       }
       modal?.classList.add('hidden');
+
+      // Auto-heal existing user metadata so display_name shows in Supabase dashboard
+      if (user.user_metadata?.username && !user.user_metadata?.display_name) {
+        supabase.auth.updateUser({
+          data: {
+            display_name: user.user_metadata.username,
+            full_name: user.user_metadata.username,
+            name: user.user_metadata.username,
+          }
+        }).catch(() => {});
+      }
     } else {
       btnOpen?.classList.remove('hidden');
       userDisplay?.classList.add('hidden');
@@ -341,6 +353,15 @@ export async function mountAuth() {
         setMode('signin');
         form.reset();
       } else if (currentMode === 'register') {
+        if (!username) {
+          throw new Error('Please enter a username.');
+        }
+        if (username.length < 3 || username.length > 20) {
+          throw new Error('Username must be between 3 and 20 characters.');
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+          throw new Error('Username can only contain letters, numbers, underscores, and dashes.');
+        }
         if (consentTelemetry && !consentTelemetry.checked) {
           throw new Error('You must consent to telemetry collection for academic research.');
         }
@@ -348,11 +369,34 @@ export async function mountAuth() {
           throw new Error('You must be 18 years or older to participate.');
         }
 
+        // Check if username is already taken (case-insensitive check)
+        const { data: isAvail, error: rpcErr } = await supabase.rpc('is_username_available', { check_username: username });
+        if (!rpcErr && isAvail === false) {
+          throw new Error(`Username "${username}" is already taken. Please choose another.`);
+        }
+        if (rpcErr) {
+          // Fallback direct check against profiles table
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('username')
+            .ilike('username', username)
+            .maybeSingle();
+
+          if (existingProfile) {
+            throw new Error(`Username "${username}" is already taken. Please choose another.`);
+          }
+        }
+
         const { error, data } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { username },
+            data: {
+              username: username,
+              display_name: username,
+              full_name: username,
+              name: username,
+            },
             emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
           }
         });
@@ -360,6 +404,14 @@ export async function mountAuth() {
 
         if (data.user && data.user.identities && data.user.identities.length === 0) {
           throw new Error('This email is already registered.');
+        }
+
+        // Ensure profile row exists if session is established immediately
+        if (data.session?.user) {
+          await supabase.from('profiles').upsert({
+            id: data.session.user.id,
+            username: username,
+          }, { onConflict: 'id' }).catch(() => {});
         }
 
         if (data.session) {
