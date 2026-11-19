@@ -336,8 +336,12 @@
 
         <form id="auth-form" class="flex flex-col gap-4">
           <div id="auth-username-group" class="hidden flex-col gap-1">
-            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Username</label>
-            <input id="auth-username-input" type="text" placeholder="Player123" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+            <div class="flex justify-between items-center">
+              <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Username <span class="text-neon-pink">*</span></label>
+              <span id="auth-username-hint" class="text-[10px] hidden"></span>
+            </div>
+            <input id="auth-username-input" type="text" placeholder="Player123" minlength="3" maxlength="20" autocomplete="username" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+            <p class="text-[10px] text-gray-500">3–20 characters. Letters, numbers, _ and - only.</p>
           </div>
           <div id="auth-consent-group" class="hidden flex-col gap-2 mt-2">
             <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">

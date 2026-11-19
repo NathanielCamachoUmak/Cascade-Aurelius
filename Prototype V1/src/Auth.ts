@@ -143,9 +143,66 @@ export async function mountAuth() {
   const consentTelemetry = document.getElementById('auth-consent-telemetry') as HTMLInputElement | null;
   const consentAge = document.getElementById('auth-consent-age') as HTMLInputElement | null;
   const usernameInput = document.getElementById('auth-username-input') as HTMLInputElement;
+  const usernameHint = document.getElementById('auth-username-hint') as HTMLElement | null;
   const emailInput = document.getElementById('auth-email-input') as HTMLInputElement;
   const passwordInput = document.getElementById('auth-password-input') as HTMLInputElement;
   const errorMsg = document.getElementById('auth-error')!;
+
+  // ── Live username availability checker (debounced) ──────────────────────
+  let usernameCheckTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function setUsernameHint(text: string, color: 'green' | 'red' | 'gray') {
+    if (!usernameHint) return;
+    usernameHint.textContent = text;
+    usernameHint.className = `text-[10px] ${
+      color === 'green' ? 'text-neon-green' :
+      color === 'red'   ? 'text-red-400'   :
+                          'text-gray-400'
+    }`;
+    usernameHint.classList.remove('hidden');
+  }
+
+  usernameInput?.addEventListener('input', () => {
+    const val = usernameInput.value.trim();
+    if (usernameCheckTimer) clearTimeout(usernameCheckTimer);
+
+    if (!val) {
+      usernameHint?.classList.add('hidden');
+      usernameInput.classList.remove('border-neon-green', 'border-red-400');
+      return;
+    }
+    if (val.length < 3) {
+      setUsernameHint('Too short (min 3 chars)', 'red');
+      usernameInput.classList.add('border-red-400');
+      usernameInput.classList.remove('border-neon-green');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(val)) {
+      setUsernameHint('Invalid characters', 'red');
+      usernameInput.classList.add('border-red-400');
+      usernameInput.classList.remove('border-neon-green');
+      return;
+    }
+
+    setUsernameHint('Checking…', 'gray');
+    usernameInput.classList.remove('border-neon-green', 'border-red-400');
+
+    usernameCheckTimer = setTimeout(async () => {
+      try {
+        const { data: isAvail, error } = await supabase.rpc('is_username_available', { check_username: val });
+        if (error) throw error;
+        if (isAvail) {
+          setUsernameHint('✓ Available', 'green');
+          usernameInput.classList.add('border-neon-green');
+        } else {
+          setUsernameHint('✗ Already taken', 'red');
+          usernameInput.classList.add('border-red-400');
+        }
+      } catch {
+        usernameHint?.classList.add('hidden');
+      }
+    }, 500);
+  });
 
   // Locate or dynamically create "Forgot Password" and "Back to Sign In" controls
   let passwordGroup = document.getElementById('auth-password-group');
@@ -192,6 +249,10 @@ export async function mountAuth() {
     currentMode = mode;
     errorMsg.classList.add('hidden');
 
+    // Reset username hint/border when switching modes
+    if (usernameHint) usernameHint.classList.add('hidden');
+    usernameInput?.classList.remove('border-neon-green', 'border-red-400');
+
     if (mode === 'register') {
       if (title) title.textContent = 'Register';
       if (subtitle) subtitle.textContent = 'Create an account to track progression & stats.';
@@ -201,11 +262,12 @@ export async function mountAuth() {
         toggleBtn.classList.remove('hidden');
       }
       btnBackSignin?.classList.add('hidden');
-      usernameGroup?.classList.remove('hidden');
+      // Show username group as flex (override Tailwind hidden → display:none)
+      if (usernameGroup) { usernameGroup.style.display = 'flex'; }
       passwordGroup?.classList.remove('hidden');
       forgotBtn?.classList.add('hidden');
-      consentGroup?.classList.remove('hidden');
-      if (usernameInput) usernameInput.required = true;
+      consentGroup && (consentGroup.style.display = 'flex');
+      if (usernameInput) { usernameInput.required = true; }
       if (passwordInput) passwordInput.required = true;
     } else if (mode === 'forgot') {
       if (title) title.textContent = 'Reset Password';
@@ -213,10 +275,10 @@ export async function mountAuth() {
       if (submitBtn) submitBtn.textContent = 'SEND RECOVERY EMAIL';
       toggleBtn?.classList.add('hidden');
       btnBackSignin?.classList.remove('hidden');
-      usernameGroup?.classList.add('hidden');
+      if (usernameGroup) { usernameGroup.style.display = 'none'; }
       passwordGroup?.classList.add('hidden');
       forgotBtn?.classList.add('hidden');
-      consentGroup?.classList.add('hidden');
+      if (consentGroup) consentGroup.style.display = 'none';
       if (usernameInput) usernameInput.required = false;
       if (passwordInput) passwordInput.required = false;
     } else {
@@ -229,10 +291,10 @@ export async function mountAuth() {
         toggleBtn.classList.remove('hidden');
       }
       btnBackSignin?.classList.add('hidden');
-      usernameGroup?.classList.add('hidden');
+      if (usernameGroup) { usernameGroup.style.display = 'none'; }
       passwordGroup?.classList.remove('hidden');
       forgotBtn?.classList.remove('hidden');
-      consentGroup?.classList.add('hidden');
+      if (consentGroup) consentGroup.style.display = 'none';
       if (usernameInput) usernameInput.required = false;
       if (passwordInput) passwordInput.required = true;
     }
@@ -417,11 +479,15 @@ export async function mountAuth() {
         if (data.session) {
           modal.classList.add('hidden');
           form.reset();
+          if (usernameHint) usernameHint.classList.add('hidden');
+          usernameInput?.classList.remove('border-neon-green', 'border-red-400');
           showToast('Account created and logged in!', 'success');
         } else {
           showToast('Registration successful! Please check your email.', 'success');
           modal.classList.add('hidden');
           form.reset();
+          if (usernameHint) usernameHint.classList.add('hidden');
+          usernameInput?.classList.remove('border-neon-green', 'border-red-400');
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
