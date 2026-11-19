@@ -1,5 +1,7 @@
 import { AudioManager } from './AudioManager';
 import { supabase } from './supabase';
+import { openPasswordResetModal } from './Auth';
+import { showToast } from './Toast';
 
 export interface SettingsData {
   musicEnabled: boolean;
@@ -169,6 +171,14 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
           </div>
           <p>Show a simple tutorial pointer before starting the game.</p>
         </div>
+
+        <div class="bq-settings-row" style="margin-top: 1rem;">
+          <div class="bq-settings-row-head">
+            <span>Account Security</span>
+          </div>
+          <p style="margin-bottom: 0.75rem;">Change or update your account password.</p>
+          <button id="btn-settings-change-password" type="button" style="background: rgba(0, 255, 255, 0.1); border: 1px solid #00FFFF; color: #00FFFF; padding: 0.5rem 1rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: all 0.2s;">CHANGE PASSWORD</button>
+        </div>
         
         <div class="bq-settings-row" style="border-color: rgba(239, 68, 68, 0.3); margin-top: 1rem;">
           <div class="bq-settings-row-head">
@@ -246,6 +256,17 @@ export function mountSettings(settingsNav: HTMLElement): SettingsController {
   });
   window.addEventListener('keydown', event => {
     if (event.key === 'Escape') overlay.classList.remove('open');
+  });
+
+  const btnChangePassword = overlay.querySelector<HTMLButtonElement>('#btn-settings-change-password');
+  btnChangePassword?.addEventListener('click', async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      showToast('Please sign in to change your password.', 'warning');
+      return;
+    }
+    overlay.classList.remove('open');
+    openPasswordResetModal();
   });
 
   const btnDelete = overlay.querySelector('#btn-delete-account');

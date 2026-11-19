@@ -353,8 +353,11 @@
             <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Email</label>
             <input id="auth-email-input" type="email" required placeholder="player@example.com" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
           </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Password</label>
+          <div id="auth-password-group" class="flex flex-col gap-1">
+            <div class="flex justify-between items-center">
+              <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Password</label>
+              <button type="button" id="btn-auth-forgot" class="text-[10px] text-neon-cyan hover:underline cursor-pointer">Forgot?</button>
+            </div>
             <input id="auth-password-input" type="password" required placeholder="••••••••" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
           </div>
           <p id="auth-error" class="text-red-500 text-xs hidden"></p>
@@ -362,9 +365,32 @@
           
         </form>
 
-        <div class="mt-4 text-center">
+        <div class="mt-4 text-center flex flex-col gap-2">
           <button id="btn-auth-toggle" class="text-xs text-gray-400 hover:text-white cursor-pointer underline">Need an account? Register</button>
+          <button id="btn-auth-back-signin" class="hidden text-xs text-gray-400 hover:text-white cursor-pointer underline">Back to Sign In</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ───── Password Reset / Update Modal ───── -->
+    <div id="password-reset-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+      <div class="relative w-full max-w-sm bg-card-bg border border-neon-cyan/50 rounded-xl shadow-[0_0_30px_rgba(0,255,255,0.2)] p-6">
+        <button id="btn-password-reset-close" type="button" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl leading-none cursor-pointer">&times;</button>
+        <h2 class="text-white font-extrabold text-lg tracking-wide mb-1">Set New Password</h2>
+        <p class="text-gray-400 text-xs mb-5">Choose a new password for your account.</p>
+
+        <form id="password-reset-form" class="flex flex-col gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">New Password</label>
+            <input id="new-password-input" type="password" required minlength="6" placeholder="••••••••" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Confirm Password</label>
+            <input id="confirm-password-input" type="password" required minlength="6" placeholder="••••••••" class="w-full bg-deep-purple/80 border border-card-border text-white px-3 py-2 text-sm rounded focus:outline-none focus:border-neon-cyan" />
+          </div>
+          <p id="password-reset-error" class="text-red-500 text-xs hidden"></p>
+          <button type="submit" id="btn-password-reset-submit" class="mt-2 w-full px-4 py-2.5 bg-neon-cyan text-deep-purple font-bold tracking-widest rounded transition-all hover:brightness-110 cursor-pointer uppercase">SAVE NEW PASSWORD</button>
+        </form>
       </div>
     </div>
 
