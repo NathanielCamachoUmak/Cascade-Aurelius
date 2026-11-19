@@ -470,10 +470,12 @@ export async function mountAuth() {
 
         // Ensure profile row exists if session is established immediately
         if (data.session?.user) {
-          await supabase.from('profiles').upsert({
-            id: data.session.user.id,
-            username: username,
-          }, { onConflict: 'id' }).catch(() => {});
+          try {
+            await supabase.from('profiles').upsert({
+              id: data.session.user.id,
+              username: username,
+            }, { onConflict: 'id' });
+          } catch { /* ignore — trigger will have already created the row */ }
         }
 
         if (data.session) {
